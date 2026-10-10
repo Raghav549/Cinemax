@@ -46,7 +46,10 @@ export default function MoviePage({ params }: { params: Promise<{ id: string }> 
   const [loading, setLoading] = useState(true);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [related, setRelated] = useState<Movie[]>([]);
-  const [playing, setPlaying] = useState(false);
+  // Store which movie id is playing; navigating to another movie closes the player automatically.
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const playing = playingId === id;
+  const setPlaying = (value: boolean) => setPlayingId(value ? id : null);
 
   useEffect(() => {
     fetch(`/api/movies/${id}`)
@@ -55,11 +58,12 @@ export default function MoviePage({ params }: { params: Promise<{ id: string }> 
         if (data && !data.error) {
           setMovie(data);
           if (data.category) {
-            fetch(`/api/movies?category=${data.category}&limit=8`)
+            fetch(`/api/movies?category=${encodeURIComponent(data.category)}&limit=8`)
               .then((r) => r.json())
               .then((rel) => {
                 if (Array.isArray(rel)) setRelated(rel.filter((m: Movie) => m.id !== data.id).slice(0, 6));
-              });
+              })
+              .catch(() => {});
           }
         }
         setLoading(false);
@@ -67,8 +71,19 @@ export default function MoviePage({ params }: { params: Promise<{ id: string }> 
       .catch(() => setLoading(false));
   }, [id]);
 
-  // Close player when navigating away
-  useEffect(() => { setPlaying(false); }, [id]);
+  // Load whether this movie is already in the user's watchlist
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/watchlist")
+      .then((r) => r.json())
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) {
+          setInWatchlist(list.some((m: { id: number }) => String(m.id) === String(id)));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [id]);
 
   const toggleWatchlist = async () => {
     if (!movie) return;
@@ -78,7 +93,7 @@ export default function MoviePage({ params }: { params: Promise<{ id: string }> 
       body: JSON.stringify({ movieId: movie.id }),
     });
     const data = await res.json();
-    setInWatchlist(data.added);
+    if (typeof data.added === "boolean") setInWatchlist(data.added);
   };
 
   const handlePlay = () => {

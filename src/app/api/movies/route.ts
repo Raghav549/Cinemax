@@ -4,15 +4,16 @@ import { movies } from "@/db/schema";
 import { verifyToken } from "@/lib/auth";
 import { desc, ilike, or } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
     const search = searchParams.get("search");
     const featured = searchParams.get("featured");
-    const limit = parseInt(searchParams.get("limit") || "50");
-
-    let query = db.select().from(movies);
+    const parsedLimit = parseInt(searchParams.get("limit") || "50", 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 50;
 
     if (search) {
       const result = await db
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result);
     }
 
-    const result = await query.orderBy(desc(movies.createdAt)).limit(limit);
+    const result = await db.select().from(movies).orderBy(desc(movies.createdAt)).limit(limit);
     return NextResponse.json(result);
   } catch (e) {
     console.error(e);

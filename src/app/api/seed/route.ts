@@ -2,30 +2,39 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { movies, slides, categories } from "@/db/schema";
 import { sql } from "drizzle-orm";
+import { ensureSchema } from "@/db/ensure-schema";
+
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
+    // Make sure the tables exist (fresh databases on Vercel/Neon start empty).
+    await ensureSchema();
+
     const existingMovies = await db.select({ count: sql<number>`count(*)` }).from(movies);
     if (Number(existingMovies[0].count) > 0) {
       return NextResponse.json({ message: "Already seeded" });
     }
 
-    await db.insert(categories).values([
-      { name: "Trending", slug: "trending", sortOrder: 1 },
-      { name: "New Releases", slug: "new-releases", sortOrder: 2 },
-      { name: "Movies", slug: "movies", sortOrder: 3 },
-      { name: "Series", slug: "series", sortOrder: 4 },
-      { name: "Anime", slug: "anime", sortOrder: 5 },
-      { name: "Action", slug: "action", sortOrder: 6 },
-      { name: "Horror", slug: "horror", sortOrder: 7 },
-      { name: "Comedy", slug: "comedy", sortOrder: 8 },
-      { name: "Drama", slug: "drama", sortOrder: 9 },
-      { name: "Sci-Fi", slug: "sci-fi", sortOrder: 10 },
-      { name: "Thriller", slug: "thriller", sortOrder: 11 },
-      { name: "Documentary", slug: "documentary", sortOrder: 12 },
-    ]);
+    const existingCategories = await db.select({ count: sql<number>`count(*)` }).from(categories);
+    if (Number(existingCategories[0].count) === 0) {
+      await db.insert(categories).values([
+        { name: "Trending", slug: "trending", sortOrder: 1 },
+        { name: "New Releases", slug: "new-releases", sortOrder: 2 },
+        { name: "Movies", slug: "movies", sortOrder: 3 },
+        { name: "Series", slug: "series", sortOrder: 4 },
+        { name: "Anime", slug: "anime", sortOrder: 5 },
+        { name: "Action", slug: "action", sortOrder: 6 },
+        { name: "Horror", slug: "horror", sortOrder: 7 },
+        { name: "Comedy", slug: "comedy", sortOrder: 8 },
+        { name: "Drama", slug: "drama", sortOrder: 9 },
+        { name: "Sci-Fi", slug: "sci-fi", sortOrder: 10 },
+        { name: "Thriller", slug: "thriller", sortOrder: 11 },
+        { name: "Documentary", slug: "documentary", sortOrder: 12 },
+      ]);
+    }
 
-    await db.insert(movies).values([
+    const inserted = await db.insert(movies).values([
       // Trending
       { title: "The Dark Knight", description: "When the Joker wreaks havoc on Gotham, Batman must accept one of the greatest tests of his ability to fight injustice.", year: 2008, rating: "9.0", duration: "2h 32m", genre: "Action, Crime, Drama", language: "English", type: "Movie", director: "Christopher Nolan", cast: "Christian Bale, Heath Ledger, Aaron Eckhart", posterUrl: "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911BTUgMe1nNGkA.jpg", backdropUrl: "https://image.tmdb.org/t/p/original/nMKdUUepR0i5zn0y1T4CsSB5ez.jpg", category: "trending", featured: true },
       { title: "Inception", description: "A thief who steals corporate secrets through dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.", year: 2010, rating: "8.8", duration: "2h 28m", genre: "Action, Sci-Fi, Thriller", language: "English", type: "Movie", director: "Christopher Nolan", cast: "Leonardo DiCaprio, Joseph Gordon-Levitt, Elliot Page", posterUrl: "https://image.tmdb.org/t/p/w500/edv5CZvWj09upOsy2Y6IwDhK8bt.jpg", backdropUrl: "https://image.tmdb.org/t/p/original/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg", category: "trending", featured: true },
@@ -70,12 +79,15 @@ export async function POST() {
       // Documentary
       { title: "Free Solo", description: "A documentary that follows rock climber Alex Honnold as he attempts to become the first person to climb El Capitan without ropes.", year: 2018, rating: "8.2", duration: "1h 40m", genre: "Documentary, Adventure, Sport", language: "English", type: "Documentary", director: "Jimmy Chin", cast: "Alex Honnold, Tommy Caldwell", posterUrl: "https://image.tmdb.org/t/p/w500/v3ek6aBJlGkTBYRUMfGgfNjVrgy.jpg", backdropUrl: "https://image.tmdb.org/t/p/original/4dMlFaFy7mbCJbCaEBUyiLwfJQO.jpg", category: "documentary", featured: false },
       { title: "Planet Earth II", description: "David Attenborough presents a documentary series exploring how animals meet the challenges of surviving in the most iconic habitats on Earth.", year: 2016, rating: "9.5", duration: "~55m/ep", genre: "Documentary, Nature", language: "English", type: "Documentary", director: "Jody Dobrowski", cast: "David Attenborough (Narrator)", posterUrl: "https://image.tmdb.org/t/p/w500/6OBFLzVHbHhwVrExCNrOovFQm0m.jpg", backdropUrl: "https://image.tmdb.org/t/p/original/wZsWQiKzHgGkFl6qN0i5HYbPPYA.jpg", category: "documentary", featured: false },
-    ]);
+    ]).returning({ id: movies.id, title: movies.title });
+
+    // Look up real IDs instead of assuming they start at 1.
+    const idOf = (title: string) => inserted.find((m) => m.title === title)?.id ?? null;
 
     await db.insert(slides).values([
-      { title: "The Dark Knight", subtitle: "2008 • Action • Crime • Drama", imageUrl: "https://image.tmdb.org/t/p/original/nMKdUUepR0i5zn0y1T4CsSB5ez.jpg", movieId: 1, sortOrder: 1, active: true },
-      { title: "Dune: Part Two", subtitle: "2024 • Epic Sci-Fi Adventure", imageUrl: "https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg", movieId: 5, sortOrder: 2, active: true },
-      { title: "Inception", subtitle: "2010 • Mind-Bending Sci-Fi Thriller", imageUrl: "https://image.tmdb.org/t/p/original/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg", movieId: 2, sortOrder: 3, active: true },
+      { title: "The Dark Knight", subtitle: "2008 • Action • Crime • Drama", imageUrl: "https://image.tmdb.org/t/p/original/nMKdUUepR0i5zn0y1T4CsSB5ez.jpg", movieId: idOf("The Dark Knight"), sortOrder: 1, active: true },
+      { title: "Dune: Part Two", subtitle: "2024 • Epic Sci-Fi Adventure", imageUrl: "https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg", movieId: idOf("Dune: Part Two"), sortOrder: 2, active: true },
+      { title: "Inception", subtitle: "2010 • Mind-Bending Sci-Fi Thriller", imageUrl: "https://image.tmdb.org/t/p/original/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg", movieId: idOf("Inception"), sortOrder: 3, active: true },
     ]);
 
     return NextResponse.json({ message: "Seeded successfully" });

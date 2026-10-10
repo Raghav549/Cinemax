@@ -4,6 +4,8 @@ import { slides } from "@/db/schema";
 import { verifyToken } from "@/lib/auth";
 import { asc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const token = req.cookies.get("admin_token")?.value;

@@ -27,7 +27,7 @@ export default function MovieRow({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`/api/movies?category=${category}&limit=20`)
+    fetch(`/api/movies?category=${encodeURIComponent(category)}&limit=20`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setMovies(data);

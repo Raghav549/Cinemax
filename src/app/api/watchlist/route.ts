@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { watchlist, movies } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const sid = req.cookies.get("session_id")?.value || "anonymous";

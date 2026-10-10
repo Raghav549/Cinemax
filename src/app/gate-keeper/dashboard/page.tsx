@@ -30,17 +30,34 @@ export default function AdminDashboard() {
 
   const [cName, setCName] = useState(""); const [cSlug, setCSlug] = useState("");
 
-  useEffect(() => {
-    fetch("/api/admin/verify").then((r) => r.json()).then((d) => { if (!d.valid) router.push("/gate-keeper"); else setAuthed(true); }).catch(() => router.push("/gate-keeper"));
-  }, [router]);
 
   const loadData = useCallback(async () => {
-    const [sr, mr, slr, cr] = await Promise.all([fetch("/api/admin/stats"), fetch("/api/movies?limit=100"), fetch("/api/admin/slides"), fetch("/api/categories")]);
-    const [s, m, sl, c] = await Promise.all([sr.json(), mr.json(), slr.json(), cr.json()]);
-    if (s && !s.error) setStats(s); if (Array.isArray(m)) setMovies(m); if (Array.isArray(sl)) setSlides(sl); if (Array.isArray(c)) setCategories(c);
+    try {
+      const [sr, mr, slr, cr] = await Promise.all([fetch("/api/admin/stats"), fetch("/api/movies?limit=100"), fetch("/api/admin/slides"), fetch("/api/categories")]);
+      const [s, m, sl, c] = await Promise.all([sr.json(), mr.json(), slr.json(), cr.json()]);
+      if (s && !s.error) setStats(s);
+      if (Array.isArray(m)) setMovies(m);
+      if (Array.isArray(sl)) setSlides(sl);
+      if (Array.isArray(c)) setCategories(c);
+    } catch (e) {
+      console.error("Failed to load admin data", e);
+    }
   }, []);
 
-  useEffect(() => { if (authed) loadData(); }, [authed, loadData]);
+  // Verify the admin session, then load dashboard data.
+  useEffect(() => {
+    fetch("/api/admin/verify")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.valid) {
+          router.push("/gate-keeper");
+        } else {
+          setAuthed(true);
+          loadData();
+        }
+      })
+      .catch(() => router.push("/gate-keeper"));
+  }, [router, loadData]);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 3000); };
 
