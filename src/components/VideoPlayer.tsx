@@ -53,10 +53,15 @@ export default function VideoPlayer({ src, title, poster, onClose }: VideoPlayer
     }, 3500);
   }, []);
 
+  /* Controls start visible (initial state); just schedule the first auto-hide. */
   useEffect(() => {
-    showControls();
+    hideTimerRef.current = setTimeout(() => {
+      if (videoRef.current && !videoRef.current.paused) {
+        setControlsVisible(false);
+      }
+    }, 3500);
     return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); };
-  }, [showControls]);
+  }, []);
 
   /* ── video element event listeners ── */
   useEffect(() => {

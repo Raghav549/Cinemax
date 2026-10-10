@@ -20,7 +20,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
   const catName = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   useEffect(() => {
-    fetch(`/api/movies?category=${slug}&limit=50`)
+    fetch(`/api/movies?category=${encodeURIComponent(slug)}&limit=50`)
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setMovies(data); setLoading(false); })
       .catch(() => setLoading(false));

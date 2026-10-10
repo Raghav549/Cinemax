@@ -6,3 +6,6 @@ build/
 .env.*
 !.env.example
 !.env.sample
+next-env.d.ts
+*.tsbuildinfo
+.vercel

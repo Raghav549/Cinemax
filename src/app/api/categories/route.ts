@@ -4,6 +4,8 @@ import { categories } from "@/db/schema";
 import { verifyToken } from "@/lib/auth";
 import { asc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const result = await db.select().from(categories).orderBy(asc(categories.sortOrder));

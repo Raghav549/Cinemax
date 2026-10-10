@@ -4,6 +4,8 @@ import { slides } from "@/db/schema";
 import { verifyToken } from "@/lib/auth";
 import { asc, eq } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const result = await db

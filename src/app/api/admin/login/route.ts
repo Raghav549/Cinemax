@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createToken, validateCredentials } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
@@ -11,7 +13,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ success: true });
     res.cookies.set("admin_token", token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 86400,
       path: "/",

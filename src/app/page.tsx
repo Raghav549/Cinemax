@@ -147,7 +147,8 @@ export default function HomePage() {
   useEffect(() => {
     fetch("/api/movies?limit=200")
       .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setAllMovies(d); });
+      .then((d) => { if (Array.isArray(d)) setAllMovies(d); })
+      .catch(() => {});
   }, []);
 
   // Handle filter chip click
@@ -155,10 +156,15 @@ export default function HomePage() {
     setActiveFilter(val);
     if (val === "all") { setFilteredMovies([]); return; }
     setFilterLoading(true);
-    const res = await fetch(`/api/movies?category=${val}&limit=60`);
-    const data = await res.json();
-    if (Array.isArray(data)) setFilteredMovies(data);
-    setFilterLoading(false);
+    try {
+      const res = await fetch(`/api/movies?category=${encodeURIComponent(val)}&limit=60`);
+      const data = await res.json();
+      setFilteredMovies(Array.isArray(data) ? data : []);
+    } catch {
+      setFilteredMovies([]);
+    } finally {
+      setFilterLoading(false);
+    }
   };
 
   // Group allMovies by category for "All" view
