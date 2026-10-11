@@ -3,16 +3,22 @@ import { db } from "@/db";
 import { movies, slides, categories } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import { ensureSchema } from "@/db/ensure-schema";
+import { describeDbError } from "@/db/with-db";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    // Make sure the tables exist (fresh databases on Vercel/Neon start empty).
-    await ensureSchema();
+    // Make sure the tables exist (fresh databases on Vercel/Neon start empty)
+    // and that an existing database has every column the current mapping needs.
+    const schema = await ensureSchema();
+    if (!schema.ok) {
+      return NextResponse.json({ error: `Schema not ready: ${schema.error}` }, { status: 500 });
+    }
 
     const existingMovies = await db.select({ count: sql<number>`count(*)` }).from(movies);
     if (Number(existingMovies[0].count) > 0) {
+      // Never overwrite data that is already in the database.
       return NextResponse.json({ message: "Already seeded" });
     }
 
@@ -92,7 +98,7 @@ export async function POST() {
 
     return NextResponse.json({ message: "Seeded successfully" });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Seed failed" }, { status: 500 });
+    console.error("[api/seed] failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
   }
 }
