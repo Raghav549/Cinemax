@@ -38,12 +38,63 @@ DATABASE_URL="postgresql://..." npm run db:push    # create/update tables
 DATABASE_URL="postgresql://..." npm run db:studio  # browse data
 ```
 
+## Existing data, schema drift and diagnostics
+
+The app never assumes your database was created by this exact revision. On the
+first request of each server process it reconciles the schema **without dropping
+anything**:
+
+| Situation                                       | What happens                                              |
+| ----------------------------------------------- | --------------------------------------------------------- |
+| Table missing                                   | created from `src/db/schema.ts`                           |
+| Column the mapping expects is missing           | added (`ADD COLUMN IF NOT EXISTS`)                        |
+| Column exists under an older name (`poster`)    | renamed onto the expected name (`poster_url`), data kept  |
+| Old and new column both exist                   | values copied into the new column where it is empty       |
+
+The old names it recognises live in `src/db/table-map.ts`. Nothing is deleted and
+no data is rewritten unless the target column is empty.
+
+`GET /api/health` reports the whole chain instead of just the TCP connection:
+
+```jsonc
+{
+  "ok": true,
+  "connection": { "host": "ep-…neon.tech", "database": "neondb", "ssl": true, "source": "DATABASE_URL" },
+  "tables": { "movies": { "created": false, "added": ["featured"], "renamed": [{ "from": "poster", "to": "poster_url" }], "backfilled": [], "skipped": [] } },
+  "counts": { "movies": 32, "slides": 3, "categories": 12 }
+}
+```
+
+When `ok` is `false`, `stage` says which step failed (`connect`, `schema` or
+`read`) and `error` carries the Postgres message — e.g.
+`column "poster_url" of relation "movies" does not exist`. The admin panel shows
+the same message in a banner rather than rendering an empty library.
+
 ## Scripts
 
-| Script              | What it does                     |
-| ------------------- | -------------------------------- |
-| `npm run dev`       | Start dev server                 |
-| `npm run build`     | Production build                 |
-| `npm run lint`      | ESLint                           |
-| `npm run typecheck` | TypeScript check                 |
-| `npm run db:push`   | Push Drizzle schema to database  |
+| Script              | What it does                                                       |
+| ------------------- | ------------------------------------------------------------------ |
+| `npm run dev`       | Start dev server                                                   |
+| `npm run build`     | Production build                                                   |
+| `npm run lint`      | ESLint                                                             |
+| `npm run typecheck` | TypeScript check                                                   |
+| `npm run db:push`   | Push Drizzle schema to database                                    |
+| `npm run verify:api`| End-to-end check of every admin/public API route (see below)        |
+
+### Verifying a deployment
+
+`scripts/verify-admin.mjs` logs in, then exercises every read and every
+add/edit/delete path (movies, slides, categories, watchlist) plus the auth and
+validation guards. It creates its own rows and deletes them again, so it is safe
+to run against a database that already holds data.
+
+```bash
+# against a local dev server
+npm run dev &
+BASE_URL=http://localhost:3000 ADMIN_EMAIL=admin@cinemax.com ADMIN_PASSWORD=... npm run verify:api
+
+# against a deployment
+BASE_URL=https://your-app.vercel.app ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run verify:api
+```
+
+It prints one line per check and exits non-zero if anything fails.

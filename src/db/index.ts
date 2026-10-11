@@ -59,7 +59,7 @@ export function getPool(): Pool {
   if (!globalForDb.__cinemaxPool) {
     const rawUrl = getDatabaseUrl();
     const ssl = needsSsl(rawUrl);
-    globalForDb.__cinemaxPool = new Pool({
+    const pool = new Pool({
       connectionString: ssl ? stripSslParams(rawUrl) : rawUrl,
       ssl: ssl ? { rejectUnauthorized: false } : undefined,
       // Serverless functions should keep the pool small.
@@ -67,6 +67,20 @@ export function getPool(): Pool {
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
     });
+
+    /**
+     * Hosted Postgres (Neon in particular) closes idle connections on its own
+     * schedule. When that happens `pg` reports the failure as an `error` event
+     * on the pool rather than on a query. Without a listener an `error` event
+     * is an *uncaught exception* and takes the whole Node process down, which
+     * shows up as random "database connection" failures after the app has been
+     * idle. Logging and moving on lets the next query simply reconnect.
+     */
+    pool.on("error", (err) => {
+      console.error("[db] idle client error (connection will be re-established):", err.message);
+    });
+
+    globalForDb.__cinemaxPool = pool;
   }
   return globalForDb.__cinemaxPool;
 }
@@ -89,3 +103,26 @@ export const db = new Proxy({} as NodePgDatabase, {
     return typeof value === "function" ? value.bind(real) : value;
   },
 });
+
+/** Human-readable connection summary for /api/health — never includes secrets. */
+export function describeConnection(): Record<string, unknown> {
+  try {
+    const url = new URL(getDatabaseUrl());
+    return {
+      host: url.hostname,
+      port: Number(url.port) || 5432,
+      database: url.pathname.replace(/^\//, ""),
+      user: url.username,
+      ssl: needsSsl(getDatabaseUrl()),
+      source: process.env.DATABASE_URL
+        ? "DATABASE_URL"
+        : process.env.POSTGRES_URL
+          ? "POSTGRES_URL"
+          : process.env.POSTGRES_PRISMA_URL
+            ? "POSTGRES_PRISMA_URL"
+            : "POSTGRES_URL_NON_POOLING",
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}

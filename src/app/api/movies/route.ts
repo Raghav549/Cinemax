@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
 import { movies } from "@/db/schema";
-import { verifyToken } from "@/lib/auth";
-import { desc, ilike, or } from "drizzle-orm";
+import { describeDbError, withDb } from "@/db/with-db";
+import { movieInput, normalizeMovie, ValidationError } from "@/db/rows";
+import { badRequest, isAdmin, readJson, unauthorized } from "@/lib/api";
+import { desc, eq, ilike, or, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * A movie belongs to a category when the stored value is that category, or when
+ * it appears as one of several comma-separated categories ("Action, Drama").
+ * The previous `ilike(category, '%slug%')` also matched unrelated slugs — the
+ * "movies" category picked up anything containing the word.
+ */
+function matchesCategory(slug: string) {
+  return or(
+    sql`lower(${movies.category}) = lower(${slug})`,
+    sql`lower(${slug}) = any (select lower(btrim(token)) from unnest(string_to_array(${movies.category}, ',')) as token)`
+  );
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,79 +29,74 @@ export async function GET(req: NextRequest) {
     const parsedLimit = parseInt(searchParams.get("limit") || "50", 10);
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 50;
 
-    if (search) {
-      const result = await db
-        .select()
-        .from(movies)
-        .where(
-          or(
-            ilike(movies.title, `%${search}%`),
-            ilike(movies.genre, `%${search}%`),
-            ilike(movies.description, `%${search}%`)
+    const result = await withDb((db) => {
+      if (search) {
+        return db
+          .select()
+          .from(movies)
+          .where(
+            or(
+              ilike(movies.title, `%${search}%`),
+              ilike(movies.genre, `%${search}%`),
+              ilike(movies.description, `%${search}%`),
+              ilike(movies.cast, `%${search}%`),
+              ilike(movies.director, `%${search}%`)
+            )
           )
-        )
-        .orderBy(desc(movies.createdAt))
-        .limit(limit);
-      return NextResponse.json(result);
-    }
+          .orderBy(desc(movies.createdAt))
+          .limit(limit);
+      }
 
-    if (featured === "true") {
-      const result = await db
-        .select()
-        .from(movies)
-        .where(ilike(movies.category, "featured"))
-        .orderBy(desc(movies.createdAt))
-        .limit(limit);
-      return NextResponse.json(result);
-    }
+      // `featured` is its own boolean column; it used to be filtered through
+      // `category ilike 'featured'`, which matched nothing at all.
+      if (featured === "true") {
+        return db
+          .select()
+          .from(movies)
+          .where(eq(movies.featured, true))
+          .orderBy(desc(movies.createdAt))
+          .limit(limit);
+      }
 
-    if (category) {
-      const result = await db
-        .select()
-        .from(movies)
-        .where(ilike(movies.category, `%${category}%`))
-        .orderBy(desc(movies.createdAt))
-        .limit(limit);
-      return NextResponse.json(result);
-    }
+      if (category) {
+        return db
+          .select()
+          .from(movies)
+          .where(matchesCategory(category))
+          .orderBy(desc(movies.createdAt))
+          .limit(limit);
+      }
 
-    const result = await db.select().from(movies).orderBy(desc(movies.createdAt)).limit(limit);
-    return NextResponse.json(result);
+      return db.select().from(movies).orderBy(desc(movies.createdAt)).limit(limit);
+    });
+
+    return NextResponse.json(result.map((row) => normalizeMovie(row as Record<string, unknown>)));
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Failed to fetch movies" }, { status: 500 });
+    console.error("[api/movies] GET failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const token = req.cookies.get("admin_token")?.value;
-    if (!token || !(await verifyToken(token))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await isAdmin(req))) return unauthorized();
+
+    const body = await readJson(req);
+    if (!body) return badRequest("Invalid JSON body");
+
+    let values;
+    try {
+      values = movieInput(body);
+    } catch (error) {
+      if (error instanceof ValidationError) return badRequest(error.message);
+      throw error;
     }
 
-    const body = await req.json();
-    const result = await db.insert(movies).values({
-      title: body.title,
-      description: body.description || "",
-      year: body.year || 2024,
-      rating: body.rating || "8.0",
-      duration: body.duration || "2h 0m",
-      genre: body.genre || "",
-      language: body.language || "English",
-      type: body.type || "Movie",
-      director: body.director || "",
-      cast: body.cast || "",
-      posterUrl: body.posterUrl || "",
-      backdropUrl: body.backdropUrl || "",
-      videoUrl: body.videoUrl || "",
-      category: body.category || "trending",
-      featured: body.featured || false,
-    }).returning();
+    const result = await withDb((db) => db.insert(movies).values(values).returning());
 
-    return NextResponse.json(result[0]);
+    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>), { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Failed to create movie" }, { status: 500 });
+    console.error("[api/movies] POST failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
   }
 }

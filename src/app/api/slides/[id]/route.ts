@@ -1,35 +1,62 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
 import { slides } from "@/db/schema";
-import { verifyToken } from "@/lib/auth";
+import { describeDbError, withDb } from "@/db/with-db";
+import { normalizeSlide, slidePatch, ValidationError } from "@/db/rows";
+import { badRequest, isAdmin, notFound, parseId, readJson, unauthorized } from "@/lib/api";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: rawId } = await params;
+    const id = parseId(rawId);
+    if (id === null) return badRequest("Invalid id");
+
+    const result = await withDb((db) => db.select().from(slides).where(eq(slides.id, id)));
+    if (!result.length) return notFound("Slide not found");
+
+    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>));
+  } catch (e) {
+    console.error("[api/slides/:id] GET failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
+  }
+}
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = req.cookies.get("admin_token")?.value;
-    if (!token || !(await verifyToken(token))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!(await isAdmin(req))) return unauthorized();
+
     const { id: rawId } = await params;
-    const id = Number.parseInt(rawId, 10);
-    if (!Number.isFinite(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    const body = await req.json();
-    const result = await db.update(slides).set({
-      title: body.title,
-      subtitle: body.subtitle,
-      imageUrl: body.imageUrl,
-      movieId: body.movieId,
-      sortOrder: body.sortOrder,
-      active: body.active,
-    }).where(eq(slides.id, id)).returning();
-    return NextResponse.json(result[0]);
-  } catch {
-    return NextResponse.json({ error: "Failed" }, { status: 500 });
+    const id = parseId(rawId);
+    if (id === null) return badRequest("Invalid id");
+
+    const body = await readJson(req);
+    if (!body) return badRequest("Invalid JSON body");
+
+    let patch;
+    try {
+      patch = slidePatch(body);
+    } catch (error) {
+      if (error instanceof ValidationError) return badRequest(error.message);
+      throw error;
+    }
+
+    const result = await withDb((db) =>
+      db.update(slides).set(patch).where(eq(slides.id, id)).returning()
+    );
+    if (!result.length) return notFound("Slide not found");
+
+    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>));
+  } catch (e) {
+    console.error("[api/slides/:id] PUT failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
   }
 }
 
@@ -38,16 +65,18 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const token = req.cookies.get("admin_token")?.value;
-    if (!token || !(await verifyToken(token))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!(await isAdmin(req))) return unauthorized();
+
     const { id: rawId } = await params;
-    const id = Number.parseInt(rawId, 10);
-    if (!Number.isFinite(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    await db.delete(slides).where(eq(slides.id, id));
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Failed" }, { status: 500 });
+    const id = parseId(rawId);
+    if (id === null) return badRequest("Invalid id");
+
+    const removed = await withDb((db) => db.delete(slides).where(eq(slides.id, id)).returning({ id: slides.id }));
+    if (!removed.length) return notFound("Slide not found");
+
+    return NextResponse.json({ success: true, id });
+  } catch (e) {
+    console.error("[api/slides/:id] DELETE failed:", e);
+    return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
   }
 }

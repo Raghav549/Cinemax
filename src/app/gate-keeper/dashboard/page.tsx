@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; category: string | null; featured: boolean | null; }
 interface Slide { id: number; title: string; subtitle: string | null; imageUrl: string | null; movieId: number | null; sortOrder: number | null; active: boolean | null; }
 interface Category { id: number; name: string; slug: string; sortOrder: number | null; }
-interface Stats { movies: number; slides: number; categories: number; watchlistItems: number; }
+interface WatchlistEntry { id: number; movieId: number; sessionId: string; createdAt: string | null; movie: Movie | null; }
+interface Stats { movies: number; slides: number; categories: number; watchlistItems: number; schemaOk?: boolean | null; schemaError?: string | null; }
+interface Flash { text: string; kind: "ok" | "error"; }
 
-type Tab = "overview" | "movies" | "slides" | "categories";
+type Tab = "overview" | "movies" | "slides" | "categories" | "lists";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -17,12 +19,16 @@ export default function AdminDashboard() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [entries, setEntries] = useState<WatchlistEntry[]>([]);
   const [showMovieForm, setShowMovieForm] = useState(false);
   const [showSlideForm, setShowSlideForm] = useState(false);
   const [showCatForm, setShowCatForm] = useState(false);
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
   const [editingSlide, setEditingSlide] = useState<Slide | null>(null);
-  const [msg, setMsg] = useState("");
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [msg, setMsg] = useState<Flash | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
 
@@ -32,16 +38,39 @@ export default function AdminDashboard() {
 
 
   const loadData = useCallback(async () => {
-    try {
-      const [sr, mr, slr, cr] = await Promise.all([fetch("/api/admin/stats"), fetch("/api/movies?limit=100"), fetch("/api/admin/slides"), fetch("/api/categories")]);
-      const [s, m, sl, c] = await Promise.all([sr.json(), mr.json(), slr.json(), cr.json()]);
-      if (s && !s.error) setStats(s);
-      if (Array.isArray(m)) setMovies(m);
-      if (Array.isArray(sl)) setSlides(sl);
-      if (Array.isArray(c)) setCategories(c);
-    } catch (e) {
-      console.error("Failed to load admin data", e);
-    }
+    // Every endpoint is checked individually: one failing table used to leave the
+    // panel silently showing zeros with no way to tell a database problem from an
+    // empty library.
+    const problems: string[] = [];
+    const load = async (url: string, label: string) => {
+      try {
+        const res = await fetch(url);
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          problems.push(`${label}: ${data?.error || `HTTP ${res.status}`}`);
+          return null;
+        }
+        return data;
+      } catch (e) {
+        problems.push(`${label}: ${e instanceof Error ? e.message : "network error"}`);
+        return null;
+      }
+    };
+
+    const [s, m, sl, c, wl] = await Promise.all([
+      load("/api/admin/stats", "stats"),
+      load("/api/movies?limit=500", "movies"),
+      load("/api/admin/slides", "slides"),
+      load("/api/categories", "categories"),
+      load("/api/admin/watchlist", "saved lists"),
+    ]);
+
+    if (s && !s.error) setStats(s);
+    if (Array.isArray(m)) setMovies(m);
+    if (Array.isArray(sl)) setSlides(sl);
+    if (Array.isArray(c)) setCategories(c);
+    if (Array.isArray(wl)) setEntries(wl);
+    setLoadError(problems.join(" · "));
   }, []);
 
   // Verify the admin session, then load dashboard data.
@@ -59,20 +88,97 @@ export default function AdminDashboard() {
       .catch(() => router.push("/gate-keeper"));
   }, [router, loadData]);
 
-  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 3000); };
+  const flash = (text: string, kind: Flash["kind"] = "ok") => {
+    setMsg({ text, kind });
+    setTimeout(() => setMsg((current) => (current && current.text === text ? null : current)), kind === "error" ? 6000 : 3000);
+  };
+
+  /** One place that turns a failed request into a message the admin can act on. */
+  const mutate = async (url: string, method: string, body?: unknown): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return { ok: false, error: data?.error || `Request failed (HTTP ${res.status})` };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+    }
+  };
 
   const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
   const resetSlide = () => { setSTitle(""); setSSubtitle(""); setSImage(""); setSMovieId(null); setSOrder(0); setSActive(true); setEditingSlide(null); };
+  const resetCat = () => { setCName(""); setCSlug(""); setEditingCat(null); };
 
   const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
   const editSlide = (s: Slide) => { setEditingSlide(s); setSTitle(s.title); setSSubtitle(s.subtitle||""); setSImage(s.imageUrl||""); setSMovieId(s.movieId); setSOrder(s.sortOrder||0); setSActive(s.active!==false); setShowSlideForm(true); };
+  const editCat = (c: Category) => { setEditingCat(c); setCName(c.name); setCSlug(c.slug); setShowCatForm(true); };
 
-  const saveMovie = async () => { const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,category:mCategory,featured:mFeatured }; const url = editingMovie ? `/api/movies/${editingMovie.id}` : "/api/movies"; await fetch(url, { method: editingMovie?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) }); flash("Saved!"); resetMovie(); setShowMovieForm(false); loadData(); };
-  const delMovie = async (id:number) => { if(!confirm("Delete?")) return; await fetch(`/api/movies/${id}`,{method:"DELETE"}); flash("Deleted"); loadData(); };
-  const saveSlide = async () => { const body = { title:sTitle,subtitle:sSubtitle,imageUrl:sImage,movieId:sMovieId,sortOrder:sOrder,active:sActive }; const url = editingSlide ? `/api/slides/${editingSlide.id}` : "/api/slides"; await fetch(url, { method: editingSlide?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) }); flash("Saved!"); resetSlide(); setShowSlideForm(false); loadData(); };
-  const delSlide = async (id:number) => { if(!confirm("Delete?")) return; await fetch(`/api/slides/${id}`,{method:"DELETE"}); flash("Deleted"); loadData(); };
-  const saveCat = async () => { await fetch("/api/categories",{ method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:cName,slug:cSlug||cName.toLowerCase().replace(/\s+/g,"-")})}); flash("Saved!"); setCName(""); setCSlug(""); setShowCatForm(false); loadData(); };
-  const delCat = async (id:number) => { if(!confirm("Delete?")) return; await fetch(`/api/categories?id=${id}`,{method:"DELETE"}); flash("Deleted"); loadData(); };
+  const saveMovie = async () => {
+    if (!mTitle.trim()) { flash("Title is required", "error"); return; }
+    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,category:mCategory,featured:mFeatured };
+    const url = editingMovie ? `/api/movies/${editingMovie.id}` : "/api/movies";
+    setBusy(true);
+    const result = await mutate(url, editingMovie ? "PUT" : "POST", body);
+    setBusy(false);
+    // Keep the form open on failure so the typed-in data is not lost.
+    if (!result.ok) { flash(result.error || "Could not save", "error"); return; }
+    flash(editingMovie ? "Updated" : "Added"); resetMovie(); setShowMovieForm(false); loadData();
+  };
+  const delMovie = async (id:number) => {
+    if(!confirm("Delete?")) return;
+    setBusy(true);
+    const result = await mutate(`/api/movies/${id}`, "DELETE");
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not delete", "error"); return; }
+    flash("Deleted"); loadData();
+  };
+  const saveSlide = async () => {
+    if (!sTitle.trim()) { flash("Title is required", "error"); return; }
+    const body = { title:sTitle,subtitle:sSubtitle,imageUrl:sImage,movieId:sMovieId,sortOrder:sOrder,active:sActive };
+    const url = editingSlide ? `/api/slides/${editingSlide.id}` : "/api/slides";
+    setBusy(true);
+    const result = await mutate(url, editingSlide ? "PUT" : "POST", body);
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not save", "error"); return; }
+    flash(editingSlide ? "Updated" : "Added"); resetSlide(); setShowSlideForm(false); loadData();
+  };
+  const delSlide = async (id:number) => {
+    if(!confirm("Delete?")) return;
+    setBusy(true);
+    const result = await mutate(`/api/slides/${id}`, "DELETE");
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not delete", "error"); return; }
+    flash("Deleted"); loadData();
+  };
+  const saveCat = async () => {
+    if (!cName.trim()) { flash("Name is required", "error"); return; }
+    const url = editingCat ? `/api/categories/${editingCat.id}` : "/api/categories";
+    setBusy(true);
+    const result = await mutate(url, editingCat ? "PUT" : "POST", { name: cName, slug: cSlug });
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not save", "error"); return; }
+    flash(editingCat ? "Updated" : "Added"); resetCat(); setShowCatForm(false); loadData();
+  };
+  const delCat = async (id:number) => {
+    if(!confirm("Delete?")) return;
+    setBusy(true);
+    const result = await mutate(`/api/categories/${id}`, "DELETE");
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not delete", "error"); return; }
+    flash("Deleted"); loadData();
+  };
+  const delEntry = async (id:number) => {
+    if(!confirm("Remove this saved title?")) return;
+    setBusy(true);
+    const result = await mutate(`/api/admin/watchlist?id=${id}`, "DELETE");
+    setBusy(false);
+    if (!result.ok) { flash(result.error || "Could not remove", "error"); return; }
+    flash("Removed"); loadData();
+  };
 
   if (!authed) return null;
 
@@ -80,7 +186,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ background: "#000", minHeight: "100vh", color: "#fff", paddingBottom: 40 }}>
-      {msg && <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 12 }}>{msg}</div>}
+      {msg && <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, padding: "10px 20px", borderRadius: 12, background: msg.kind === "error" ? "#ef4444" : "#fff", color: msg.kind === "error" ? "#fff" : "#000", fontWeight: 800, fontSize: 12, maxWidth: "min(90vw, 420px)", lineHeight: 1.4 }}>{msg.text}</div>}
 
       <header style={{ padding: "20px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
@@ -90,9 +196,21 @@ export default function AdminDashboard() {
         <button onClick={() => fetch("/api/admin/logout",{method:"POST"}).then(() => router.push("/gate-keeper"))} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Logout</button>
       </header>
 
+      {/* Database problems are reported here instead of silently rendering zeros */}
+      {loadError && (
+        <div style={{ margin: "14px 20px 0", padding: "14px", borderRadius: 14, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)" }}>
+          <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.15em", textTransform: "uppercase", color: "#ef4444", marginBottom: 8 }}>Database problem</p>
+          <p style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.5, color: "rgba(255,255,255,0.65)", wordBreak: "break-word" }}>{loadError}</p>
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <button onClick={() => loadData()} disabled={busy} style={{ padding: "9px 16px", borderRadius: 10, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Retry</button>
+            <a href="/api/health" target="_blank" rel="noreferrer" style={{ padding: "9px 16px", borderRadius: 10, background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>Diagnostics</a>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <nav style={{ display: "flex", gap: 8, padding: "16px 20px", overflowX: "auto" }} className="hide-scrollbar">
-        {(["overview","movies","slides","categories"] as Tab[]).map((t) => (
+        {(["overview","movies","slides","categories","lists"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 12, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", border: "none", cursor: "pointer", flexShrink: 0, background: tab===t ? "#fff" : "rgba(255,255,255,0.05)", color: tab===t ? "#000" : "rgba(255,255,255,0.4)" }}>{t}</button>
         ))}
       </nav>
@@ -146,7 +264,7 @@ export default function AdminDashboard() {
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={mFeatured} onChange={e=>setMFeatured(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Featured</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveMovie} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer" }}>Save</button>
+                    <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowMovieForm(false); resetMovie(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -192,7 +310,7 @@ export default function AdminDashboard() {
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={sActive} onChange={e=>setSActive(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Active</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveSlide} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer" }}>Save</button>
+                    <button onClick={saveSlide} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowSlideForm(false); resetSlide(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -222,18 +340,18 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Categories ({categories.length})</h2>
-              <button onClick={() => setShowCatForm(!showCatForm)} style={{ padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetCat(); setShowCatForm(!showCatForm); }} style={{ padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showCatForm && (
               <div className="detail-panel" style={{ marginBottom: 20 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 20 }}>New Category</h3>
+                <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 20 }}>{editingCat ? "Edit Category" : "New Category"}</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div><label style={labelStyle}>Name</label><input className="glass-input" value={cName} onChange={e=>setCName(e.target.value)} /></div>
                   <div><label style={labelStyle}>Slug (optional)</label><input className="glass-input" value={cSlug} onChange={e=>setCSlug(e.target.value)} placeholder="auto-generated" /></div>
                   <div style={{ display: "flex", gap: 12 }}>
-                    <button onClick={saveCat} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer" }}>Save</button>
-                    <button onClick={() => setShowCatForm(false)} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
+                    <button onClick={saveCat} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={() => { setShowCatForm(false); resetCat(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
               </div>
@@ -244,11 +362,44 @@ export default function AdminDashboard() {
                 <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 14, borderRadius: 14, background: "rgba(20,20,20,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <div>
                     <p style={{ fontSize: 14, fontWeight: 700 }}>{c.name}</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>/{c.slug}</p>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>/{c.slug} • {movies.filter((m) => (m.category || "").toLowerCase() === c.slug.toLowerCase()).length} titles</p>
                   </div>
-                  <button onClick={() => delCat(c.id)} style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "none", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>🗑️</button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => editCat(c)} style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "none", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✏️</button>
+                    <button onClick={() => delCat(c.id)} style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "none", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>🗑️</button>
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* === SAVED LISTS === */}
+        {tab === "lists" && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800 }}>Saved Lists ({entries.length})</h2>
+              <button onClick={() => loadData()} disabled={busy} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Refresh</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {entries.map((entry) => (
+                <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, background: "rgba(20,20,20,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ width: 44, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}>
+                    <img src={entry.movie?.posterUrl || ""} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.movie?.title || `Movie #${entry.movieId} (deleted)`}</p>
+                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : "—"} • visitor {entry.sessionId.slice(0, 8)}
+                    </p>
+                  </div>
+                  <button onClick={() => delEntry(entry.id)} style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "none", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>🗑️</button>
+                </div>
+              ))}
+              {entries.length === 0 && (
+                <p style={{ textAlign: "center", padding: "60px 0", color: "rgba(255,255,255,0.2)", fontSize: 13, fontWeight: 600 }}>No visitor has saved a title yet</p>
+              )}
             </div>
           </div>
         )}
