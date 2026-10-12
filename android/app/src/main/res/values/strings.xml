@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cinemax</string>
+    <string name="splash_tagline">Movies · Series · Anime</string>
+    <string name="splash_loading">Starting Cinemax…</string>
+    <string name="error_offline_title">Can\'t reach Cinemax</string>
+    <string name="error_offline_body">Check your connection and try again.</string>
+    <string name="error_retry">Try again</string>
+    <string name="error_open_browser">Open in browser</string>
+    <string name="backexit_hint">Press back again to exit</string>
+    <string name="no_app_for_link">No app can open that link</string>
+    <string name="error_reload_body">Cinemax had to restart the page. Tap Try again.</string>
+    <string name="error_reload_hint">Page reloaded</string>
+    <string name="splash_emblem_desc">Cinemax emblem</string>
+</resources>

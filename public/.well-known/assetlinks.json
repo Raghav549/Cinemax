@@ -1,8 +1,12 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.cinemax.app",
-    "sha256_cert_fingerprints": ["REPLACE_WITH_YOUR_KEYSTORE_SHA256"]
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.cinemax.app",
+      "sha256_cert_fingerprints": [
+        "A1:9D:B6:FC:DF:7C:0E:25:F8:53:03:CD:28:1F:01:6D:72:49:EE:CD:59:BA:24:E0:1C:24:92:89:75:19:38:BE"
+      ]
+    }
   }
-}]
+]

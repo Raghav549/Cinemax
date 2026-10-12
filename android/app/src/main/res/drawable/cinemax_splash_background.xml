@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cinemax atmosphere: a deep indigo / plum / magenta gradient with soft colour
+  lighting. Deliberately never a plain black screen.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:centerColor="#2A1157"
+                android:endColor="#0A0622"
+                android:startColor="#1E0C4E"
+                android:type="linear" />
+        </shape>
+    </item>
+
+    <item android:alpha="0.9">
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.22"
+                android:centerY="0.14"
+                android:endColor="#005B2BD0"
+                android:gradientRadius="560dp"
+                android:startColor="#5B2BD0"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <item android:alpha="0.62">
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.85"
+                android:centerY="0.32"
+                android:endColor="#00E23DA8"
+                android:gradientRadius="480dp"
+                android:startColor="#E23DA8"
+                android:type="radial" />
+        </shape>
+    </item>
+
+    <item android:alpha="0.42">
+        <shape android:shape="rectangle">
+            <gradient
+                android:centerX="0.5"
+                android:centerY="1.05"
+                android:endColor="#002E6BFF"
+                android:gradientRadius="600dp"
+                android:startColor="#2E6BFF"
+                android:type="radial" />
+        </shape>
+    </item>
+</layer-list>

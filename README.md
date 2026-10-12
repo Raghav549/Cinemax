@@ -115,6 +115,28 @@ BASE_URL=https://your-app.vercel.app ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run 
 
 It prints one line per check and exits non-zero if anything fails.
 
+## Android app
+
+The repository also ships a real, installable Android app
+(`android/dist/Cinemax-1.0.0.apk`, package `com.cinemax.app`). It is a native
+shell around this same deployment — `https://cinemax-orpin.vercel.app` — so the
+existing web app, API routes, PostgreSQL data, studio/admin panel, authentication
+and playback all run unchanged. The app adds a native splash, app icon, adaptive
++ legacy launcher icons, edge-to-edge inset handling, back-button behaviour,
+rotation and fullscreen playback handling, external-link routing, and an
+app-only premium presentation layer (its own stylesheet, scoped to the app, that
+never affects the website).
+
+```bash
+bash android/build.sh          # signed APK → android/dist/Cinemax-1.0.0.apk
+bash android/tests/run-tests.sh  # 53 JVM + 38 DOM + 74 APK checks
+adb install -r android/dist/Cinemax-1.0.0.apk
+```
+
+Gradle-free and SDK-manager-free: the build fetches a pinned, checksum-verified
+toolchain. Full details, the design system, device verification steps and the
+remaining notes live in [android/README.md](android/README.md).
+
 ## Cinemax / Prism visual redesign
 
 The public UI now uses an original multicolour aperture emblem, cinematic
