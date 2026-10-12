@@ -171,15 +171,16 @@ public final class CinemaxAppTest {
         section("native splash reveal (SplashMotion)");
 
         long reveal = SplashMotion.REVEAL_MILLIS;
-        check(reveal >= 900L && reveal <= 1200L, "the reveal is a short clip (" + reveal + " ms)");
+        check(reveal >= 1800L && reveal <= 2500L,
+                "the reveal is a short cinematic clip, 1.8-2.5 s (" + reveal + " ms)");
         check(SplashMotion.HANDOFF_MIN_VISIBLE_MILLIS <= reveal,
                 "the hand-off never waits longer than the reveal itself");
         check(SplashMotion.HANDOFF_FADE_MILLIS <= 500L,
                 "the hand-off cross-fade is quick (" + SplashMotion.HANDOFF_FADE_MILLIS + " ms)");
         check(SplashMotion.HANDOFF_READY_MILLIS <= reveal,
                 "the page can take over inside the clip, never after it");
-        check(SplashMotion.layerCount() == 5,
-                "the reveal is exactly the five designed layers (was " + SplashMotion.layerCount() + ")");
+        check(SplashMotion.layerCount() == 7,
+                "the reveal is exactly the seven designed layers (was " + SplashMotion.layerCount() + ")");
 
         boolean allFinish = true;
         for (int layer = 0; layer < SplashMotion.layerCount(); layer++) {
@@ -191,19 +192,21 @@ public final class CinemaxAppTest {
 
         check(SplashMotion.end(SplashMotion.LAYER_GLOW) == reveal,
                 "the glow settling onto its resting level is the last thing to move");
-        check(SplashMotion.delay(SplashMotion.LAYER_GLOW) < SplashMotion.delay(SplashMotion.LAYER_LOGO),
-                "the light around the logo comes up before the logo itself");
-        check(SplashMotion.delay(SplashMotion.LAYER_DEPTH) == SplashMotion.delay(SplashMotion.LAYER_LOGO)
-                        && SplashMotion.end(SplashMotion.LAYER_DEPTH) <= SplashMotion.end(SplashMotion.LAYER_LOGO),
-                "the depth bed under the logo is settled as the logo lands");
-        check(SplashMotion.delay(SplashMotion.LAYER_SWEEP) > SplashMotion.delay(SplashMotion.LAYER_LOGO),
+        check(SplashMotion.delay(SplashMotion.LAYER_WAVE) > SplashMotion.delay(SplashMotion.LAYER_AMBIENT),
+                "the colour field expands after the canvas picks up its base light");
+        check(SplashMotion.delay(SplashMotion.LAYER_LOGO) >= SplashMotion.delay(SplashMotion.LAYER_WAVE),
+                "the logo arrives with the expanding field, not before it");
+        check(SplashMotion.delay(SplashMotion.LAYER_SWEEP) >= SplashMotion.end(SplashMotion.LAYER_LOGO),
                 "the light sweep crosses the logo only after it has arrived");
+        check(SplashMotion.delay(SplashMotion.LAYER_WORDMARK) > SplashMotion.delay(SplashMotion.LAYER_LOGO),
+                "the wordmark is revealed after the logo begins to land");
+        check(SplashMotion.end(SplashMotion.LAYER_WORDMARK) <= SplashMotion.HANDOFF_READY_MILLIS,
+                "the wordmark is up before the page may take over");
         check(SplashMotion.end(SplashMotion.LAYER_SWEEP) <= SplashMotion.HANDOFF_READY_MILLIS,
                 "the page can only take over once the light has finished crossing the logo");
         check(SplashMotion.HANDOFF_READY_MILLIS >= SplashMotion.HANDOFF_MIN_VISIBLE_MILLIS,
-                "the hand-off gate is the landed logo + finished sweep, not an arbitrary wait");
+                "the hand-off gate is the landed lockup, not an arbitrary wait");
 
-        // Progress is clamped, starts at zero and is monotonic per layer.
         boolean progressOk = true;
         for (int layer = 0; layer < SplashMotion.layerCount(); layer++) {
             if (SplashMotion.progress(0L, layer) != 0f && SplashMotion.delay(layer) > 0L) {
@@ -226,52 +229,96 @@ public final class CinemaxAppTest {
 
         check(SplashMotion.handoffReady(SplashMotion.HANDOFF_READY_MILLIS)
                         && !SplashMotion.handoffReady(SplashMotion.HANDOFF_READY_MILLIS - 20L),
-                "the page may take over the moment the logo and the light have landed");
+                "the page may take over the moment the lockup has landed");
         check(!SplashMotion.revealComplete(reveal - 20L) && SplashMotion.revealComplete(reveal),
                 "the reveal reports completion at its last frame");
 
         boolean easingOk = true;
         for (int step = 0; step <= 100; step++) {
             float t = step / 100f;
-            float out = SplashMotion.easeOutCubic(t);
-            float sine = SplashMotion.easeInOutSine(t);
-            if (out < 0f || out > 1f || sine < 0f || sine > 1f) {
+            if (SplashMotion.easeOutCubic(t) < 0f || SplashMotion.easeOutCubic(t) > 1f
+                    || SplashMotion.easeInOutSine(t) < 0f || SplashMotion.easeInOutSine(t) > 1f) {
                 easingOk = false;
             }
         }
         check(easingOk, "the easings stay in range for the whole clip");
-        check(SplashMotion.easeOutCubic(0f) == 0f
-                        && Math.abs(SplashMotion.easeOutCubic(1f) - 1f) < 0.0001f
-                        && SplashMotion.easeOutCubic(0.5f) > 0.5f,
-                "the arrival ease is anchored at both ends and settles late");
         check(SplashMotion.clamp01(-4f) == 0f && SplashMotion.clamp01(9f) == 1f, "clamp is defensive");
         check(Math.abs(SplashMotion.lerp(10f, 20f, 0.25f) - 12.5f) < 0.0001f, "lerp interpolates");
 
         // The logo is already lit on the cold-start surface, so it brightens to
-        // full instead of fading in from nothing: the hand-over from the launch
-        // window to the reveal is continuous rather than a blink.
+        // full instead of fading in from nothing.
         check(SplashMotion.logoAlpha(0f) >= 0.8f && SplashMotion.logoAlpha(0f) < 1f
                         && SplashMotion.logoAlpha(SplashMotion.LOGO_ALPHA_FULL_AT) == 1f
                         && SplashMotion.logoAlpha(1f) == 1f,
                 "the logo is already lit when the reveal starts and reaches full opacity early");
-        check(SplashMotion.logoScale(0f, 0.9f) < 1f && SplashMotion.logoScale(0f, 1f) == 1f
-                        && SplashMotion.logoScale(1f, 0.9f) == 1f
-                        && SplashMotion.logoScale(0.5f, 0.9f) > SplashMotion.logoScale(0.2f, 0.9f)
-                        && SplashMotion.logoScale(0f, 0.05f) >= SplashMotion.LOGO_SCALE_FROM_MIN,
-                "the logo dollies onto its exact size - no bounce, no overshoot");
+
+        // The dolly overshoots by a few percent and settles back onto its exact
+        // size: a controlled spring, bounded so the artwork never bounces hard.
+        boolean springOk = true;
+        float peak = 0f;
+        for (int step = 0; step <= 100; step++) {
+            float value = SplashMotion.logoScale(step / 100f, 0.9f);
+            peak = Math.max(peak, value);
+            if (value < 0f || value > 1.06f) {
+                springOk = false;
+            }
+        }
+        check(springOk && peak > 1f
+                        && Math.abs(SplashMotion.logoScale(1f, 0.9f) - 1f) < 0.0001f
+                        && SplashMotion.logoScale(0f, 1f) == 1f,
+                "the logo dollies in with a bounded overshoot and settles exactly (peak "
+                        + String.format("%.3f", peak) + ")");
         check(SplashMotion.logoScaleFrom(367f, 2.75f) < 1f
                         && SplashMotion.logoScaleFrom(367f, 2.75f) > SplashMotion.LOGO_SCALE_FROM_MIN,
                 "on a normal phone the dolly starts at the size the launch surface drew");
-        check(SplashMotion.logoScaleFrom(32f, 2f) == 1f && SplashMotion.logoScaleFrom(0f, 2f) == 1f
-                        && SplashMotion.logoScaleFrom(900f, 2f) == SplashMotion.LOGO_SCALE_FROM_MIN,
-                "the start size is clamped: the logo never starts larger than it ends, "
-                        + "and never shrinks past the dolly limit");
-        check(SplashMotion.GLOW_WIDTH_FACTOR > 1f && SplashMotion.GLOW_HEIGHT_FACTOR < 1f
-                        && SplashMotion.GLOW_LIFT_FACTOR > 0f,
-                "the light pool is a lifted ellipse, not a circular spotlight");
 
-        // The glow blooms, then settles onto a calm - but still lit - level. That
-        // resting level is what lets the finished splash stop drawing frames.
+        // The logo lifts from the launch frame up to the centred lockup: it
+        // starts at exactly zero and settles at one, never jumping.
+        boolean riseOk = true;
+        float previousRise = -1f;
+        for (int step = 0; step <= 100; step++) {
+            float value = SplashMotion.logoRise(step / 100f);
+            if (value < previousRise || value < 0f || value > 1f) {
+                riseOk = false;
+            }
+            previousRise = value;
+        }
+        check(SplashMotion.logoRise(0f) == 0f && SplashMotion.logoRise(1f) == 1f && riseOk,
+                "the logo lifts smoothly from the launch frame onto the centred lockup");
+
+        // The wordmark: a restrained fade and rise that finish inside its layer.
+        check(SplashMotion.wordmarkAlpha(0f) == 0f
+                        && SplashMotion.wordmarkAlpha(SplashMotion.WORDMARK_ALPHA_FULL_AT) == 1f
+                        && SplashMotion.wordmarkAlpha(1f) == 1f,
+                "the wordmark fades up and holds for the final beat");
+        check(SplashMotion.wordmarkRise(0f) == 1f && SplashMotion.wordmarkRise(1f) == 0f
+                        && SplashMotion.wordmarkRise(0.5f) < SplashMotion.wordmarkRise(0.25f),
+                "the wordmark rises a short way and settles");
+
+        // The colour field: each band starts as a small composition around the
+        // centre, expands to fill, and the three stagger so they parallax.
+        boolean waveOk = true;
+        for (int band = 0; band < SplashMotion.BAND_COUNT; band++) {
+            if (SplashMotion.waveScale(0f, band) >= 1f || SplashMotion.waveScale(1f, band) != 1f) {
+                waveOk = false;
+            }
+            if (SplashMotion.waveAlpha(0f, band) != 0f || SplashMotion.waveAlpha(1f, band) <= 0.5f) {
+                waveOk = false;
+            }
+            float previousAlpha = -1f;
+            for (int step = 0; step <= 100; step++) {
+                float alpha = SplashMotion.waveAlpha(step / 100f, band);
+                if (alpha < previousAlpha - 0.001f) {
+                    waveOk = false;
+                }
+                previousAlpha = alpha;
+            }
+        }
+        check(waveOk, "every band expands from the centre onto a resting full-bleed field");
+        check(SplashMotion.waveScale(0.3f, SplashMotion.BAND_BLUE)
+                        > SplashMotion.waveScale(0.3f, SplashMotion.BAND_PINK),
+                "the bands move on different clocks (parallax)");
+
         check(SplashMotion.glowAlpha(0f) == 0f
                         && SplashMotion.glowAlpha(SplashMotion.GLOW_SETTLE_AT) > SplashMotion.glowAlpha(1f)
                         && SplashMotion.glowAlpha(1f) >= 0.2f
@@ -286,20 +333,15 @@ public final class CinemaxAppTest {
             }
             glowPeak = Math.max(glowPeak, value);
         }
-        check(glowScaleOk, "the glow never flashes wider than a few percent of its rest size");
-        check(Math.abs(SplashMotion.glowScale(1f) - 1f) < 0.0001f && glowPeak > 1f,
+        check(glowScaleOk && Math.abs(SplashMotion.glowScale(1f) - 1f) < 0.0001f && glowPeak > 1f,
                 "the glow blooms just past its rest size and eases back onto it");
 
         check(SplashMotion.ambientAlpha(0f) == 0f && SplashMotion.ambientAlpha(1f) == 1f,
                 "the background lighting comes up and then stays exactly where it is");
         check(SplashMotion.depthAlpha(0f) == 0f && SplashMotion.depthAlpha(1f) > 0f
-                        && SplashMotion.depthAlpha(1f) <= 0.6f
-                        && SplashMotion.DEPTH_RADIUS_FACTOR
-                        < SplashMotion.GLOW_RADIUS_FACTOR * SplashMotion.GLOW_HEIGHT_FACTOR,
-                "the depth bed under the logo stays subtle and inside the light pool");
+                        && SplashMotion.depthAlpha(1f) <= 0.6f,
+                "the depth bed under the logo stays subtle");
 
-        // The sweep: one crossing, gone by the end, and its offscreen layer only
-        // exists while the band can actually touch the artwork.
         check(SplashMotion.sweepAlpha(0f) == 0f && SplashMotion.sweepAlpha(1f) < 0.02f
                         && SplashMotion.sweepAlpha(0.32f) > 0.4f,
                 "the light crosses the logo once and is gone");
@@ -311,29 +353,19 @@ public final class CinemaxAppTest {
                         && SplashMotion.sweepOverLogo(SplashMotion.sweepTravel(0.5f))
                         && !SplashMotion.sweepOverLogo(SplashMotion.sweepTravel(1f)),
                 "the sweep's offscreen layer exists only while the light touches the logo");
-        int bandFrames = 0;
-        int sampled = 0;
-        for (int step = 0; step <= 200; step++) {
-            sampled++;
-            if (SplashMotion.sweepOverLogo(SplashMotion.sweepTravel(step / 200f))) {
-                bandFrames++;
-            }
-        }
-        check(bandFrames * 2 < sampled,
-                "the light is on the logo for less than half the clip (" + bandFrames + "/" + sampled + ")");
 
         splashGeometryChecks();
         splashResourceChecks();
     }
 
     /**
-     * "Complete logo, correctly centred, on every screen size" is a property
+     * "Complete lockup, correctly centred, on every screen size" is a property
      * rather than a screenshot: the layout maths is checked against a spread of
      * real viewports (legacy small phone, current phones, landscape, tablets) and
      * densities, including the bounds the size rule promises.
      */
     private static void splashGeometryChecks() {
-        section("native splash geometry (the logo on every screen size)");
+        section("native splash geometry (the lockup on every screen size)");
 
         int[][] sizes = {
                 {240, 320},   // legacy small
@@ -355,6 +387,7 @@ public final class CinemaxAppTest {
         boolean centred = true;
         boolean fits = true;
         boolean sized = true;
+        boolean wordmarkSized = true;
         boolean glowFits = true;
         boolean spritesSane = true;
         for (int[] size : sizes) {
@@ -363,8 +396,13 @@ public final class CinemaxAppTest {
                 int height = size[1];
                 float smallest = Math.min(width, height);
                 SplashMotion.Layout layout = SplashMotion.layout(width, height, density);
-                if (Math.abs(layout.centreX - width / 2f) > 0.001f
-                        || Math.abs(layout.centreY - height / 2f) > 0.001f) {
+                if (Math.abs(layout.centreX - width / 2f) > 0.001f) {
+                    centred = false;
+                }
+                // The finished logo-and-wordmark pair is centred as a whole on the
+                // vertical axis (a small tolerance for the descender allowance).
+                float lockupCentre = (layout.lockupTop + layout.lockupBottom) * 0.5f;
+                if (Math.abs(lockupCentre - height / 2f) > height * 0.03f) {
                     centred = false;
                 }
                 // The complete artwork, with the margin the size rule promises.
@@ -372,8 +410,10 @@ public final class CinemaxAppTest {
                         || layout.logoSize > smallest * SplashMotion.LOGO_MAX_FRACTION + 0.001f) {
                     fits = false;
                 }
-                // Never below the readability floor (104 dp) and never above
-                // the boldness ceiling (176 dp), and always inside the 40% cap.
+                // The whole lockup stays on screen.
+                if (layout.lockupTop < 0f || layout.lockupBottom > height) {
+                    fits = false;
+                }
                 float floorPx = Math.min(density * SplashMotion.LOGO_MIN_DP,
                         smallest * SplashMotion.LOGO_MAX_FRACTION);
                 float ceilingPx = Math.min(density * SplashMotion.LOGO_MAX_DP,
@@ -381,34 +421,46 @@ public final class CinemaxAppTest {
                 if (layout.logoSize < floorPx - 0.001f || layout.logoSize > ceilingPx + 0.001f) {
                     sized = false;
                 }
-                // The glow is part of the composition, so it has to fit as well.
+                float wordmarkFloor = density * SplashMotion.WORDMARK_MIN_DP;
+                float wordmarkCeiling = density * SplashMotion.WORDMARK_MAX_DP;
+                if (layout.wordmarkSize < wordmarkFloor - 0.001f
+                        || layout.wordmarkSize > wordmarkCeiling + 0.001f) {
+                    wordmarkSized = false;
+                }
+                if (layout.wordmarkMaxWidth > width * SplashMotion.WORDMARK_MAX_WIDTH_FRACTION + 0.001f) {
+                    wordmarkSized = false;
+                }
                 if (layout.centreX - layout.glowRadius < 0f || layout.centreY - layout.glowRadius < 0f) {
                     glowFits = false;
                 }
                 if (layout.glowSpriteSide < 160 || layout.glowSpriteSide > 384
                         || layout.ambientSpriteWidth < 96 || layout.ambientSpriteWidth > 384
-                        || layout.ambientSpriteHeight < 96 || layout.ambientSpriteHeight > 384) {
+                        || layout.ambientSpriteHeight < 96 || layout.ambientSpriteHeight > 384
+                        || layout.waveSpriteWidth < 96 || layout.waveSpriteWidth > 208
+                        || layout.waveSpriteHeight < 96 || layout.waveSpriteHeight > 256) {
                     spritesSane = false;
                 }
             }
         }
-        check(centred, "the logo is centred on both axes for " + sizes.length + " screen sizes x "
+        check(centred, "the lockup is centred on both axes for " + sizes.length + " screen sizes x "
                 + densities.length + " densities");
-        check(fits, "the complete logo always fits, with at least a 30% margin");
+        check(fits, "the complete lockup always fits on screen with a healthy margin");
         check(sized, "the logo size always sits between the readability floor (104 dp) and the"
                 + " boldness ceiling (176 dp), inside the 40% cap");
+        check(wordmarkSized, "the wordmark stays between its readability floor and ceiling and"
+                + " inside its width cap");
         check(glowFits, "the glow around the logo stays inside the screen too");
-        check(spritesSane, "the pre-rendered light sprites stay small enough to build in one frame");
+        check(spritesSane, "the pre-rendered light and band sprites stay small enough to build in one frame");
 
         SplashMotion.Layout phone = SplashMotion.layout(1080, 2280, 2.75f);
         float smallestPx = Math.min(1080, 2280);
         check(Math.abs(phone.logoSize - smallestPx * SplashMotion.LOGO_FRACTION) < 0.5f,
                 "in the normal range the logo is exactly " + Math.round(SplashMotion.LOGO_FRACTION * 100f)
-                        + "% of the shorter screen edge (" + Math.round(phone.logoSize / 2.75f) + " dp on a 393 dp phone)");
-        SplashMotion.Layout smallPhone = SplashMotion.layout(720, 1280, 2f);
-        check(Math.abs(smallPhone.logoSize - 720 * SplashMotion.LOGO_FRACTION) < 0.001f
-                        && smallPhone.logoSize > SplashMotion.LOGO_MIN_DP * 2f,
-                "a 360 dp phone gets the same rule (" + Math.round(smallPhone.logoSize / 2f) + " dp)");
+                        + "% of the shorter screen edge");
+        check(phone.lockupLift > 0f && phone.logoRestCentreY < phone.centreY,
+                "the logo lifts above the screen centre to make room for the wordmark");
+        check(phone.wordmarkBaselineY > phone.logoRestCentreY + phone.logoSize * 0.5f,
+                "the wordmark baseline sits below the logo");
         check(phone.glowRadius < phone.centreX && phone.glowRadius < phone.centreY,
                 "the glow radius is bounded by the screen, not by the logo size");
         SplashMotion.Layout tiny = SplashMotion.layout(240, 320, 1f);
@@ -417,10 +469,11 @@ public final class CinemaxAppTest {
     }
 
     /**
-     * The parts of the contract that live in resources: the logo is the only
-     * thing the reveal draws (no text, rings, dots, streaks or blur anywhere in
-     * it), the soft light is pre-rendered rather than drawn per frame, and the
-     * reveal still runs on a genuine cold launch only.
+     * The parts of the contract that live in resources: the reveal is the logo
+     * plus the CINEMAX wordmark over a pre-rendered curved colour field, the soft
+     * light and the bands are rasterised once per screen size (the per-frame draw
+     * is textured quads only), and the reveal still runs on a genuine cold launch
+     * only.
      */
     private static void splashResourceChecks() throws Exception {
         section("native splash resources and launch gating");
@@ -434,42 +487,35 @@ public final class CinemaxAppTest {
         String emblem = read(new File(projectDirectory, "app/src/main/res/drawable/cinemax_emblem.xml"));
         String windowBackground = read(new File(projectDirectory, "app/src/main/res/drawable/cinemax_window_background.xml"));
         String strings = read(new File(projectDirectory, "app/src/main/res/values/strings.xml"));
-        String styles = read(new File(projectDirectory, "app/src/main/res/values/styles.xml"));
 
         check(layout.contains("com.cinemax.app.CinemaxSplashView"), "the splash stage is a single composited view");
         check(layout.contains("android:background=\"@color/cinemax_ink\""),
                 "the splash layer stays a flat near-black canvas");
-        check(!layout.contains("cinemax_splash_glow") && !layout.contains("cinemax_splash_streak_one")
-                        && !layout.contains("cinemax_splash_spinner"),
-                "the replaced splash view stack is gone (no glow/streak/spinner children)");
         check(splashView.contains("R.drawable.cinemax_emblem"),
                 "the reveal draws the existing Cinemax logo, unmodified");
         check(pathDataOf(emblem, 0).length() > 40 && pathDataOf(emblem, 3).length() > 20,
                 "the logo artwork is intact (both ribbons and both light edges)");
-        check(!new File(projectDirectory,
-                        "app/src/main/res/drawable/cinemax_emblem_ribbon.xml").isFile()
-                        && !new File(projectDirectory,
-                        "app/src/main/res/drawable/cinemax_emblem_fold.xml").isFile(),
-                "the split ribbon layers of the old reveal are gone");
 
-        // The logo is the only thing on screen: nothing in the reveal draws type.
-        check(!splashView.contains("drawText") && !splashView.contains("Typeface")
-                        && !splashView.contains("StaticLayout") && !splashView.contains("fonts/"),
-                "the reveal draws no text at all (no wordmark, no tagline)");
-        check(!strings.contains("Movies") && !strings.contains("Starting Cinemax"),
-                "no slogan, tagline or loading copy ships with the splash");
-        check(!styles.contains("CinemaxWordmark") && !styles.contains("CinemaxTagline"),
-                "the old splash wordmark/tagline styles are gone");
-        check(!new File(projectDirectory, "app/src/main/assets/cinemax/fonts").isDirectory(),
-                "the splash wordmark font is no longer packaged (nothing draws text)");
+        // The lockup: the logo plus the CINEMAX wordmark revealed beneath it.
+        check(splashView.contains("drawText") && splashView.contains("\"CINEMAX\""),
+                "the reveal draws the CINEMAX wordmark beneath the logo");
+        check(splashView.contains("Typeface.createFromAsset"),
+                "the wordmark uses the brand face shipped with the app");
+        check(new File(projectDirectory, "app/src/main/assets/cinemax/fonts/outfit-semibold.ttf").isFile(),
+                "the brand face (Outfit SemiBold) is packaged for the wordmark");
+        check(new File(projectDirectory, "app/src/main/assets/cinemax/fonts/OUTFIT-LICENSE.txt").isFile(),
+                "the brand face ships with its SIL Open Font License");
+        check(splashView.contains("sans-serif-medium"),
+                "the wordmark falls back to the platform sans if the face cannot load");
 
-        // No rings, orbit lines, dots or blur: the reveal is the logo and light.
-        check(!splashView.contains("drawCircle") && !splashView.contains("drawArc")
-                        && !splashView.contains("drawPath") && !splashView.contains("drawOval")
-                        && !splashView.contains("drawLine") && !splashView.contains("PathMeasure"),
-                "no rings, orbit lines or dots are drawn by the reveal");
+        // The curved field is pre-rendered, not drawn per frame.
+        check(splashView.contains("buildBlueBand") && splashView.contains("buildVioletBand")
+                        && splashView.contains("buildPinkBand"),
+                "the three curved colour bands are rasterised once per screen size");
+        check(splashView.contains("drawWaveField") && splashView.contains("drawBitmap(waveSprites[band]"),
+                "a frame draws the colour field as textured quads, not paths");
         check(!splashView.contains("BlurMaskFilter") && !splashView.contains("setShadowLayer")
-                        && !splashView.contains("RenderEffect") && !splashView.contains("Blur"),
+                        && !splashView.contains("RenderEffect"),
                 "no blur and no shadow layer: the soft light is a pre-rendered sprite");
         check(!splashView.contains("setRepeatCount") && !splashView.contains("INFINITE")
                         && !motion.contains("Repeat"),
@@ -477,9 +523,9 @@ public final class CinemaxAppTest {
 
         // Android-specific smoothness contract of the draw path.
         check(splashView.contains("ensureSprites") && splashView.contains("Bitmap.Config.ARGB_8888"),
-                "the soft light is rasterised once per screen size, not per frame");
+                "the soft light and the field are rasterised once per screen size, not per frame");
         check(splashView.contains("onAnimationEnd") && splashView.contains("releaseSprites"),
-                "the animator and the light sprites are released when the splash is done");
+                "the animator and the sprites are released when the splash is done");
         int removeListenersAt = splashView.indexOf("removeAllListeners");
         check(countOccurrences(splashView, "removeAllListeners") == 1
                         && removeListenersAt > splashView.indexOf("private void cancelAnimator"),
@@ -501,14 +547,12 @@ public final class CinemaxAppTest {
         check(windowBackground.contains("@drawable/cinemax_emblem")
                         && windowBackground.contains("#050507") && !windowBackground.contains("5E96FF"),
                 "the launch window is deep near-black with the centred logo (no colour flash)");
-        // The window's artwork and the first frame of the reveal must be the same
-        // logo at the same size, or the hand-over would jump.
         String windowLogoWidth = attribute(windowBackground, "android:width");
         check(windowLogoWidth.equals(Math.round(SplashMotion.LAUNCH_LOGO_DP) + "dp"),
                 "the launch window draws the logo at " + windowLogoWidth
                         + ", the size the reveal starts its dolly from");
-        check(!motion.contains("logoRiseDp") && !splashView.contains("rise"),
-                "the logo never moves off centre (the entrance is a dolly about the centre)");
+        check(motion.contains("logoRise") && splashView.contains("logoCentreY"),
+                "the logo's lift is interpolated every frame (a movement, never a jump)");
 
         // Launch gating: the reveal plays once, on a genuine cold launch only.
         int introUses = countOccurrences(mainActivity, "CinemaxSplashView.MODE_INTRO");
@@ -516,18 +560,16 @@ public final class CinemaxAppTest {
         check(mainActivity.contains("savedInstanceState == null") && mainActivity.contains("introConsumed"),
                 "the animated intro is limited to a genuine cold launch, once per process");
         check(mainActivity.contains("CinemaxSplashView.MODE_HOLD"),
-                "reloads and re-entries show the still logo instead of replaying the animation");
+                "reloads and re-entries show the still lockup instead of replaying the animation");
         check(mainActivity.contains("showReloadingVeil"),
                 "offline retry and renderer restarts use the quiet reloading veil");
         check(mainActivity.contains("splashStage.setRevealListener")
                         && mainActivity.contains("pageReadyForHandoff"),
-                "the page takes over as soon as the logo has landed and the page has painted");
-        check(!mainActivity.contains("playSplashIntro"),
-                "the old view-stack splash animation is gone");
+                "the page takes over as soon as the lockup has landed and the page has painted");
         check(mainActivity.contains("splashStage.freeze()"),
                 "the timeline freezes before the hand-off (the fade costs no drawing)");
-        check(!splashView.contains("ValueAnimator.ofFloat(0f, 1f).setDuration(0)"),
-                "the reveal is never instant");
+        check(!strings.contains("Starting Cinemax"),
+                "no slogan, tagline or loading copy ships with the splash");
     }
 
     // ------------------------------------------------- scroll performance

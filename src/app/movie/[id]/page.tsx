@@ -11,10 +11,11 @@ import PlaybackOverlay, { classifyVideo } from "@/components/PlaybackOverlay";
 import CinematicButton, { CinematicLink } from "@/components/CinematicButton";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
+import { DetailSkeleton, RelatedSkeleton } from "@/components/Skeletons";
 import { matchesCollection, tokens, type CatalogueMovie } from "@/lib/catalogue";
 
 function LoadingState() {
-  return <main className="movie-detail-page" id="main-content" tabIndex={-1} aria-busy="true" aria-label="Loading title"><div className="detail-backdrop detail-loading"><div className="hero-image-fallback" /><div className="detail-hero-copy"><div className="shimmer hero-skeleton-title" /><div className="shimmer hero-skeleton-meta" /><div className="shimmer hero-skeleton-button" /></div></div></main>;
+  return <main className="movie-detail-page" id="main-content" tabIndex={-1} aria-busy="true" aria-label="Loading title"><div className="detail-backdrop detail-loading"><div className="hero-image-fallback" /><div className="detail-hero-copy"><div className="shimmer hero-skeleton-title" /><div className="shimmer hero-skeleton-meta" /><div className="shimmer hero-skeleton-button" /></div></div><div className="detail-content detail-content-loading"><DetailSkeleton /></div></main>;
 }
 
 function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
@@ -69,8 +70,10 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
     if (!movie || !collection) return;
     const controller = new AbortController();
     fetch(`/api/movies?category=${encodeURIComponent(collection)}&limit=12`, { signal: controller.signal }).then((response) => response.ok ? response.json() : []).then((items: CatalogueMovie[]) => {
-      if (!controller.signal.aborted && Array.isArray(items)) setRelatedRead({ id, movies: items });
-    }).catch(() => undefined);
+      if (!controller.signal.aborted) setRelatedRead({ id, movies: Array.isArray(items) ? items : [] });
+    }).catch(() => {
+      if (!controller.signal.aborted) setRelatedRead({ id, movies: [] });
+    });
     return () => controller.abort();
   }, [id, movie]);
 
@@ -81,6 +84,11 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
     const indexed = catalogue.filter((item) => item.id !== movie.id && matchesCollection(item, collection));
     return [...indexed, ...(relatedRead.id === id ? relatedRead.movies.filter((item) => item.id !== movie.id) : [])].filter((item, index, all) => all.findIndex((movie) => movie.id === item.id) === index).slice(0, 10);
   }, [catalogue, movie, relatedRead, id]);
+  // Skeleton only for related data that genuinely has not arrived yet: the
+  // network read for this id is still outstanding and nothing is available to
+  // show. Once the read resolves - or client-side matches already fill the row
+  // - the real content takes over.
+  const relatedLoading = !!movie && !!tokens(movie.category)[0] && relatedRead.id !== id && related.length === 0;
 
   const shareMovie = async () => {
     if (!movie) return;
@@ -124,7 +132,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
         {(movie.director || movie.cast) && <dl className="detail-credits">{movie.director && <div><dt className="detail-info-label">Director</dt><dd>{movie.director}</dd></div>}{movie.cast && <div><dt className="detail-info-label">Cast</dt><dd>{movie.cast}</dd></div>}</dl>}
       </div>
     </div>
-    {related.length > 0 && <div className="detail-related"><MovieRow title="More like this" category="" movies={related} /></div>}
+    <div className="detail-related">
+      {relatedLoading ? <RelatedSkeleton /> : related.length > 0 ? <MovieRow title="More like this" category="" movies={related} /> : null}
+    </div>
   </main>;
 }
 

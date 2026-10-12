@@ -42,6 +42,8 @@ import java.awt.RadialGradientPaint;
 import java.awt.LinearGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
+import java.awt.font.FontRenderContext;
+import java.awt.font.GlyphVector;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
@@ -75,6 +77,34 @@ public final class SplashPreview {
     private static final float SWEEP_ANGLE = -20f;
     private static final int VIEWPORT = 64;
 
+    /* The colour field, duplicated from CinemaxSplashView exactly as the palette
+     * above is: two cubic boundaries in fractions of the screen, and one vertical
+     * gradient per band. Any change there belongs here too. */
+    private static final float[] EDGE_UPPER = {
+            0.00f, 0.360f, 0.16f, 0.262f, 0.30f, 0.212f, 0.50f, 0.300f,
+            0.70f, 0.388f, 0.86f, 0.418f, 1.00f, 0.330f,
+    };
+    private static final float[] EDGE_LOWER = {
+            0.00f, 0.600f, 0.16f, 0.702f, 0.32f, 0.742f, 0.50f, 0.650f,
+            0.68f, 0.558f, 0.84f, 0.528f, 1.00f, 0.620f,
+    };
+    private static final int[] BAND_BLUE_COLOURS = {0xF2305AD6, 0xE85A3BD8};
+    private static final float[] BAND_BLUE_STOPS = {0f, 1f};
+    private static final int[] BAND_VIOLET_COLOURS = {0xF26A45E0, 0xE8A03BC0};
+    private static final float[] BAND_VIOLET_STOPS = {0f, 1f};
+    private static final int[] BAND_PINK_COLOURS = {0xF0C2409E, 0xF2EF76CB};
+    private static final float[] BAND_PINK_STOPS = {0f, 1f};
+    private static final float OVERLAP = 0.06f;
+    private static final int BASE_TOP = 0x24122A6B;
+    private static final int BASE_MID = 0x0F16123A;
+    private static final int BASE_BOTTOM = 0x1C3A1140;
+    private static final String WORDMARK = "CINEMAX";
+    private static final int WORDMARK_COLOUR = 0xFFF7F4FF;
+    private static final float WORDMARK_RISE_EM = 0.34f;
+
+    /** The brand face the app ships, loaded in main(); null falls back to sans. */
+    private static Font wordmarkFont;
+
     public static void main(String[] args) throws Exception {
         File project = new File(args.length > 0 ? args[0] : "android");
         File output = new File(args.length > 1 ? args[1] : "android/build");
@@ -82,9 +112,12 @@ public final class SplashPreview {
         preview.mkdirs();
 
         Logo logo = Logo.read(new File(project, "app/src/main/res/drawable/cinemax_emblem.xml"));
+        wordmarkFont = loadWordmarkFont(new File(project,
+                "app/src/main/assets/cinemax/fonts/outfit-semibold.ttf"));
 
         // One launch, frame by frame (the phone viewport the app targets).
-        long[] times = {0L, 150L, 300L, 450L, 600L, 750L, 900L, SplashMotion.REVEAL_MILLIS};
+        long[] times = {0L, 220L, 440L, 660L, 880L, 1100L, 1320L, 1540L,
+                SplashMotion.HANDOFF_READY_MILLIS, SplashMotion.REVEAL_MILLIS};
         List<BufferedImage> frames = new ArrayList<BufferedImage>();
         for (long time : times) {
             frames.add(render(1080, 2280, 2.75f, time, logo));
@@ -119,7 +152,7 @@ public final class SplashPreview {
         // The light sweep, close up: the frames in which the band crosses the logo.
         List<BufferedImage> sweepFrames = new ArrayList<BufferedImage>();
         List<String> sweepLabels = new ArrayList<String>();
-        for (long time = 560L; time <= SplashMotion.REVEAL_MILLIS; time += 60L) {
+        for (long time = 1010L; time <= 1570L; time += 70L) {
             sweepFrames.add(cropToLogo(render(1080, 2280, 2.75f, time, logo)));
             sweepLabels.add(time + " ms");
         }
@@ -201,13 +234,37 @@ public final class SplashPreview {
             g.setComposite(AlphaComposite.SrcOver);
         }
 
+        float wave = SplashMotion.progress(elapsed, SplashMotion.LAYER_WAVE);
+        BufferedImage[] bands = {
+                band(layout.waveSpriteWidth, layout.waveSpriteHeight, 0),
+                band(layout.waveSpriteWidth, layout.waveSpriteHeight, 1),
+                band(layout.waveSpriteWidth, layout.waveSpriteHeight, 2),
+        };
+        for (int index = 0; index < SplashMotion.BAND_COUNT; index++) {
+            float bandAlpha = SplashMotion.waveAlpha(wave, index);
+            if (bandAlpha <= 0.004f) {
+                continue;
+            }
+            float bandScale = SplashMotion.waveScale(wave, index);
+            float extentX = width * 0.5f * 1.04f;
+            float extentY = height * 0.5f * bandScale;
+            g.setComposite(AlphaComposite.SrcOver.derive(bandAlpha));
+            g.drawImage(bands[index], Math.round(layout.centreX - extentX),
+                    Math.round(layout.centreY - extentY),
+                    Math.round(extentX * 2f), Math.round(extentY * 2f), null);
+            g.setComposite(AlphaComposite.SrcOver);
+        }
+
+        float logoProgress = SplashMotion.progress(elapsed, SplashMotion.LAYER_LOGO);
+        float logoCentreY = layout.centreY - layout.lockupLift * SplashMotion.logoRise(logoProgress);
+
         float glow = SplashMotion.glowAlpha(SplashMotion.progress(elapsed, SplashMotion.LAYER_GLOW));
         if (glow > 0.004f) {
             float scale = SplashMotion.glowScale(
                     SplashMotion.progress(elapsed, SplashMotion.LAYER_GLOW));
             float radiusX = layout.glowRadius * SplashMotion.GLOW_WIDTH_FACTOR * scale;
             float radiusY = layout.glowRadius * SplashMotion.GLOW_HEIGHT_FACTOR * scale;
-            float glowY = layout.centreY - layout.logoSize * SplashMotion.GLOW_LIFT_FACTOR;
+            float glowY = logoCentreY - layout.logoSize * SplashMotion.GLOW_LIFT_FACTOR;
             g.setComposite(AlphaComposite.SrcOver.derive(glow));
             g.drawImage(sprite(layout.glowSpriteSide, GLOW_COLOURS, GLOW_STOPS),
                     Math.round(layout.centreX - radiusX), Math.round(glowY - radiusY),
@@ -219,7 +276,7 @@ public final class SplashPreview {
         if (depth > 0.004f) {
             int side = Math.max(48, layout.glowSpriteSide / 2);
             float radius = layout.depthRadius;
-            float centreY = layout.centreY + layout.depthOffsetY;
+            float centreY = logoCentreY + layout.depthOffsetY;
             g.setComposite(AlphaComposite.SrcOver.derive(depth));
             g.drawImage(sprite(side, DEPTH_COLOURS, DEPTH_STOPS),
                     Math.round(layout.centreX - radius), Math.round(centreY - radius),
@@ -227,7 +284,6 @@ public final class SplashPreview {
             g.setComposite(AlphaComposite.SrcOver);
         }
 
-        float logoProgress = SplashMotion.progress(elapsed, SplashMotion.LAYER_LOGO);
         float logoAlpha = SplashMotion.logoAlpha(logoProgress);
         if (logoAlpha > 0.004f) {
             float half = layout.logoSize
@@ -238,18 +294,18 @@ public final class SplashPreview {
             boolean sweeping = sweepAlpha > 0.004f && SplashMotion.sweepOverLogo(travel);
             int extent = Math.round(layout.sweepHalfExtent);
             int left = Math.round(layout.centreX) - extent;
-            int top = Math.round(layout.centreY) - extent;
+            int top = Math.round(logoCentreY) - extent;
 
             if (!sweeping) {
-                logo.draw(g, layout.centreX, layout.centreY, half * 2f, logoAlpha);
+                logo.draw(g, layout.centreX, logoCentreY, half * 2f, logoAlpha);
             } else {
                 BufferedImage layer = new BufferedImage(extent * 2, extent * 2, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D lg = quality(layer.createGraphics());
                 lg.translate(-left, -top);
-                logo.draw(lg, layout.centreX, layout.centreY, half * 2f, logoAlpha);
+                logo.draw(lg, layout.centreX, logoCentreY, half * 2f, logoAlpha);
                 lg.setComposite(AlphaComposite.SrcAtop.derive(sweepAlpha));
                 lg.translate(layout.centreX
-                        + travel * (layout.logoSize * 0.5f + layout.sweepBandHalf), layout.centreY);
+                        + travel * (layout.logoSize * 0.5f + layout.sweepBandHalf), logoCentreY);
                 lg.rotate(Math.toRadians(SWEEP_ANGLE));
                 float bandHalf = layout.sweepBandHalf;
                 float bandHalfHeight = layout.sweepBandHalfHeight;
@@ -262,14 +318,155 @@ public final class SplashPreview {
                 g.drawImage(layer, left, top, null);
             }
         }
+
+        float wordmarkProgress = SplashMotion.progress(elapsed, SplashMotion.LAYER_WORDMARK);
+        float wordmarkAlpha = SplashMotion.wordmarkAlpha(wordmarkProgress);
+        if (wordmarkAlpha > 0.004f) {
+            drawWordmark(g, layout, wordmarkAlpha,
+                    SplashMotion.wordmarkRise(wordmarkProgress) * WORDMARK_RISE_EM);
+        }
         g.dispose();
         return image;
+    }
+
+    /**
+     * One curved colour band at its resting shape, exactly as the app rasterises
+     * it: a broad cubic boundary filled with a vertical gradient that fades out
+     * instead of ending on a line. The app caches three of these per screen size.
+     */
+    private static BufferedImage band(int width, int height, int index) {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = quality(image.createGraphics());
+        Path2D band = new Path2D.Double();
+        float topFraction;
+        float bottomFraction;
+        int[] colours;
+        float[] stops;
+        if (index == SplashMotion.BAND_BLUE) {
+            band.moveTo(0, 0);
+            band.lineTo(width, 0);
+            band.lineTo(width, EDGE_UPPER[13] * height);
+            backward(band, EDGE_UPPER, width, height);
+            colours = BAND_BLUE_COLOURS;
+            stops = BAND_BLUE_STOPS;
+            topFraction = 0f;
+            bottomFraction = 0.55f;
+        } else if (index == SplashMotion.BAND_VIOLET) {
+            band.moveTo(0, EDGE_UPPER[1] * height);
+            forward(band, EDGE_UPPER, width, height);
+            band.lineTo(width, EDGE_LOWER[13] * height);
+            backward(band, EDGE_LOWER, width, height);
+            colours = BAND_VIOLET_COLOURS;
+            stops = BAND_VIOLET_STOPS;
+            topFraction = 0.20f;
+            bottomFraction = 0.88f;
+        } else {
+            band.moveTo(0, EDGE_LOWER[1] * height);
+            forward(band, EDGE_LOWER, width, height);
+            band.lineTo(width, height);
+            band.lineTo(0, height);
+            colours = BAND_PINK_COLOURS;
+            stops = BAND_PINK_STOPS;
+            topFraction = 0.46f;
+            bottomFraction = 1f;
+        }
+        band.closePath();
+        g.setPaint(new LinearGradientPaint(new Point2D.Float(0f, topFraction * height),
+                new Point2D.Float(0f, Math.max(1f, bottomFraction * height)), stops, colours(colours),
+                MultipleGradientPaint.CycleMethod.NO_CYCLE));
+        g.fill(band);
+        g.dispose();
+        return image;
+    }
+
+    private static float[] shift(float[] edge, float dy) {
+        float[] shifted = new float[edge.length];
+        for (int index = 0; index < edge.length; index += 2) {
+            shifted[index] = edge[index];
+            shifted[index + 1] = edge[index + 1] + dy;
+        }
+        return shifted;
+    }
+
+    private static void forward(Path2D path, float[] edge, int width, int height) {
+        path.curveTo(edge[2] * width, edge[3] * height, edge[4] * width, edge[5] * height,
+                edge[6] * width, edge[7] * height);
+        path.curveTo(edge[8] * width, edge[9] * height, edge[10] * width, edge[11] * height,
+                edge[12] * width, edge[13] * height);
+    }
+
+    private static void backward(Path2D path, float[] edge, int width, int height) {
+        path.curveTo(edge[10] * width, edge[11] * height, edge[8] * width, edge[9] * height,
+                edge[6] * width, edge[7] * height);
+        path.curveTo(edge[4] * width, edge[5] * height, edge[2] * width, edge[3] * height,
+                edge[0] * width, edge[1] * height);
+    }
+
+    /** The brand face the splash ships; the preview falls back to a plain sans. */
+    private static Font loadWordmarkFont(File fontFile) {
+        try {
+            return Font.createFont(Font.TRUETYPE_FONT, fontFile);
+        } catch (Exception missing) {
+            System.out.println("preview: brand font unavailable (" + missing.getMessage()
+                    + ") - falling back to the platform sans");
+            return null;
+        }
+    }
+
+    /**
+     * Mirrors CinemaxSplashView.drawWordmark, including the manual tracking and
+     * the half-space optical correction Android's centred text layout needs.
+     */
+    private static void drawWordmark(Graphics2D g, SplashMotion.Layout layout,
+            float alpha, float riseEm) {
+        float size = layout.wordmarkSize;
+        float tracking = size * SplashMotion.WORDMARK_LETTER_SPACING_EM;
+        Font font = wordmarkFont != null
+                ? wordmarkFont.deriveFont(size)
+                : new Font(Font.SANS_SERIF, Font.BOLD, Math.round(size));
+        FontRenderContext context = g.getFontRenderContext();
+        float[] advances = new float[WORDMARK.length()];
+        float total = 0f;
+        for (int index = 0; index < WORDMARK.length(); index++) {
+            GlyphVector glyph = font.createGlyphVector(context,
+                    String.valueOf(WORDMARK.charAt(index)));
+            advances[index] = glyph.getGlyphMetrics(0).getAdvance();
+            total += advances[index] + tracking;
+        }
+        if (total > layout.wordmarkMaxWidth) {
+            size = size * (layout.wordmarkMaxWidth / total);
+            tracking = size * SplashMotion.WORDMARK_LETTER_SPACING_EM;
+            font = wordmarkFont != null
+                    ? wordmarkFont.deriveFont(size)
+                    : new Font(Font.SANS_SERIF, Font.BOLD, Math.round(size));
+            total = 0f;
+            for (int index = 0; index < WORDMARK.length(); index++) {
+                advances[index] = font.createGlyphVector(context,
+                        String.valueOf(WORDMARK.charAt(index))).getGlyphMetrics(0).getAdvance();
+                total += advances[index] + tracking;
+            }
+        }
+        float baseline = layout.wordmarkCapTop + size * SplashMotion.WORDMARK_CAP_RATIO
+                + riseEm * size;
+        float x = layout.centreX - total * 0.5f;
+        g.setFont(font);
+        g.setColor(new Color(WORDMARK_COLOUR, true));
+        g.setComposite(AlphaComposite.SrcOver.derive(alpha));
+        for (int index = 0; index < WORDMARK.length(); index++) {
+            g.drawString(String.valueOf(WORDMARK.charAt(index)), x, baseline);
+            x += advances[index] + tracking;
+        }
+        g.setComposite(AlphaComposite.SrcOver);
     }
 
     private static BufferedImage ambient(int width, int height) {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = quality(image.createGraphics());
         float longEdge = Math.max(width, height);
+        g.setPaint(new LinearGradientPaint(new Point2D.Float(0f, 0f), new Point2D.Float(0f, height),
+                new float[]{0f, 0.52f, 1f}, colours(new int[]{BASE_TOP, BASE_MID, BASE_BOTTOM}),
+                MultipleGradientPaint.CycleMethod.NO_CYCLE));
+        g.fillRect(0, 0, width, height);
         g.setPaint(radial(width * 0.30f, height * 0.24f, longEdge * 0.62f, WASH_BLUE));
         g.fillRect(0, 0, width, height);
         g.setPaint(radial(width * 0.52f, height * 0.50f, longEdge * 0.36f, WASH_VIOLET));
@@ -314,11 +511,12 @@ public final class SplashPreview {
         return g;
     }
 
-    /** Cuts a square around the logo, so the sweep can be seen up close. */
+    /** Cuts a square around the settled logo, so the sweep can be seen up close. */
     private static BufferedImage cropToLogo(BufferedImage frame) {
-        int side = Math.round(SplashMotion.layout(frame.getWidth(), frame.getHeight(), 2.75f).logoSize * 1.35f);
+        SplashMotion.Layout layout = SplashMotion.layout(frame.getWidth(), frame.getHeight(), 2.75f);
+        int side = Math.round(layout.logoSize * 1.35f);
         int left = Math.max(0, frame.getWidth() / 2 - side / 2);
-        int top = Math.max(0, frame.getHeight() / 2 - side / 2);
+        int top = Math.max(0, Math.round(layout.logoRestCentreY) - side / 2);
         return frame.getSubimage(left, top, Math.min(side, frame.getWidth() - left),
                 Math.min(side, frame.getHeight() - top));
     }
