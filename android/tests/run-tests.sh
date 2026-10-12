@@ -5,6 +5,12 @@
 #   bash android/tests/run-tests.sh              # build if needed, then test
 #   bash android/tests/run-tests.sh --skip-build # test the current APK only
 #
+# The DOM layer needs jsdom. It is installed once, into the git-ignored toolchain
+# cache, by android/tests/install-test-deps.sh - which this script runs
+# automatically when jsdom is missing and npm is available. Set
+# CINEMAX_REQUIRE_JSDOM=1 to turn a missing jsdom (or node) into a failure
+# instead of a skip; CI sets it so this layer can never silently disappear.
+#
 # Layers:
 #   1. JVM unit checks   : navigation policy + injection escaping (no device)
 #   2. JavaScript syntax : node --check on the generated injection script
@@ -42,6 +48,17 @@ JAVA="$CACHE/jdk/bin/java"
 ECJ_JAR="$CACHE/lib/ecj.jar"
 ANDROID_JAR="$CACHE/lib/android.jar"
 APK="$PROJECT/dist/Cinemax-1.0.0.apk"
+JSDOM_DIR="$CACHE/tests/node_modules/jsdom"
+REQUIRE_JSDOM="${CINEMAX_REQUIRE_JSDOM:-0}"
+
+# The DOM layer is only as good as jsdom being present: install it once when it
+# is missing, so `run-tests.sh` covers all four layers on a fresh checkout.
+if [ ! -d "$JSDOM_DIR" ] && command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  mkdir -p "$CACHE/tests"
+  note "installing jsdom for the DOM layer (see ${CACHE#"$REPO"/}/tests/install-test-deps.log)"
+  bash "$SCRIPT_DIR/install-test-deps.sh" >"$CACHE/tests/install-test-deps.log" 2>&1 \
+    || note "jsdom could not be installed - see $CACHE/tests/install-test-deps.log"
+fi
 
 if [ "$SKIP_BUILD" = "0" ] || [ ! -f "$APK" ] || [ ! -d "$PROJECT/build/gen" ]; then
   step "Building the APK"
@@ -74,7 +91,11 @@ SHELL_SCRIPT="$WORK/out/shell-script.js"
 # ------------------------------------------------------ 2. JavaScript syntax
 step "2/4  JavaScript syntax of the injected layer"
 if ! command -v node >/dev/null 2>&1; then
-  note "node is not installed - layer skipped"
+  if [ "$REQUIRE_JSDOM" = "1" ]; then
+    result 1 "node is required for this layer but is not installed"
+  else
+    note "node is not installed - layer skipped"
+  fi
 elif [ ! -f "$INJECTION" ]; then
   result 1 "the injection script was not produced (unit checks failed)"
 else
@@ -89,7 +110,13 @@ fi
 # ---------------------------------------------------------- 3. DOM behaviour
 step "3/4  DOM behaviour of the injected app layer"
 if ! command -v node >/dev/null 2>&1; then
-  note "node is not installed - layer skipped"
+  if [ "$REQUIRE_JSDOM" = "1" ]; then
+    result 1 "node is required for this layer but is not installed"
+  else
+    note "node is not installed - layer skipped"
+  fi
+elif [ ! -d "$JSDOM_DIR" ] && [ "$REQUIRE_JSDOM" = "1" ]; then
+  result 1 "jsdom is required (CINEMAX_REQUIRE_JSDOM=1) but is not installed - run android/tests/install-test-deps.sh"
 elif [ ! -f "$INJECTION" ]; then
   result 1 "the injection script was not produced (unit checks failed)"
 else

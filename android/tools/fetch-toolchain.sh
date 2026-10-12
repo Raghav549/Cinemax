@@ -45,6 +45,13 @@ case "$(uname -s)" in
   *) fail "This fetcher targets Linux. On macOS/Windows, install the same tools manually and pass CINEMAX_JAVA / CINEMAX_AAPT2 / CINEMAX_ANDROID_JAR / CINEMAX_D8_JAR / CINEMAX_ECJ_JAR / CINEMAX_APKSIGNER_JAR to android/build.sh." ;;
 esac
 
+# Preflight: the fetcher and the build itself need these, and a clear message
+# beats a "command not found" half way through a download.
+for required in curl python3 tar sha256sum; do
+  command -v "$required" >/dev/null 2>&1 \
+    || fail "'$required' is required to fetch the Android toolchain but was not found in PATH"
+done
+
 ARCH="$(uname -m)"
 mkdir -p "$CACHE/bin" "$CACHE/lib" "$CACHE/downloads"
 

@@ -20,11 +20,20 @@ android/
 │   └── make_legacy_icons.py      raster launcher icons for API 24/25
 ├── tests/
 │   ├── run-tests.sh              one command runs every layer
+│   ├── install-test-deps.sh      installs jsdom for the DOM layer (cached)
 │   ├── java/CinemaxAppTest.java  navigation policy + injection escaping (JVM)
 │   ├── shell-dom.test.mjs        the injected layer executed against a DOM
 │   ├── apk_check.py              manifest, resources, dex, signature, alignment
 │   └── axml.py                   binary AndroidManifest.xml reader
 └── dist/                         built artefacts (Cinemax-1.0.0.apk)
+```
+
+`.github/workflows/android.yml` builds this same way in CI (no Gradle, no SDK
+manager): it fetches the pinned toolchain, installs jsdom, runs
+`android/build.sh`, then `android/tests/run-tests.sh`, and uploads
+`Cinemax-1.0.0.apk` plus its `.sha256` as the `cinemax-android-apk` artifact.
+Every push and pull request builds it, and the workflow can be started by hand
+with *Run workflow*.
 ```
 
 ## Build
@@ -140,7 +149,15 @@ Then redeploy the site and reinstall the app.
 
 ## Tests
 
-`bash android/tests/run-tests.sh` runs four layers and exits non-zero on failure:
+```bash
+bash android/tests/run-tests.sh              # build if needed, then all layers
+bash android/tests/install-test-deps.sh      # jsdom for the DOM layer (cached)
+```
+
+`run-tests.sh` runs four layers and exits non-zero on failure (it installs jsdom
+itself when it is missing and npm is available). `CINEMAX_REQUIRE_JSDOM=1` turns
+a missing jsdom/node into a failure instead of a skip — CI sets it, so the DOM
+layer can never silently disappear from a build:
 
 1. **JVM unit checks (53)** – navigation policy (in-app vs external, including
    localhost/emulator rejection and suffix-spoofing hosts) and injection
@@ -151,12 +168,19 @@ Then redeploy the site and reinstall the app.
    fixture of the Cinemax page: theme installed once, bridge signalled, insets
    published and clamped, viewport tuned, playback reported on play/pause, no
    unscoped selectors, no inline-script dependency, hostile input inert.
-4. **APK structure (74)** – parsed binary manifest (package, SDK versions,
+4. **APK structure (88)** – parsed binary manifest (package, SDK versions,
    `singleTask`, `adjustResize`, `configChanges`, deep link, permissions),
    adaptive + legacy icons, splash and theme resources, classes in `classes.dex`,
    the production URL in the DEX, **no `localhost`/`127.0.0.1`/`10.0.2.2`/`:3000`
-   anywhere in the payload**, apksigner verification (v2 + v3) and zipalign
-   equivalence for `resources.arsc`.
+   anywhere in the payload**, apksigner verification (v1 + v2 + v3) and
+   zipalign equivalence for `resources.arsc`.
+
+   The same layer validates `classes.dex` the way the device does before it
+   installs a package: dex magic and version (037, supported by API 24), the
+   adler32 checksum, the SHA-1 signature, `file_size`, `header_size`, the
+   endian tag, the string table, the class list, the map offset and the data
+   section bounds. A malformed dex would fail here instead of failing to
+   install.
 
 The web application is unchanged by this work: `npm run lint`, `npm run
 typecheck` and `npm run build` all pass with every existing route, API and page
