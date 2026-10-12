@@ -47,21 +47,30 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
     }
     if (info.project.name !== "desktop") {
       await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-      const links = page.locator(".bottom-nav-link");
-      await expect(links).toHaveCount(4);
-      const hit = await links.first().boundingBox();
+      const pills = page.locator(".nav-pill-link");
+      await expect(pills).toHaveCount(3);
+      const hit = await pills.first().boundingBox();
       expect(hit!.height).toBeGreaterThanOrEqual(44);
+      // The circular discovery control and the expand chevron are real controls.
+      await expect(page.getByRole("link", { name: "Discover categories" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
     }
   }
   if (info.project.name !== "desktop") {
     const nav = page.getByRole("navigation", { name: "Primary navigation" });
     const persistent = await nav.evaluate((element) => { element.setAttribute("data-persistent-test", "yes"); return true; });
     expect(persistent).toBeTruthy();
-    await nav.getByRole("link", { name: "Search", exact: true }).click();
+    // A category shortcut navigates and the dock instance survives the change.
+    await nav.getByRole("link", { name: "Movies", exact: true }).click();
+    await expect(page.locator("main h1")).toBeVisible();
+    await expect(page.locator(".nav-pill")).toHaveAttribute("data-persistent-test", "yes");
+    // Expanding reveals the original destinations in the panel.
+    const chevron = page.getByRole("button", { name: "Expand navigation" });
+    await chevron.click();
+    await expect(chevron).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".nav-more-link")).toHaveCount(4);
+    await page.getByRole("link", { name: "Search", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
-    await expect(page.locator(".bottom-nav")).toHaveAttribute("data-persistent-test", "yes");
-    await expect(nav.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");
-    expect(await nav.evaluate((element) => (element as HTMLElement).style.getPropertyValue("--nav-index"))).toBe("1");
   }
 });
 

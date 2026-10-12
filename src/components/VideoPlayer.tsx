@@ -61,6 +61,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prepareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressWriteRef = useRef(0);
   const playbackFrameRef = useRef<number | null>(null);
   const pendingPlaybackRef = useRef({ currentTime: 0, bufferedEnd: 0 });
@@ -87,6 +88,9 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const [errored, setErrored] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [buffering, setBuffering] = useState(false);
+  // True from the moment a source is attached until the first frame is actually
+  // ready - so the indicator shows during genuine preparation, not on a timer.
+  const [preparing, setPreparing] = useState(false);
   const [qualityOptions, setQualityOptions] = useState<QualityOption[]>([]);
   const [quality, setQuality] = useState(-1);
   const [sourceQuality, setSourceQuality] = useState("");
@@ -145,6 +149,16 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     resumeAppliedRef.current = false;
     setErrored(false);
     setBuffering(false);
+    setPreparing(true);
+    if (prepareTimeoutRef.current) clearTimeout(prepareTimeoutRef.current);
+    // A stream that neither errors nor becomes playable within this window must
+    // not leave the viewport on a permanent spinner: surface the actionable
+    // retry state instead.
+    prepareTimeoutRef.current = setTimeout(() => {
+      setPreparing(false);
+      setBuffering(false);
+      setErrored(true);
+    }, 12000);
     setQuality(-1);
     setQualityOptions([]);
     setSourceQuality("");
@@ -216,6 +230,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
             } else {
               setErrored(true);
               setBuffering(false);
+              setPreparing(false);
             }
           });
           hls.attachMedia(video);
@@ -225,9 +240,13 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           video.load();
         } else {
           setErrored(true);
+          setPreparing(false);
         }
       } catch {
-        if (!isCancelled) setErrored(true);
+        if (!isCancelled) {
+          setErrored(true);
+          setPreparing(false);
+        }
       }
     };
 
@@ -270,7 +289,13 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
         saveProgress();
       }
     };
-    const onPlay = () => { setPlaying(true); setBuffering(false); showControls(); };
+    const clearPrepareTimeout = () => {
+      if (prepareTimeoutRef.current) {
+        clearTimeout(prepareTimeoutRef.current);
+        prepareTimeoutRef.current = null;
+      }
+    };
+    const onPlay = () => { setPlaying(true); setBuffering(false); setPreparing(false); showControls(); };
     const onPause = () => { setPlaying(false); setBuffering(false); setControlsVisible(true); saveProgress(); };
     const onWaiting = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
@@ -278,16 +303,21 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     };
     const onCanPlay = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      clearPrepareTimeout();
       setBuffering(false);
+      setPreparing(false);
     };
     const onSeeking = () => { if (!seekingRef.current) setBuffering(true); };
     const onSeeked = () => { if (!seekingRef.current) setBuffering(false); };
     const onError = () => {
+      clearPrepareTimeout();
+      setPreparing(false);
       if (!isHlsSource || !hlsRef.current) setErrored(true);
     };
     const onEnded = () => {
       setPlaying(false);
       setBuffering(false);
+      setPreparing(false);
       setControlsVisible(true);
       try { window.localStorage.removeItem(resumeKey); } catch { /* storage is optional */ }
     };
@@ -300,6 +330,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     video.addEventListener("pause", onPause);
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("stalled", onWaiting);
+    video.addEventListener("loadeddata", onCanPlay);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("playing", onCanPlay);
     video.addEventListener("seeking", onSeeking);
@@ -313,6 +344,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     return () => {
       isCancelled = true;
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      if (prepareTimeoutRef.current) clearTimeout(prepareTimeoutRef.current);
       if (playbackFrameRef.current !== null) {
         window.cancelAnimationFrame(playbackFrameRef.current);
         playbackFrameRef.current = null;
@@ -328,6 +360,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       video.removeEventListener("pause", onPause);
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("stalled", onWaiting);
+      video.removeEventListener("loadeddata", onCanPlay);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("playing", onCanPlay);
       video.removeEventListener("seeking", onSeeking);
@@ -613,10 +646,19 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           )}
         </video>
 
-        {buffering && (
-          <div className="player-notice" role="status">
-            <svg className="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="9" strokeOpacity=".25" /><path d="M21 12a9 9 0 0 0-9-9" /></svg>
-            Buffering
+        {(preparing || buffering) && (
+          <div className="player-buffering" role="status" aria-label={playing ? "Buffering" : "Preparing playback"}>
+            <svg className="player-buffering-ring" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+              <defs>
+                <linearGradient id="cinemax-buffer-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#4FD8FF" />
+                  <stop offset=".5" stopColor="#7C4DFF" />
+                  <stop offset="1" stopColor="#FF4FA3" />
+                </linearGradient>
+              </defs>
+              <circle className="player-buffering-track" cx="24" cy="24" r="20" fill="none" />
+              <circle className="player-buffering-arc" cx="24" cy="24" r="20" fill="none" />
+            </svg>
           </div>
         )}
         {resumeNotice && <div className="player-notice" role="status">{resumeNotice}</div>}

@@ -1,10 +1,12 @@
 import type { SVGProps, ReactNode } from "react";
 
-export type IconName = "home" | "search" | "explore" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort";
+export type IconName = "home" | "search" | "explore" | "discover" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "chevron-down" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort";
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" /><path d="M9 21v-7h6v7" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.8" /><path d="m15.6 15.6 4.7 4.7" /></>,
   explore: <><path d="m14.8 9.2-1.7 3.9-3.9 1.7 1.7-3.9 3.9-1.7Z" /><circle cx="12" cy="12" r="9" /><path d="M12 3v2m0 14v2M3 12h2m14 0h2" /></>,
+  discover: <><rect x="3" y="3" width="8" height="8" rx="2.4" /><rect x="13" y="3" width="8" height="8" rx="2.4" /><rect x="3" y="13" width="8" height="8" rx="2.4" /><path d="M19.6 13.4 18 19.6l-4.6-4.6 6.2-1.6Z" /></>,
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
   bookmark: <path d="M6 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16l-6-3.8L6 21V5Z" />,
   play: <path d="m8 5 11 7-11 7V5Z" />,
   pause: <><path d="M8 5v14M16 5v14" /></>,

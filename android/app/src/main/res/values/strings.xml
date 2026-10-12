@@ -10,8 +10,8 @@
     <string name="error_reload_body">Cinemax had to restart the page. Tap Try again.</string>
     <string name="error_reload_hint">Page reloaded</string>
     <!--
-      Accessibility label of the native splash. The splash draws the logo only:
-      no wordmark, tagline or any other visible text.
+      Accessibility label of the native splash lockup: the emblem plus the
+      CINEMAX wordmark, and nothing else (no tagline or loading copy).
     -->
     <string name="splash_lockup_desc">Cinemax</string>
 </resources>

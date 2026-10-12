@@ -126,12 +126,14 @@ def main() -> int:
     check("resources.arsc" in names, "resources.arsc is present")
     check("classes.dex" in names, "classes.dex is present")
     check(any(name.startswith("res/") for name in names), "compiled resources are present")
-    # The app-only presentation layer. The native splash draws the Cinemax logo
-    # and nothing else, so it ships no font: if an asset is ever added it has to
-    # be listed here as well.
+    # The app-only presentation layer. The splash wordmark ships the brand face
+    # (Outfit SemiBold, SIL OFL) alongside the stylesheet and shell runtime; any
+    # further asset has to be listed here as well.
     packaged_assets = [
         "assets/cinemax/app-shell.js",
         "assets/cinemax/app-theme.css",
+        "assets/cinemax/fonts/OUTFIT-LICENSE.txt",
+        "assets/cinemax/fonts/outfit-semibold.ttf",
     ]
     check(
         sorted(name for name in names if name.startswith("assets/cinemax/")) == packaged_assets,
