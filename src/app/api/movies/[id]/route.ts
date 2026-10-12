@@ -4,6 +4,7 @@ import { describeDbError, withDb } from "@/db/with-db";
 import { moviePatch, normalizeMovie, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, notFound, parseId, readJson, unauthorized } from "@/lib/api";
 import { eq } from "drizzle-orm";
+import { publicMovie } from "@/lib/movies";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    void _req;
     const { id: rawId } = await params;
     const id = parseId(rawId);
     if (id === null) return badRequest("Invalid id");
@@ -19,7 +21,8 @@ export async function GET(
     const result = await withDb((db) => db.select().from(movies).where(eq(movies.id, id)));
     if (!result.length) return notFound("Movie not found");
 
-    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>));
+    const row = result[0] as Record<string, unknown>;
+    return NextResponse.json(publicMovie(row));
   } catch (e) {
     console.error("[api/movies/:id] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });

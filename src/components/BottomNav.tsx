@@ -1,75 +1,28 @@
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/", label: "Home", d: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" },
-  { href: "/search", label: "Search", d: "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm10 18l-4.3-4.3" },
-  { href: "/categories", label: "Browse", d: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" },
-  { href: "/watchlist", label: "My List", d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" },
+  { href: "/", label: "Home", icon: "M3 10.2 12 3l9 7.2v9.3a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-9.3ZM9 21v-7h6v7" },
+  { href: "/search", label: "Search", icon: "M10.8 18.2a7.4 7.4 0 1 0 0-14.8 7.4 7.4 0 0 0 0 14.8ZM16.3 16.3 21 21" },
+  { href: "/categories", label: "Explore", icon: "M3 4h8v7H3zM14 4h7v7h-7zM3 14h8v7H3zM14 14h7v7h-7z" },
+  { href: "/watchlist", label: "My list", icon: "M6 3.5h12v17l-6-3.7-6 3.7v-17Z" },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav
-      style={{
-        position: "fixed",
-        bottom: 16,
-        left: 16,
-        right: 16,
-        zIndex: 90,
-        background: "rgba(10, 10, 10, 0.95)",
-        borderRadius: 20,
-        border: "1px solid rgba(255,255,255,0.08)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-around",
-        padding: "10px 8px",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-      }}
-    >
+    <nav className="bottom-nav" aria-label="Primary navigation">
       {items.map((item) => {
-        const active = pathname === item.href;
+        const active = item.href === "/" ? pathname === "/" : item.href === "/categories" ? pathname === "/categories" || pathname.startsWith("/category/") : pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-              padding: "8px 16px",
-              borderRadius: 14,
-              background: active ? "rgba(255,255,255,0.1)" : "transparent",
-              textDecoration: "none",
-              transition: "background 0.3s",
-            }}
-          >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={active ? "#fff" : "rgba(255,255,255,0.35)"}
-              strokeWidth="1.5"
-            >
-              <path d={item.d} />
+          <Link key={item.href} href={item.href} className="bottom-nav-link" aria-current={active ? "page" : undefined}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={item.icon} />
             </svg>
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase" as const,
-                color: active ? "#fff" : "rgba(255,255,255,0.3)",
-              }}
-            >
-              {item.label}
-            </span>
+            <span>{item.label}</span>
           </Link>
         );
       })}

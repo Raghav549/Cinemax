@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
+import Header from "@/components/Header";
 
 interface Category { id: number; name: string; slug: string; }
 
@@ -28,8 +29,9 @@ export default function CategoriesPage() {
   }, []);
 
   return (
-    <div style={{ background: "#000", minHeight: "100vh", paddingBottom: 100 }}>
-      <div style={{ padding: "24px 20px 0" }}>
+    <div style={{ background: "var(--bg)", minHeight: "100vh", paddingBottom: 100 }}>
+      <Header />
+      <div className="secondary-page-content" style={{ padding: "24px 20px 0" }}>
         <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: 13, marginBottom: 16 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
           Back
@@ -38,11 +40,11 @@ export default function CategoriesPage() {
         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginBottom: 28, fontWeight: 500 }}>Find your favorite genre</p>
 
         {loading ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="category-grid">
             {[1,2,3,4,5,6].map((i) => <div key={i} className="shimmer" style={{ height: 120, borderRadius: 20 }} />)}
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="category-grid">
             {categories.map((cat) => (
               <Link
                 key={cat.id}

@@ -1,7 +1,8 @@
 "use client";
+
 import Link from "next/link";
 
-interface Movie {
+export interface MovieCardData {
   id: number;
   title: string;
   year: number | null;
@@ -9,99 +10,45 @@ interface Movie {
   posterUrl: string | null;
   genre: string | null;
   duration: string | null;
+  type?: string | null;
 }
 
-export default function MovieCard({ movie }: { movie: Movie }) {
+function PosterPlaceholder() {
   return (
-    <Link
-      href={`/movie/${movie.id}`}
-      className="movie-card"
-      style={{ flexShrink: 0, width: 140, textDecoration: "none", color: "inherit" }}
-    >
-      {/* Poster */}
-      <div
-        style={{
-          width: "100%",
-          aspectRatio: "2/3",
-          borderRadius: 16,
-          overflow: "hidden",
-          position: "relative",
-          border: "1px solid rgba(255,255,255,0.06)",
-          background: "#111",
-        }}
-      >
-        {movie.posterUrl ? (
-          <img
-            src={movie.posterUrl}
-            alt={movie.title}
-            loading="lazy"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          />
-        ) : (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "rgba(255,255,255,0.1)",
-              fontSize: 32,
-            }}
-          >
-            🎬
-          </div>
-        )}
+    <div className="movie-poster-placeholder" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="m10 9 5 3-5 3V9Z" />
+      </svg>
+    </div>
+  );
+}
 
-        {/* Rating badge */}
+export default function MovieCard({ movie, progress }: { movie: MovieCardData; progress?: number }) {
+  const progressValue = progress === undefined ? undefined : Math.max(0, Math.min(100, progress));
+
+  return (
+    <Link href={`/movie/${movie.id}`} className="movie-card" role="listitem" aria-label={`${progressValue !== undefined ? "Continue watching " : "View "}${movie.title}`}>
+      <div className="movie-poster">
+        {movie.posterUrl ? (
+          <img className="movie-poster-image" src={movie.posterUrl} alt={`${movie.title} poster`} loading="lazy" decoding="async" />
+        ) : <PosterPlaceholder />}
+        {movie.type && <span className="movie-type-badge">{movie.type}</span>}
         {movie.rating && (
-          <div
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              background: "rgba(0,0,0,0.7)",
-              borderRadius: 8,
-              padding: "3px 7px",
-              fontSize: 10,
-              fontWeight: 800,
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-            }}
-          >
-            <span style={{ color: "#facc15" }}>★</span>
+          <span className="movie-rating-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 2.9 6.1 6.7.9-4.8 4.7 1.1 6.7-5.9-3.2-5.9 3.2 1.1-6.7-4.8-4.7 6.7-.9L12 2Z" /></svg>
             {movie.rating}
-          </div>
+          </span>
+        )}
+        {progressValue !== undefined && (
+          <span className="movie-progress" aria-label={`${Math.round(progressValue)} percent watched`}>
+            <span style={{ width: `${progressValue}%` }} />
+          </span>
         )}
       </div>
-
-      {/* Title + Meta — with clear spacing */}
-      <div style={{ marginTop: 10, paddingRight: 4 }}>
-        <p
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            color: "rgba(255,255,255,0.9)",
-            lineHeight: 1.3,
-          }}
-        >
-          {movie.title}
-        </p>
-        <p
-          style={{
-            fontSize: 10,
-            fontWeight: 600,
-            color: "rgba(255,255,255,0.35)",
-            marginTop: 3,
-            letterSpacing: "0.05em",
-          }}
-        >
-          {movie.year} • {movie.duration}
-        </p>
+      <div className="movie-card-copy">
+        <p className="movie-card-title">{movie.title}</p>
+        <p className="movie-card-meta">{[movie.year, movie.duration].filter(Boolean).join(" · ") || movie.genre || "Cinemax pick"}</p>
       </div>
     </Link>
   );

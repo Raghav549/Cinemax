@@ -3,6 +3,7 @@ import { movies } from "@/db/schema";
 import { describeDbError, withDb } from "@/db/with-db";
 import { movieInput, normalizeMovie, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, readJson, unauthorized } from "@/lib/api";
+import { publicMovie } from "@/lib/movies";
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -70,7 +71,10 @@ export async function GET(req: NextRequest) {
       return db.select().from(movies).orderBy(desc(movies.createdAt)).limit(limit);
     });
 
-    return NextResponse.json(result.map((row) => normalizeMovie(row as Record<string, unknown>)));
+    const admin = await isAdmin(req);
+    return NextResponse.json(result.map((row) => admin
+      ? normalizeMovie(row as Record<string, unknown>)
+      : publicMovie(row as Record<string, unknown>)));
   } catch (e) {
     console.error("[api/movies] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });

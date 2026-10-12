@@ -1,58 +1,64 @@
 "use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/categories", label: "Explore" },
+  { href: "/watchlist", label: "My list" },
+];
+
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M7.3 5.2v13.6L19 12 7.3 5.2Z" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
 
 export default function Header() {
+  const pathname = usePathname();
+
   return (
-    <header
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 90,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "16px 20px",
-        background: "linear-gradient(to bottom, #000000 70%, transparent)",
-      }}
-    >
-      <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <span style={{ color: "#000", fontWeight: 900, fontSize: 13 }}>CX</span>
+    <header className="site-header-wrap">
+      <div className="site-header">
+        <Link href="/" className="brand-lockup" aria-label="Cinemax home">
+          <BrandMark />
+          <span>
+            <span className="brand-word">CINEMAX</span>
+            <span className="brand-tagline">A world beyond play</span>
+          </span>
+        </Link>
+
+        <nav className="desktop-nav" aria-label="Main navigation">
+          {links.map((link) => {
+            const active = link.href === "/" ? pathname === "/" : link.href === "/categories" ? pathname === "/categories" || pathname.startsWith("/category/") : pathname === link.href || pathname.startsWith(`${link.href}/`);
+            return (
+              <Link key={link.href} href={link.href} className="desktop-nav-link" aria-current={active ? "page" : undefined}>
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="header-actions">
+          <Link href="/search" className="header-icon-link" aria-label="Search movies and shows" aria-current={pathname === "/search" ? "page" : undefined} title="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+              <circle cx="10.8" cy="10.8" r="6.8" />
+              <path d="m16 16 4.3 4.3" />
+            </svg>
+          </Link>
+          <Link href="/watchlist" className="header-icon-link" aria-label="Open your list" title="My list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.7L6 21V4.5Z" />
+            </svg>
+          </Link>
+          <span className="header-profile" aria-label="Cinemax profile">CX</span>
         </div>
-        <span style={{ color: "#fff", fontWeight: 900, fontSize: 18, letterSpacing: 2 }}>
-          CINEMAX
-        </span>
-      </Link>
-      <Link
-        href="/search"
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.1)",
-          background: "rgba(20,20,20,0.8)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-          textDecoration: "none",
-        }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-      </Link>
+      </div>
     </header>
   );
 }
