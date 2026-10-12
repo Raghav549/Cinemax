@@ -89,6 +89,9 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           grep -E "checks: " "$log"
 
+      - name: Render the splash offline (design preview + smoothness numbers)
+        run: bash android/tools/preview-splash.sh | tee android/build/splash-preview.log
+
       - name: Report the artefact
         run: |
           cd android/dist
@@ -104,5 +107,7 @@ jobs:
             android/dist/Cinemax-latest.apk
             android/dist/Cinemax-1.1.0.apk.sha256
             android/build/test-suite.log
+            android/build/splash-preview.log
+            android/build/preview/*.png
           if-no-files-found: error
           retention-days: 90

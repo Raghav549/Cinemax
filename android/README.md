@@ -12,14 +12,14 @@ android/
 │   ├── AndroidManifest.xml       permissions, deep links, single activity
 │   ├── java/com/cinemax/app/     activity, theme, bridge, policy, splash (8 files)
 │   ├── assets/cinemax/           app-only presentation layer (CSS + runtime)
-│   │   └── fonts/                brand wordmark subset (Outfit 550 + OFL)
 │   └── res/                      adaptive + legacy icons, splash, themes, layout
 ├── build.sh                      Gradle-free build → signed APK
 ├── tools/
 │   ├── fetch-toolchain.sh        pinned, checksum-verified tool downloads
 │   ├── align_apk.py              zipalign-equivalent alignment (4-byte / 4096-byte)
-│   ├── make_brand_font.py        builds the native wordmark font from the web face
-│   └── make_legacy_icons.py      raster launcher icons for API 24/25
+│   ├── make_legacy_icons.py      raster launcher icons for API 24/25
+│   ├── SplashPreview.java        renders the splash offline (no device)
+│   └── preview-splash.sh         runs that render: timeline, screens, sweep
 ├── tests/
 │   ├── run-tests.sh              one command runs every layer
 │   ├── install-test-deps.sh      installs jsdom for the DOM layer (cached)
@@ -101,7 +101,7 @@ file manager/browser you use). Requirements: **Android 7.0 (API 24) or newer**,
 | Edge to edge | API 30+ draws behind transparent status/navigation bars; the real insets are measured natively and published to the page as CSS variables, so the existing layout clears the status bar, gesture bar, cutout and rounded corners. Themed brand gradient shows in the very top and bottom strips. |
 | Keyboard | `adjustResize` + IME padding, so the studio forms are never hidden behind the keyboard. |
 | Playback | Media autoplay is permitted, HLS/MSE run in-page, and the Cinemax player bridge puts direct video into immersive **sensor-landscape** fullscreen. Exit (or Android Back) restores the prior orientation and normal system bars; the screen stays awake only while media is actually playing. |
-| Session intro | The native splash is a layered Cinemax reveal drawn by one composited view: it starts where the launch window left the emblem (dead centre), rises into the lockup as the emblem's two ribbons land, a light stripe sweeps across the logo, rings expand, streaks travel, and the wordmark rises in the site's own Outfit typeface with the gradient “x”. It plays **only on a genuine app launch**, hands over to the page as soon as the themed first paint is ready (a 340 ms cross-fade on the render thread), and has no spinner or “Starting Cinemax” screen. Reloads after an offline retry or a renderer restart show the finished lockup instead of replaying it. |
+| Session intro | The native splash shows **one thing: the Cinemax logo**. No wordmark, tagline, ring, orbit line, dot, streak, ripple or spinner appears in it. It is drawn by one composited view: the logo dollies from the size the launch window left it at, the blue/violet/pink lighting behind it rises and blooms, a single blue-to-pink light band sweeps across the logo, and the glow eases back onto its resting level (1.04 s, after which the view stops drawing frames entirely). It plays **only on a genuine cold launch of the process**, hands over as soon as the logo has landed, the light has crossed it and the page has a themed first paint (a 320 ms cross-fade on the render thread), and shows no loading screen. A re-entry, a restore, an offline retry or a renderer restart shows the finished logo as a still frame instead of replaying the animation. |
 | Crash resilience | If the WebView renderer dies, the shell rebuilds it and reloads instead of crashing the app. |
 | Offline | A native Cinemax screen with *Try again* and *Open in browser* appears when the main document cannot load. |
 
@@ -133,10 +133,10 @@ changes; the layer is an extra stylesheet plus a small runtime, scoped to
 `app-shell.js` is the runtime (insets, playback reporting, fullscreen hand-off,
 viewport, touch behaviour, scroll state and artwork warm-up). Both are evaluated
 by `MainActivity.applyAppTheme()` after the first paint, so the native splash
-lifts onto an already-themed page. `assets/cinemax/fonts/` carries the subset of
-the website's Outfit face (weight 550) that the native wordmark draws with, built
-by `android/tools/make_brand_font.py`; `--check` fails if it drifts from
-`src/app/fonts/outfit.woff2`.
+lifts onto an already-themed page. The splash itself needs no asset of its own:
+it draws the single `cinemax_emblem` vector the app icon, the launch window and
+the offline screen already use, so the presentation layer ships exactly two
+files.
 
 ## Scroll performance
 
@@ -157,10 +157,25 @@ and its components are untouched.
 | Every 9 s the featured slideshow mounts the next 1280 px backdrop, so a full-screen image decoded during whatever the user was doing. | During idle time the shell decodes the *next* slide's full-size source (read from the pagination thumbnail's `srcset`) and artwork within ~1.6 viewports, through the browser's own image cache; it never runs during a scroll and is skipped on data-saving connections. |
 | The insets were pushed into the page on every system-bar callback. | Unchanged inset values are never re-dispatched. |
 
-`SplashMotion.java` keeps the intro timeline (14 layers, delays, durations,
-easings) in pure arithmetic so the reveal can be checked frame by frame on the
-JVM; `CinemaxSplashView.java` draws it in a single pass with shaders and geometry
-built once in `onSizeChanged`.
+### The splash: how it stays smooth
+
+| Concern | How it is handled |
+| --- | --- |
+| Cost per frame | One view, one draw pass, one `invalidate()` per frame. No child hierarchy, so no measure/layout pass, and only transform-style values change, so nothing can asynchronously invalidate a layout. |
+| Soft light | The background wash, the glow and the depth bed are rasterised **once per screen size** into small sprites (96–384 px) and drawn as textured quads. There is no per-frame blur, no full-screen gradient shader fill, no `RenderEffect`, no `BlurMaskFilter` and no shadow layer. |
+| The light sweep | The only effect needing an offscreen layer. The layer is barely larger than the logo, it is clipped to the artwork with `SRC_ATOP`, and it is only entered while the band can actually touch the logo (~200 ms of the reveal). |
+| End of the timeline | The animation does not loop or breathe: at 1040 ms it is a still frame, the animator is released and the view stops requesting frames, so the WebView's first paint of the site gets the whole frame budget. |
+| Hand-off | The timeline freezes and only this layer's alpha/scale animate, which the render thread applies to the already-recorded display list — the cross-fade costs no drawing and no main-thread work. |
+| Memory | Sprites are dropped (never `recycle()`d, which could crash the render thread's last frame) when the splash is gone, and rebuilt if the veil is ever shown again. |
+| Reduced motion | The system animation scale is honoured: the splash shows the finished logo and hands over sooner instead of forcing motion. |
+| Any screen size | `SplashMotion.layout()` is the one size rule: the logo is exactly centred on both axes, 34% of the shorter screen edge, bounded by a 104 dp floor, a 176 dp boldness ceiling and a hard 40% cap, so the complete artwork always fits with a large margin on a 240×320 legacy phone, a tablet or a landscape phone. |
+| Profile | `bash android/tools/preview-splash.sh` renders the real timeline and geometry offline and prints the frame-to-frame change; on a device, `dumpsys gfxinfo com.cinemax.app framestats` during the reveal shows whether any frame ran long (see the device checklist). |
+
+`SplashMotion.java` keeps the timeline (five layers, delays, durations, curves)
+and the geometry in pure arithmetic so both can be checked on a plain JVM —
+frame by frame for the animation, screen by screen for the logo;
+`CinemaxSplashView.java` draws it in a single pass and allocates nothing per
+frame.
 
 ## Digital Asset Links
 
@@ -189,13 +204,16 @@ itself when it is missing and npm is available). `CINEMAX_REQUIRE_JSDOM=1` turns
 a missing jsdom/node into a failure instead of a skip — CI sets it, so the DOM
 layer can never silently disappear from a build:
 
-1. **JVM unit checks (135)** – navigation policy (in-app vs external, including
+1. **JVM unit checks (158)** – navigation policy (in-app vs external, including
    localhost/emulator rejection and suffix-spoofing hosts), injection escaping
    (hostile CSS/JS cannot break out of the generated script), the splash
-   timeline (layer order, clamping, easing, curve endpoints, launch-only
-   gating, the emblem's two ribbons reusing the artwork verbatim) and the
-   scroll-performance contract on both the native settings and the injected
-   layer.
+   timeline (layer order, clamping, easing, curve endpoints, sweep bounds,
+   launch-only gating) and the splash geometry rule across 13 screen sizes ×
+   5 densities — including the checks that **forbid** the removed clutter: no
+   `drawText`/`Typeface`/font asset anywhere in the reveal, no `drawCircle`,
+   `drawArc`, `drawPath`, `drawLine` or `PathMeasure`, no blur or shadow layer,
+   and no looping animator. It also covers the scroll-performance contract on
+   both the native settings and the injected layer.
 2. **JavaScript syntax** – `node --check` on the generated injection script, the
    packaged shell runtime and the source shell.
 3. **DOM behaviour (64, jsdom)** – the real injected layer runs against a
@@ -207,13 +225,14 @@ layer can never silently disappear from a build:
    the app rules win on the scroll path, and drives the scroll engine: one
    passive listener, one state change per gesture burst, no decode while
    scrolling, idle decode of the next featured backdrop.
-4. **APK structure (99)** – parsed binary manifest (package, SDK versions,
+4. **APK structure (100)** – parsed binary manifest (package, SDK versions,
    `singleTask`, `adjustResize`, `configChanges`, deep link, permissions),
    adaptive + legacy icons, splash and theme resources (including the parsed
-   layout: one `CinemaxSplashView`, and none of the replaced static splash
-   layers), byte parity between the packaged presentation assets, the brand font
-   and their sources, classes in `classes.dex` (including the reveal view and
-   its timeline), the production URL in the DEX, **no
+   layout: one `CinemaxSplashView`; the parsed launch window: deep near-black
+   with the centred logo and none of the old coloured launch gradient; and no
+   ring/glow/streak/split-ribbon drawables), byte parity between the packaged
+   presentation assets and their sources, classes in `classes.dex` (including
+   the reveal view and its timeline), the production URL in the DEX, **no
    `localhost`/`127.0.0.1`/`10.0.2.2`/`:3000` anywhere in the payload**,
    apksigner verification (v1 + v2 + v3) and zipalign equivalence for
    `resources.arsc`.
@@ -235,36 +254,63 @@ These checks need a real device or emulator with the production site reachable �
 they are the final gate:
 
 1. `adb install -r android/dist/Cinemax-1.1.0.apk`, then launch Cinemax.
-2. Watch the intro: ribbons, light sweep, rings, streaks and wordmark, then a
-   cross-fade onto the home page with no spinner, no “Starting Cinemax” label
-   and no black flash between the two. Confirm the hero, rails and every poster
-   load from `cinemax-orpin.vercel.app` (no local content).
-3. Press Home and reopen from recents — the intro must **not** replay. Rotate
-   during the reveal and confirm it is not cut short or restarted.
-4. On a mid-range phone, rapidly scroll several rails and a long collection up
+2. Watch the reveal: **the logo only** — dolly, rising blue/violet/pink light, one
+   blue-to-pink band sweeping across the logo, the glow settling. Nothing else
+   may appear: no rings, orbit lines, dots, streaks, taglines or spinners. It
+   must cross-fade onto the home page with no black flash and no visible pause.
+   Confirm the hero, rails and every poster load from `cinemax-orpin.vercel.app`
+   (no local content).
+3. Confirm the launch is continuous: the launcher window shows the same logo at
+   the same size, and the reveal starts from it without a blink or a jump.
+4. Press Home and reopen from recents — the reveal must **not** replay. Rotate
+   during the reveal and confirm it is not cut short or restarted; with
+   *Developer options → Animator duration scale = off* the splash must show the
+   finished logo and hand over quickly.
+5. Profile it: `adb shell dumpsys gfxinfo com.cinemax.app framestats` straight
+   after a cold launch, and `adb shell dumpsys gfxinfo com.cinemax.app reset`
+   before a second launch. The reveal is one view with a handful of textured
+   quads per frame, so it should not show long frames; a `chrome://inspect` trace
+   from a debug build should show the WebView's first paint landing during the
+   animation without the main thread blocking.
+6. On a mid-range phone, rapidly scroll several rails and a long collection up
    and down, repeatedly, with a finger and with a fling; repeat on a throttled
    network. Touch input must stay immediate, the page must not jump, and
    `dumpsys gfxinfo com.cinemax.app framestats` should show no long frames
    while scrolling. A trace from `chrome://inspect` (debug builds) should show
    the scroll frames free of style/layout/paint work besides the tiles coming in.
-5. Open a direct title and an adaptive HLS title. Verify the settings menu lists
+7. Open a direct title and an adaptive HLS title. Verify the settings menu lists
    only manifest-provided levels (including Auto for multiple levels), while a
    single rendition plainly explains that it cannot switch quality.
-6. Start playback, switch to fullscreen landscape and back, then press Android
+8. Start playback, switch to fullscreen landscape and back, then press Android
    Back once in fullscreen (it must restore portrait/system bars rather than
    close playback) and again to leave the player.
-7. Open `/gate-keeper`, log in with the studio credentials and confirm the
+9. Open `/gate-keeper`, log in with the studio credentials and confirm the
    dashboard loads and edits save. Toggle airplane mode and reopen the app to
-   see the native offline screen; tap *Try again* and confirm the still lockup
+   see the native offline screen; tap *Try again* and confirm the still logo
    (not the launch reveal) covers the reload.
 
-## Remaining notes
+## What could not be verified here — read this before releasing
 
-* The sandbox used to build this APK has **no network route to the production
-  deployment and no attached Android device/emulator**, so final GPU frame-time,
-  physical rotation and live-source playback checks could not be performed here.
-  The production URL is compiled into the APK and asserted by the tests; run the
-  device checklist above against the deployed site before releasing.
+* **No device and no emulator were available in this sandbox** (`adb` is not
+  installed and there is no `/dev/kvm`), so the device checklist above has not
+  been executed against this build: the reveal has not been watched on real
+  hardware, `dumpsys gfxinfo framestats` has not been read, and physical rotation
+  has not been tried. Everything below is what *was* verified here.
+* What was verified without a device: the full test suite (158 JVM + 64 DOM + 100
+  APK checks) and an offline render of the reveal
+  (`bash android/tools/preview-splash.sh`) that runs the app's own
+  `SplashMotion` maths through the same draw order as `CinemaxSplashView` — the
+  timeline strip, the settled frame on six screen shapes and the sweep close-up.
+  That render showed a continuous, monotonic light and a centred, uncropped logo,
+  and reported no frame where the picture changed more than the easing predicts.
+* The frame-time claim is therefore analytical, not measured: the draw path is
+  one view, four textured quads, no blur, no looping animator and no allocation
+  per frame, and the timeline stops itself at 1040 ms — but only the device
+  checklist can confirm 60 fps on real hardware.
+* The sandbox also has **no network route to the production deployment**, so the
+  live hand-over to the real home page (the part that depends on
+  `cinemax-orpin.vercel.app` answering) could not be exercised. The URL is
+  compiled into the APK and asserted by the tests.
 * Playback of any licence-restricted source still depends on the deployment's
   own configuration (`TORRENT_*` gateway) exactly as on the web; the app adds
   nothing to that path.

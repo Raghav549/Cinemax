@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      API 31+: the platform splash screen is dressed with the Cinemax gradient
-      and emblem so the system splash and the in-app splash read as one motion.
+      API 31+: the platform splash screen is dressed with the deep near-black
+      canvas and the centred Cinemax logo, so the system splash and the in-app
+      reveal read as one continuous motion.
     -->
     <style name="CinemaxAppTheme.Base.V31" parent="@style/CinemaxAppTheme.Base.V28">
         <item name="android:windowSplashScreenBackground">@color/cinemax_ink_soft</item>
