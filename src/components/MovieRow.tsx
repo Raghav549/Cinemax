@@ -1,63 +1,35 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import MovieCard, { type MovieCardData } from "./MovieCard";
+import Icon from "./Icon";
+import useReducedMotion from "@/hooks/useReducedMotion";
 
-function Arrow({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {direction === "left" ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
-    </svg>
-  );
-}
-
-export default function MovieRow({
-  title,
-  category,
-  movies,
-  icon,
-  kicker,
-  progressByMovie,
-}: {
-  title: string;
-  category: string;
-  movies: MovieCardData[];
-  icon?: React.ReactNode;
-  kicker?: string;
-  progressByMovie?: Record<number, number>;
-}) {
+export default function MovieRow({ title, category, movies, progressByMovie }: { title: string; category: string; movies: MovieCardData[]; icon?: ReactNode; kicker?: string; progressByMovie?: Record<number, number> }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  if (movies.length === 0) return null;
-
-  const scroll = (direction: -1 | 1) => {
+  const [edges, setEdges] = useState({ start: true, end: false });
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
     const track = scrollRef.current;
-    if (track) track.scrollBy({ left: direction * Math.max(track.clientWidth * 0.76, 240), behavior: "smooth" });
+    if (!track) return;
+    const update = () => setEdges({ start: track.scrollLeft <= 2, end: track.scrollLeft + track.clientWidth >= track.scrollWidth - 2 });
+    const observer = new ResizeObserver(update);
+    observer.observe(track);
+    track.addEventListener("scroll", update, { passive: true });
+    return () => { observer.disconnect(); track.removeEventListener("scroll", update); };
+  }, [movies.length]);
+  if (!movies.length) return null;
+  const scroll = (direction: number) => {
+    const track = scrollRef.current;
+    track?.scrollBy({ left: direction * Math.max(track.clientWidth * .8, 250), behavior: reducedMotion ? "instant" : "smooth" });
   };
-
-  return (
-    <section className="movie-row" aria-label={title}>
-      <div className="movie-row-head">
-        <div className="movie-row-title-wrap">
-          {icon && <span className="movie-row-icon">{icon}</span>}
-          <div style={{ minWidth: 0 }}>
-            {kicker && <p className="movie-row-kicker">{kicker}</p>}
-            <h2 className="movie-row-title">{title}</h2>
-          </div>
-        </div>
-        <div className="movie-row-actions">
-          {category && category !== "continue" && (
-            <Link className="movie-row-more" href={`/category/${category}`}>
-              See all <Arrow direction="right" />
-            </Link>
-          )}
-          <button className="row-arrow" type="button" aria-label={`Scroll ${title} left`} onClick={() => scroll(-1)}><Arrow direction="left" /></button>
-          <button className="row-arrow" type="button" aria-label={`Scroll ${title} right`} onClick={() => scroll(1)}><Arrow direction="right" /></button>
-        </div>
-      </div>
-      <div className="movie-track hide-scrollbar" ref={scrollRef} role="list" aria-label={`${title} titles`}>
-        {movies.map((movie) => <MovieCard key={movie.id} movie={movie} progress={progressByMovie?.[movie.id]} />)}
-      </div>
-    </section>
-  );
+  return <section className="movie-row" aria-label={title}>
+    <div className="movie-row-head"><h2 className="movie-row-title">{title}</h2><div className="movie-row-actions">
+      {category && category !== "continue" && <Link className="movie-row-more" href={`/category/${encodeURIComponent(category)}`}>View all <Icon name="chevron-right" /></Link>}
+      <button className="icon-button row-arrow" type="button" aria-label={`Scroll ${title} left`} disabled={edges.start} onClick={() => scroll(-1)}><Icon name="chevron-left" /></button>
+      <button className="icon-button row-arrow" type="button" aria-label={`Scroll ${title} right`} disabled={edges.end} onClick={() => scroll(1)}><Icon name="chevron-right" /></button>
+    </div></div>
+    <div className="movie-track hide-scrollbar" ref={scrollRef} role="list" aria-label={`${title} titles`} tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); scroll(event.key === "ArrowLeft" ? -1 : 1); } }}>{movies.map((movie) => <MovieCard key={movie.id} movie={movie} progress={progressByMovie?.[movie.id]} />)}</div>
+  </section>;
 }

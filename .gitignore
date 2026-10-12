@@ -9,3 +9,7 @@ build/
 next-env.d.ts
 *.tsbuildinfo
 .vercel
+
+.arena/
+playwright-report/
+test-results/

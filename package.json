@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "verify:api": "node scripts/verify-admin.mjs",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:ui": "playwright test",
+    "test:ui:report": "playwright show-report"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -26,6 +28,8 @@
     "uuid": "^14.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",

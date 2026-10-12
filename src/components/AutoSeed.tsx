@@ -1,21 +1,23 @@
 "use client";
+
 import { useEffect } from "react";
+import { CATALOGUE_REFRESH_EVENT } from "./CatalogueProvider";
 
 export default function AutoSeed() {
   useEffect(() => {
-    const seeded = localStorage.getItem("cinemax_seeded");
-    if (!seeded) {
-      fetch("/api/seed", { method: "POST" })
-        .then(async (res) => {
-          // Only remember success; if the DB wasn't ready, try again next visit.
-          if (!res.ok) return;
-          localStorage.setItem("cinemax_seeded", "1");
-          const data = await res.json().catch(() => null);
-          // First-ever seed: reload once so the freshly inserted movies show up.
-          if (data?.message === "Seeded successfully") window.location.reload();
-        })
-        .catch(() => {});
-    }
+    try { if (localStorage.getItem("cinemax_seeded") === "1") return; }
+    catch { /* Storage restrictions must not break the app. */ }
+    const controller = new AbortController();
+    fetch("/api/seed", { method: "POST", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok || controller.signal.aborted) return;
+        try { localStorage.setItem("cinemax_seeded", "1"); } catch { /* Optional convenience. */ }
+        const data = await response.json();
+        // Re-read the real API instead of reloading the page or replaying the intro.
+        if (data?.message === "Seeded successfully") window.dispatchEvent(new Event(CATALOGUE_REFRESH_EVENT));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
   }, []);
   return null;
 }

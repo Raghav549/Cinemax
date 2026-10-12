@@ -1,6 +1,6 @@
 // Bump this version whenever the caching strategy changes so old caches are cleared.
-const CACHE = "cinemax-v4";
-const PRECACHE = ["/offline.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+const CACHE = "cinemax-prism-v5";
+const PRECACHE = ["/offline.html", "/manifest.json", "/icon-192.png", "/icon-512.png", "/brand/cinemax-symbol.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE).catch(() => {})));
