@@ -4,9 +4,10 @@
     <!--
       Cinemax App Theme.
 
-      The launch window paints the Cinemax gradient (never plain black) and the
-      activity draws edge to edge behind transparent system bars. Version
-      specific additions live in values-v27 / values-v28 / values-v31.
+      The launch window paints the deep near-black canvas with the Cinemax logo
+      centred - the same frame the in-app reveal starts from - and the activity
+      draws edge to edge behind transparent system bars. Version specific
+      additions live in values-v27 / values-v28 / values-v31.
     -->
     <style name="CinemaxAppTheme.Base" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@drawable/cinemax_window_background</item>
@@ -27,21 +28,6 @@
     </style>
 
     <style name="CinemaxAppTheme" parent="@style/CinemaxAppTheme.Base" />
-
-    <style name="CinemaxWordmark">
-        <item name="android:textColor">@color/cinemax_text</item>
-        <item name="android:textSize">41sp</item>
-        <item name="android:fontFamily">sans-serif-light</item>
-        <item name="android:letterSpacing">-0.045</item>
-        <item name="android:includeFontPadding">false</item>
-    </style>
-
-    <style name="CinemaxTagline">
-        <item name="android:textColor">@color/cinemax_text_soft</item>
-        <item name="android:textSize">11sp</item>
-        <item name="android:letterSpacing">0.22</item>
-        <item name="android:textAllCaps">true</item>
-    </style>
 
     <style name="CinemaxActionButton">
         <item name="android:minHeight">48dp</item>

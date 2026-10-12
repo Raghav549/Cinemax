@@ -127,9 +127,19 @@ rotation and fullscreen playback handling, external-link routing, and an
 app-only premium presentation layer (its own stylesheet, scoped to the app, that
 never affects the website).
 
+The splash shows the existing Cinemax logo and nothing else — no wordmark,
+tagline, rings, orbit lines, dots, streaks or spinner — as one composited view on
+a deep near-black canvas: the logo dollies in over rising blue/violet/pink light,
+a single blue-to-pink band sweeps across it, and the glow settles. It plays only
+on a genuine cold launch, hands over as soon as the page has a themed first
+paint, and stops drawing frames as soon as it has settled.
+
+![The Cinemax splash, frame by frame](docs/android-splash/timeline.png)
+
 ```bash
 bash android/build.sh            # signed APK → android/dist/Cinemax-1.1.0.apk
-bash android/tests/run-tests.sh  # 58 JVM + 40 DOM + 88 APK checks
+bash android/tests/run-tests.sh  # 158 JVM + 64 DOM + 100 APK checks
+bash android/tools/preview-splash.sh   # render the splash offline (no device)
 adb install -r android/dist/Cinemax-1.1.0.apk
 ```
 

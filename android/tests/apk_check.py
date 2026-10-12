@@ -126,13 +126,12 @@ def main() -> int:
     check("resources.arsc" in names, "resources.arsc is present")
     check("classes.dex" in names, "classes.dex is present")
     check(any(name.startswith("res/") for name in names), "compiled resources are present")
-    # The app-only presentation layer plus the brand wordmark font (the subset of
-    # the website's Outfit face the native splash draws with) and its licence.
+    # The app-only presentation layer. The native splash draws the Cinemax logo
+    # and nothing else, so it ships no font: if an asset is ever added it has to
+    # be listed here as well.
     packaged_assets = [
         "assets/cinemax/app-shell.js",
         "assets/cinemax/app-theme.css",
-        "assets/cinemax/fonts/OUTFIT-LICENSE.txt",
-        "assets/cinemax/fonts/outfit-550.ttf",
     ]
     check(
         sorted(name for name in names if name.startswith("assets/cinemax/")) == packaged_assets,
@@ -216,18 +215,23 @@ def main() -> int:
             any(name.startswith(f"res/mipmap-{density}") and name.endswith("ic_launcher_round.png") for name in names),
             f"legacy round launcher icon exists for {density}",
         )
-    check(any("cinemax_emblem" in name for name in names), "the Cinemax emblem drawable is packaged")
-    check(any("cinemax_emblem_ribbon" in name for name in names), "the emblem's ribbon layer is packaged")
-    check(any("cinemax_emblem_fold" in name for name in names), "the emblem's fold layer is packaged")
-    check(any("cinemax_splash_background" in name for name in names), "the splash gradient is packaged")
-    # The previous splash was a stack of separately animated drawables; the
-    # reveal is drawn by one composited view now, so those layers must not ship.
+    check(any("cinemax_emblem" in name for name in names), "the Cinemax logo drawable is packaged")
+    check(any("cinemax_window_background" in name for name in names),
+          "the near-black launch window with the centred logo is packaged")
+    check(any("cinemax_splash_background" in name for name in names),
+          "the offline surface backdrop is packaged")
+    # The previous splash was a stack of separately animated drawables (rings,
+    # glow, light streaks, the emblem split into two ribbons); the reveal is one
+    # composited view drawing the single logo drawable now, so none of those
+    # layers may ship.
     check(
         not any(
-            "cinemax_splash_ring" in name or "cinemax_splash_glow" in name or "cinemax_splash_light_streak" in name
+            "cinemax_splash_ring" in name or "cinemax_splash_glow" in name
+            or "cinemax_splash_light_streak" in name or "cinemax_emblem_ribbon" in name
+            or "cinemax_emblem_fold" in name
             for name in names
         ),
-        "the replaced static splash layers are no longer shipped",
+        "the replaced splash layers (rings, streaks, split ribbons) are no longer shipped",
     )
     check(any("activity_main" in name for name in names), "the activity layout is packaged")
     check(any("values-v31" in name or name.endswith("resources.arsc") for name in names), "version-qualified values are compiled")
@@ -253,6 +257,29 @@ def main() -> int:
               "exactly one reveal canvas is inflated")
         check("FrameLayout" in element_names and "ProgressBar" in element_names,
               "the shell layout (host, progress, error surface) is intact")
+
+    # The launch window is compiled binary XML too. It must paint the deep
+    # near-black canvas around the centred logo - the coloured launch gradient
+    # that used to flash before the reveal is gone.
+    window_entry = next(
+        (name for name in names if name.endswith("drawable/cinemax_window_background.xml")), None
+    )
+    check(window_entry is not None, "the launch window drawable exists in the archive")
+    if window_entry:
+
+        def attribute_values(node) -> list[str]:
+            found = [value for _ns, _name, value in node.attributes]
+            for child in node.children:
+                found.extend(attribute_values(child))
+            return found
+
+        window_values = attribute_values(parse_axml(read_entry(apk, window_entry)))
+        check(any(value == "0xff050507" for value in window_values),
+              "the launch window paints the deep near-black Cinemax canvas")
+        check(not any(value in ("0xff5e96ff", "0xffef76cb", "0xff7c4dff") for value in window_values),
+              "the launch window no longer flashes the coloured splash gradient")
+        check(any(value.startswith("@0x") for value in window_values),
+              "the launch window places a drawable resource (the logo) on that canvas")
 
     section("dex content")
     dex = read_entry(apk, "classes.dex")

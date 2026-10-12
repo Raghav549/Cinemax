@@ -1,108 +1,162 @@
 package com.cinemax.app;
 
 /**
- * The native splash choreography, expressed as pure arithmetic.
+ * The native Cinemax launch reveal, expressed as pure arithmetic.
  *
- * The website's intro reveals the Cinemax emblem in layers: the folded "C"
- * ribbon slides in, the fold follows from the other side, a light stripe sweeps
- * across the logo, rings expand, streaks travel and the wordmark rises. The
- * Android app cannot reuse that CSS, so the same choreography is rebuilt here
- * as a layer table plus easing functions.
+ * The splash shows one thing: the existing Cinemax logo. There is no wordmark,
+ * tagline, ring, orbit, dot, streak or spinner - the whole gesture is the logo
+ * arriving on a deep near-black canvas, a blue-to-pink light sweeping across it
+ * once, and the light around it settling down.
  *
- * Deliberately free of Android types: it can be unit tested on a plain JVM
- * (android/tests/java/CinemaxAppTest.java) and it keeps every timing decision in
- * one place instead of scattering magic numbers through the drawing code.
+ * Everything a frame needs is computed here, so the timeline can be checked
+ * frame by frame on a plain JVM (android/tests/java/CinemaxAppTest.java):
  *
- * Only transform-style properties are animated (alpha, translation, scale,
- * radius, rotation, letter spacing). Nothing here can trigger a layout pass, and
- * the whole reveal is one clip of ~1.2 s: the WebView loads the production site
- * in parallel and the intro hands over as soon as the page has a themed first
- * paint.
+ *   · five layers - ambient wash, glow, depth bed, logo, light sweep;
+ *   · transform-only values (alpha, scale, offset, travel): nothing here can
+ *     asynchronously invalidate a layout pass, and no layer runs a per-frame
+ *     blur, shader fill or allocation;
+ *   · the whole clip is just over a second, and every layer is finished by
+ *     {@link #REVEAL_MILLIS} - after that the splash is a still frame and stops
+ *     requesting frames entirely, so the WebView gets the full frame budget
+ *     while it loads the production site behind it.
+ *
+ * {@link #layout(int, int, float)} is the reason the logo is correct on every
+ * screen: one size rule, centred on both axes, bounded so the artwork can never
+ * reach a screen edge (verified for phone, small, landscape and tablet sizes in
+ * the unit checks).
  */
 public final class SplashMotion {
 
     /* ------------------------------------------------------------- layers */
 
-    /** Large brand glows behind everything (deepest layer). */
+    /** The restrained blue / violet / pink wash of the background. */
     public static final int LAYER_AMBIENT = 0;
-    /** Soft halo that sits directly behind the emblem. */
-    public static final int LAYER_HALO = 1;
-    /** Six aperture blades that briefly iris in behind the lockup. */
-    public static final int LAYER_IRIS = 2;
-    public static final int LAYER_RING_OUTER = 3;
-    public static final int LAYER_RING_MID = 4;
-    /** Inner ring drawn as a sweeping arc with a travelling light head. */
-    public static final int LAYER_RING_ARC = 5;
-    public static final int LAYER_STREAK_A = 6;
-    public static final int LAYER_STREAK_B = 7;
-    /** The folded "C" ribbon of the emblem. */
-    public static final int LAYER_RIBBON = 8;
-    /** The interlocking fold of the emblem. */
-    public static final int LAYER_FOLD = 9;
-    /** Light stripe that sweeps across the emblem once it has landed. */
-    public static final int LAYER_SHEEN = 10;
-    public static final int LAYER_WORDMARK = 11;
-    /** Brand gradient rule under the wordmark. */
-    public static final int LAYER_RULE = 12;
-    public static final int LAYER_TAGLINE = 13;
-    public static final int LAYER_COUNT = 14;
+    /** The soft glow behind the logo: it blooms, then settles onto its rest. */
+    public static final int LAYER_GLOW = 1;
+    /** The dark bed that lets the logo sit in front of the light. */
+    public static final int LAYER_DEPTH = 2;
+    /** The logo itself: it brightens to full while it dollies onto its size. */
+    public static final int LAYER_LOGO = 3;
+    /** The blue-to-pink light sweep that crosses the logo exactly once. */
+    public static final int LAYER_SWEEP = 4;
+    public static final int LAYER_COUNT = 5;
 
     /* ------------------------------------------------------------ timings */
 
-    /** Every layer has finished by this point: one clip of the reveal. */
-    public static final long REVEAL_MILLIS = 1180L;
-    /** The lockup (emblem + wordmark) is complete - the page may take over. */
-    public static final long HANDOFF_READY_MILLIS = 1110L;
-    /** Never hand over before this, so the reveal is actually seen. */
+    /** Every layer has finished here: the reveal is a single short clip. */
+    public static final long REVEAL_MILLIS = 1040L;
+    /**
+     * The page may take over here: the logo has landed AND the light has
+     * finished crossing it, so the frozen frame is the settled composition.
+     * Freezing any earlier would leave a half-finished sweep on screen for the
+     * length of the cross-fade. Only the tail of the glow's settle (imperceptible
+     * - see {@link #glowAlpha(float)}) is still running at this point.
+     */
+    public static final long HANDOFF_READY_MILLIS = 980L;
+    /**
+     * Never hand over before this, so the reveal is actually seen even if the
+     * page painted instantly. It only ever applies to the animated intro: a
+     * still frame (re-entry, reload, reduced motion) hands over as soon as the
+     * page is ready.
+     */
     public static final long HANDOFF_MIN_VISIBLE_MILLIS = 900L;
     /** Duration of the cross-fade from the splash into the home page. */
-    public static final long HANDOFF_FADE_MILLIS = 340L;
-    /** Keyboard-free safety valve for a dead network (never a loading screen). */
+    public static final long HANDOFF_FADE_MILLIS = 320L;
+    /**
+     * Safety valve for a page that never paints (dead network). It is not a
+     * loading screen: it only makes sure the app can never sit on the splash.
+     */
     public static final long SAFETY_TIMEOUT_MILLIS = 8000L;
     /** With system animations disabled the reveal is shown as a still frame. */
     public static final long REDUCED_MOTION_MIN_VISIBLE_MILLIS = 420L;
-    /** Slow breathing of the halo once the lockup has landed. */
-    public static final long BREATH_PERIOD_MILLIS = 2600L;
 
     /*
-     * Delay and duration per layer, in milliseconds. The relative order mirrors
-     * the website's intro (ribbon 0.18s, fold 0.30s, sheen 0.50s, wordmark
-     * 0.45s, rings 0.09-0.14s, streaks 0.12-0.24s), compressed so the whole
-     * reveal fits in REVEAL_MILLIS.
+     * Delay and duration per layer, in milliseconds. The goal is one continuous
+     * movement: the light comes up, the glow blooms behind the logo, the logo
+     * arrives while its depth bed deepens, the sweep crosses it after it has
+     * landed, and the glow eases back to its resting level last.
      */
     private static final long[] DELAYS = {
-            0L,    // ambient glows
-            60L,   // halo
-            80L,   // aperture iris
-            90L,   // outer ring
-            240L,  // inner ring
-            140L,  // sweeping arc
-            120L,  // streak A
-            240L,  // streak B
-            170L,  // emblem ribbon
-            300L,  // emblem fold
-            520L,  // sheen sweep
-            470L,  // wordmark
-            560L,  // gradient rule
-            620L,  // tagline
+            0L,    // ambient wash
+            40L,   // glow bloom
+            90L,   // depth bed
+            90L,   // the logo
+            600L,  // light sweep
     };
 
     private static final long[] DURATIONS = {
-            900L,   // ambient glows
-            900L,   // halo
-            700L,   // aperture iris
-            1090L,  // outer ring
-            880L,   // inner ring
-            1040L,  // sweeping arc
-            880L,   // streak A
-            880L,   // streak B
-            760L,   // emblem ribbon
-            780L,   // emblem fold
-            520L,   // sheen sweep
-            640L,   // wordmark
-            600L,   // gradient rule
-            560L,   // tagline
+            780L,  // ambient wash
+            1000L, // glow bloom + settle
+            560L,  // depth bed
+            620L,  // the logo
+            380L,  // light sweep
     };
+
+    /* ---------------------------------------------------- animation values */
+
+    /**
+     * The logo does not fade in from nothing and it never leaves the centre:
+     * the cold-start surface (the launcher window, and the API 31+ system splash)
+     * already draws the same artwork centred at {@link #LAUNCH_LOGO_DP}, so the
+     * reveal starts from exactly that frame - the logo already lit, already
+     * centred - and the dolly, the rising light and the sweep are what make it an
+     * entrance. That is what keeps the hand-over from the launch window to the
+     * reveal seamless instead of a blink.
+     */
+    public static final float LAUNCH_LOGO_DP = 128f;
+    /** How far the dolly may travel on a screen whose logo is smaller than the launch artwork. */
+    public static final float LOGO_SCALE_FROM_MIN = 0.80f;
+    /** The logo is already lit when the reveal starts (it was on the launch window). */
+    public static final float LOGO_ALPHA_FROM = 0.88f;
+    /** ... and reaches full opacity this early in its own layer. */
+    public static final float LOGO_ALPHA_FULL_AT = 0.40f;
+    /** The glow grows into place ... */
+    public static final float GLOW_SCALE_FROM = 0.74f;
+    /** ... passes its resting radius by a few percent ... */
+    public static final float GLOW_BLOOM_SCALE = 1.05f;
+    /** ... at this point of its layer ... */
+    public static final float GLOW_BLOOM_AT = 0.58f;
+    /** ... and eases back onto it. */
+    public static final float GLOW_PEAK_ALPHA = 0.95f;
+    /** Resting brightness of the glow once the reveal has settled. */
+    public static final float GLOW_REST_ALPHA = 0.46f;
+    /** Point of the glow's layer where the light starts easing back down. */
+    public static final float GLOW_SETTLE_AT = 0.52f;
+    /** Peak opacity of the dark depth bed under the logo. */
+    public static final float DEPTH_PEAK_ALPHA = 0.58f;
+    /** Peak opacity of the light sweep as it crosses the logo. */
+    public static final float SWEEP_PEAK_ALPHA = 0.58f;
+    /** How far the sweep travels, in units of the logo's own half-extent. */
+    public static final float SWEEP_TRAVEL = 1.55f;
+
+    /* ------------------------------------------------------------ geometry */
+
+    /** The logo takes this fraction of the shorter screen edge. */
+    public static final float LOGO_FRACTION = 0.34f;
+    /** Readability floor for small screens. */
+    public static final float LOGO_MIN_DP = 104f;
+    /** Boldness ceiling, so a tablet does not get a giant logo. */
+    public static final float LOGO_MAX_DP = 176f;
+    /**
+     * Hard ceiling: the logo never takes more than this fraction of the shorter
+     * screen edge, so the complete artwork always has at least a 30% margin.
+     */
+    public static final float LOGO_MAX_FRACTION = 0.40f;
+    public static final float GLOW_RADIUS_FACTOR = 0.98f;
+    private static final float GLOW_MAX_FRACTION = 0.46f;
+    /**
+     * The light pool is a touch wider than it is tall and lifted a little above
+     * the centre: the same light an off-centre key would throw, instead of a
+     * circular spotlight behind the logo. Both are free - the sprite is already a
+     * stretched quad.
+     */
+    public static final float GLOW_WIDTH_FACTOR = 1.20f;
+    public static final float GLOW_HEIGHT_FACTOR = 0.94f;
+    public static final float GLOW_LIFT_FACTOR = 0.04f;
+    public static final float DEPTH_RADIUS_FACTOR = 0.72f;
+    private static final float DEPTH_OFFSET_FACTOR = 0.045f;
+    private static final float SWEEP_HALF_FACTOR = 0.56f;
+    private static final float SWEEP_BAND_FACTOR = 0.13f;
 
     private SplashMotion() {
     }
@@ -142,46 +196,36 @@ public final class SplashMotion {
         return elapsed >= REVEAL_MILLIS;
     }
 
-    /** True once the emblem and wordmark have landed (page may take over). */
+    /** True once the logo and the sweep have landed (the page may take over). */
     public static boolean handoffReady(long elapsed) {
         return elapsed >= HANDOFF_READY_MILLIS;
     }
+
+    /* ------------------------------------------------------------ easings */
 
     /** Smoothstep for gentle in/out motion. */
     public static float easeInOutSine(float t) {
         return (float) (0.5 - 0.5 * Math.cos(Math.PI * clamp01(t)));
     }
 
-    /** Fast start, long settle: the classic "premium" ease for arrives. */
+    /** Fast start, long settle: the classic premium ease for arrivals. */
     public static float easeOutCubic(float t) {
         float value = 1f - clamp01(t);
         return 1f - value * value * value;
     }
 
-    /** Even faster start - used for light sweeps and streaks. */
-    public static float easeOutQuint(float t) {
-        float value = 1f - clamp01(t);
-        return 1f - value * value * value * value * value;
-    }
-
-    public static float easeInOutCubic(float t) {
-        float value = clamp01(t);
-        if (value < 0.5f) {
-            return 4f * value * value * value;
-        }
-        float shifted = -2f * value + 2f;
-        return 1f - shifted * shifted * shifted / 2f;
-    }
-
-    /** Small overshoot so the emblem lands rather than stops. */
-    public static float easeOutBack(float t) {
-        float value = clamp01(t) - 1f;
-        float overshoot = 1.30f;
-        return 1f + (overshoot + 1f) * value * value * value + overshoot * value * value;
-    }
-
     public static float lerp(float from, float to, float t) {
         return from + (to - from) * clamp01(t);
+    }
+
+    public static float clamp(float value, float minimum, float maximum) {
+        if (value < minimum) {
+            return minimum;
+        }
+        if (value > maximum) {
+            return maximum;
+        }
+        return value;
     }
 
     public static float clamp01(float value) {
@@ -196,82 +240,210 @@ public final class SplashMotion {
 
     /* ------------------------------------------------------- layer curves */
 
-    /**
-     * Ring fade: out quickly, then a long dissolve. A ring that simply faded in
-     * and out linearly reads as a "loading" pulse; peaking early reads as an
-     * expanding wave.
-     */
-    public static float ringAlpha(float peak, float progress) {
-        float value = clamp01(progress);
-        if (value <= 0.26f) {
-            return peak * easeOutCubic(value / 0.26f);
-        }
-        return peak * (1f - easeInOutSine((value - 0.26f) / 0.74f));
-    }
-
-    /** Expanding wave: starts tight, eases out, keeps travelling. */
-    public static float ringScale(float from, float to, float progress) {
-        return lerp(from, to, easeOutQuint(clamp01(progress)));
-    }
-
-    /** The travelling light head of the sweeping arc is brightest mid-sweep. */
-    public static float arcHeadAlpha(float peak, float progress) {
-        float value = clamp01(progress);
-        if (value <= 0.15f) {
-            return peak * (value / 0.15f);
-        }
-        return peak * (1f - 0.45f * ((value - 0.15f) / 0.85f));
-    }
-
-    /** Light stripe: crosses the emblem once and is gone. */
-    public static float sheenAlpha(float peak, float progress) {
-        float value = clamp01(progress);
-        if (value <= 0.35f) {
-            return peak * easeOutCubic(value / 0.35f);
-        }
-        return peak * (1f - easeInOutSine((value - 0.35f) / 0.65f));
-    }
-
-    /** Streak brightness: fades in on the way in, out on the way out. */
-    public static float streakAlpha(float peak, float progress) {
-        float value = clamp01(progress);
-        if (value <= 0.4f) {
-            return peak * (value / 0.4f);
-        }
-        return peak * (1f - (value - 0.4f) / 0.6f);
+    /** The background wash comes up gently and then stays exactly where it is. */
+    public static float ambientAlpha(float progress) {
+        return easeOutCubic(clamp01(progress));
     }
 
     /**
-     * Halo breathing after the reveal: a +-2% scale wobble on a slow period.
-     * Returns 1.0 while the intro is still running.
+     * Size of the glow. It grows quickly, passes its resting radius by a few
+     * percent and then eases back onto it - the light "settling" rather than
+     * snapping into place, with no bounce and nothing to catch the eye twice.
      */
-    public static float breathScale(long elapsed) {
-        if (elapsed <= REVEAL_MILLIS) {
+    public static float glowScale(float progress) {
+        float value = clamp01(progress);
+        if (value <= GLOW_BLOOM_AT) {
+            return lerp(GLOW_SCALE_FROM, GLOW_BLOOM_SCALE, easeOutCubic(value / GLOW_BLOOM_AT));
+        }
+        return lerp(GLOW_BLOOM_SCALE, 1f, easeInOutSine((value - GLOW_BLOOM_AT) / (1f - GLOW_BLOOM_AT)));
+    }
+
+    /**
+     * Brightness of the glow: up quickly, then a long ease down onto a calm
+     * resting level. It settles to a fraction of the peak instead of to nothing,
+     * so the finished frame still looks lit - and it is a constant from here on,
+     * which is what lets the splash stop drawing frames at all.
+     */
+    public static float glowAlpha(float progress) {
+        float value = clamp01(progress);
+        if (value <= GLOW_SETTLE_AT) {
+            return lerp(0f, GLOW_PEAK_ALPHA, easeOutCubic(value / GLOW_SETTLE_AT));
+        }
+        return lerp(GLOW_PEAK_ALPHA, GLOW_REST_ALPHA,
+                easeInOutSine((value - GLOW_SETTLE_AT) / (1f - GLOW_SETTLE_AT)));
+    }
+
+    /** The logo brightens to full over the first part of its entrance, then holds. */
+    public static float logoAlpha(float progress) {
+        return lerp(LOGO_ALPHA_FROM, 1f,
+                easeOutCubic(clamp01(clamp01(progress) / LOGO_ALPHA_FULL_AT)));
+    }
+
+    /** A gentle dolly: the logo grows from the launch artwork onto its resting size. */
+    public static float logoScale(float progress, float scaleFrom) {
+        return lerp(clamp(scaleFrom, LOGO_SCALE_FROM_MIN, 1f), 1f, easeOutCubic(clamp01(progress)));
+    }
+
+    /**
+     * Where the dolly starts: the size the launch surface drew the logo at, so
+     * the first frame of the reveal is the frame the launcher left behind. It can
+     * never be more than 1 (the logo never starts bigger than it ends).
+     */
+    public static float logoScaleFrom(float logoSizePx, float density) {
+        if (logoSizePx <= 0f || density <= 0f) {
             return 1f;
         }
-        double phase = ((elapsed - REVEAL_MILLIS) % BREATH_PERIOD_MILLIS) / (double) BREATH_PERIOD_MILLIS;
-        return (float) (1.0 + 0.02 * Math.sin(phase * 2.0 * Math.PI));
+        return clamp(LAUNCH_LOGO_DP * density / logoSizePx, LOGO_SCALE_FROM_MIN, 1f);
     }
 
-    /** Wordmark tracking: opens up, then settles onto the brand's tight spacing. */
-    public static float wordmarkLetterSpacing(float from, float to, float progress) {
-        return lerp(from, to, easeOutQuint(clamp01(progress)));
+    /** The depth bed deepens as the logo arrives, then holds. */
+    public static float depthAlpha(float progress) {
+        return lerp(0f, DEPTH_PEAK_ALPHA, easeOutCubic(clamp01(progress)));
+    }
+
+    /** The light sweep: in, across, out - once, and never a loop. */
+    public static float sweepAlpha(float progress) {
+        float value = clamp01(progress);
+        if (value <= 0.32f) {
+            return lerp(0f, SWEEP_PEAK_ALPHA, easeOutCubic(value / 0.32f));
+        }
+        return lerp(SWEEP_PEAK_ALPHA, 0f, easeInOutSine((value - 0.32f) / 0.68f));
+    }
+
+    /** Horizontal travel of the light band, in units of the logo half-extent. */
+    public static float sweepTravel(float progress) {
+        return lerp(-SWEEP_TRAVEL, SWEEP_TRAVEL, easeInOutSine(clamp01(progress)));
     }
 
     /**
-     * The reveal begins where the launch surface left the emblem - dead centre,
-     * as the launcher window and the API 31+ system splash draw it - and the
-     * whole lockup rises into its resting place as the emblem lands. Returns 1
-     * while the composition is still at the launch position, 0 once it is home,
-     * so the movement is continuous into the reveal instead of a jump.
+     * True while the travelling band can still touch the logo. The sweep only
+     * needs its small offscreen layer (so the light is clipped to the artwork
+     * itself) during this window - outside it the band is off the logo and is
+     * not drawn at all.
      */
-    public static float emblemLift(float progress) {
-        return 1f - easeOutCubic(clamp01(progress));
+    public static boolean sweepOverLogo(float travel) {
+        return travel > -0.90f && travel < 0.90f;
     }
 
-    /** Aperture iris: blades rotate a few degrees as they fade away. */
-    public static float irisRotation(float from, float to, float progress) {
-        return lerp(from, to, easeOutQuint(clamp01(progress)));
+    /* ------------------------------------------------------------ geometry */
+
+    /** Viewport geometry for one screen size. Pure arithmetic - no Android types. */
+    public static final class Layout {
+
+        public final int width;
+        public final int height;
+        /** Centre of the screen: where the logo and every light is drawn from. */
+        public final float centreX;
+        public final float centreY;
+        /** Edge length of the square the logo is drawn into. */
+        public final float logoSize;
+        /** Radius the glow sprite is drawn at. */
+        public final float glowRadius;
+        /** Radius of the soft dark bed under the logo. */
+        public final float depthRadius;
+        /** How far below the centre that bed sits. */
+        public final float depthOffsetY;
+        /** Half-extent of the sweep's offscreen layer. */
+        public final float sweepHalfExtent;
+        /** Half-width of the travelling light band. */
+        public final float sweepBandHalf;
+        /** Half-height of the band (the rest is clipped by the layer). */
+        public final float sweepBandHalfHeight;
+        public final int ambientSpriteWidth;
+        public final int ambientSpriteHeight;
+        public final int glowSpriteSide;
+        /** Scale the dolly starts from: the launch surface's own logo size. */
+        public final float logoStartScale;
+
+        private Layout(int width, int height, float centreX, float centreY,
+                float logoSize, float glowRadius, float depthRadius, float depthOffsetY,
+                float sweepHalfExtent, float sweepBandHalf, float sweepBandHalfHeight,
+                int ambientSpriteWidth, int ambientSpriteHeight, int glowSpriteSide,
+                float logoStartScale) {
+            this.width = width;
+            this.height = height;
+            this.centreX = centreX;
+            this.centreY = centreY;
+            this.logoSize = logoSize;
+            this.glowRadius = glowRadius;
+            this.depthRadius = depthRadius;
+            this.depthOffsetY = depthOffsetY;
+            this.sweepHalfExtent = sweepHalfExtent;
+            this.sweepBandHalf = sweepBandHalf;
+            this.sweepBandHalfHeight = sweepBandHalfHeight;
+            this.ambientSpriteWidth = ambientSpriteWidth;
+            this.ambientSpriteHeight = ambientSpriteHeight;
+            this.glowSpriteSide = glowSpriteSide;
+            this.logoStartScale = logoStartScale;
+        }
+
+        /** Distance from the logo's left/right edge to the screen edge, in px. */
+        public float logoMarginX() {
+            return centreX - logoSize * 0.5f;
+        }
+
+        /** Distance from the logo's top/bottom edge to the screen edge, in px. */
+        public float logoMarginY() {
+            return centreY - logoSize * 0.5f;
+        }
+    }
+
+    /**
+     * Sizes everything from the viewport: the logo is centred on both axes and
+     * bounded so that the complete artwork always fits with a healthy margin,
+     * on a small phone, in landscape and on a tablet alike.
+     */
+    public static Layout layout(int width, int height, float density) {
+        float smallest = Math.max(1f, Math.min(width, height));
+
+        // 34% of the short side, kept readable on small screens and bold (but
+        // never oversized) on large ones, with a hard ceiling of 40%.
+        float logoSize = smallest * LOGO_FRACTION;
+        float floor = Math.min(dp(LOGO_MIN_DP, density), smallest * LOGO_MAX_FRACTION);
+        if (logoSize < floor) {
+            logoSize = floor;
+        }
+        float ceiling = Math.min(dp(LOGO_MAX_DP, density), smallest * LOGO_MAX_FRACTION);
+        if (logoSize > ceiling) {
+            logoSize = ceiling;
+        }
+
+        float centreX = width * 0.5f;
+        float centreY = height * 0.5f;
+        float glowRadius = Math.min(logoSize * GLOW_RADIUS_FACTOR, smallest * GLOW_MAX_FRACTION);
+        float depthRadius = logoSize * DEPTH_RADIUS_FACTOR;
+        float depthOffsetY = logoSize * DEPTH_OFFSET_FACTOR;
+        float sweepHalfExtent = logoSize * SWEEP_HALF_FACTOR;
+        float sweepBandHalf = logoSize * SWEEP_BAND_FACTOR;
+        // Tall enough that the rotated band always covers the artwork; the rest
+        // is clipped by the sweep layer, so it costs nothing.
+        float sweepBandHalfHeight = logoSize;
+
+        // The soft light is pre-rendered once per screen size, so a frame is a
+        // handful of textured quads instead of full-screen gradient or blur
+        // fills. A radial wash survives a stretch: it carries no detail.
+        int glowSpriteSide = clampInt(Math.round(glowRadius), 160, 384);
+        int ambientSpriteWidth = clampInt(Math.round(width / 6f), 96, 384);
+        int ambientSpriteHeight = clampInt(Math.round(height / 6f), 96, 384);
+
+        return new Layout(width, height, centreX, centreY, logoSize, glowRadius,
+                depthRadius, depthOffsetY, sweepHalfExtent, sweepBandHalf, sweepBandHalfHeight,
+                ambientSpriteWidth, ambientSpriteHeight, glowSpriteSide,
+                logoScaleFrom(logoSize, density));
+    }
+
+    private static float dp(float value, float density) {
+        return value * density;
+    }
+
+    private static int clampInt(int value, int minimum, int maximum) {
+        if (value < minimum) {
+            return minimum;
+        }
+        if (value > maximum) {
+            return maximum;
+        }
+        return value;
     }
 
     private static int index(int layer) {

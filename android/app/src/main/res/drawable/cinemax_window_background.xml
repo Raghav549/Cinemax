@@ -1,10 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Instant dark launch window; the full cinematic reveal follows in activity_main. -->
+<!--
+  The launch window: deep near-black with the Cinemax logo centred, so the
+  cold-start surface (and the API 31+ system splash) already shows the logo the
+  in-app reveal starts from. It is deliberately flat ink - the app's own reveal
+  brings the blue / violet / pink lighting up over it, so nothing flashes.
+-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@drawable/cinemax_splash_background" />
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:centerColor="#08080C"
+                android:endColor="#050507"
+                android:startColor="#050507"
+                android:type="linear" />
+        </shape>
+    </item>
+
     <item
-        android:width="120dp"
-        android:height="120dp"
+        android:width="128dp"
+        android:height="128dp"
         android:drawable="@drawable/cinemax_emblem"
         android:gravity="center" />
 </layer-list>

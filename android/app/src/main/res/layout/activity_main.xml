@@ -34,10 +34,10 @@
         android:visibility="invisible" />
 
     <!-- Native cinematic intro: one composited canvas view draws the whole
-         layered logo reveal (halo, aperture iris, expanding rings, sweeping
-         arc, light streaks, the emblem's two ribbons, a light sweep, wordmark,
-         brand rule, tagline). It hands over after a themed first paint or a
-         safety timeout; there is intentionally no spinner/loading copy. -->
+         reveal around the existing Cinemax logo - the logo arriving, a single
+         blue-to-pink light sweep across it and a glow that settles behind it.
+         No rings, streaks, dots, spinners or extra text. It hands over after a
+         themed first paint or a safety timeout, whichever comes first. -->
     <FrameLayout
         android:id="@+id/cinemax_splash"
         android:layout_width="match_parent"

@@ -45,6 +45,14 @@ public class MainActivity extends Activity {
     private static final String JS_BRIDGE_NAME = "CinemaxNative";
     private static final long BACK_EXIT_WINDOW_MILLIS = 2000L;
 
+    /**
+     * True once this process has shown the launch reveal. A genuine cold start
+     * plays it; an activity recreated inside a live process (a re-render, a
+     * theme change, a restore) shows the finished logo instead of replaying the
+     * animation, exactly like a reload after an offline retry.
+     */
+    private static boolean introConsumed;
+
     private FrameLayout rootView;
     private FrameLayout webContainer;
     private WebView web;
@@ -95,7 +103,7 @@ public class MainActivity extends Activity {
         }
     };
 
-    /** The stage calls this once the emblem and wordmark have landed. */
+    /** The stage calls this once the logo has landed. */
     private final Runnable revealLanded = new Runnable() {
         @Override
         public void run() {
@@ -142,8 +150,14 @@ public class MainActivity extends Activity {
         installSystemBarHandling();
         createWebView();
 
+        // The reveal is a launch gesture, not a screen: one genuine cold start
+        // per process plays it, everything else shows the finished logo. Nothing
+        // here can replay it while the user is navigating, and nothing waits for
+        // the animation beyond the hand-off gates below.
+        boolean coldLaunch = savedInstanceState == null && !introConsumed;
+        introConsumed = true;
         splashStage.setRevealListener(revealLanded);
-        splashStage.setMode(savedInstanceState == null
+        splashStage.setMode(coldLaunch
                 ? CinemaxSplashView.MODE_INTRO
                 : CinemaxSplashView.MODE_HOLD);
         splashStage.start();
@@ -316,7 +330,7 @@ public class MainActivity extends Activity {
     /**
      * A branded veil for a document that is genuinely being reloaded (offline
      * retry, renderer restart, activity recreation). It shows the finished
-     * lockup - the launch reveal is never replayed outside a real app launch.
+     * logo - the launch reveal is never replayed outside a real app launch.
      */
     private void showReloadingVeil() {
         splashDismissed = false;
@@ -638,7 +652,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (!splashStage.isStillFrame() && !splashStage.isHandoffReady()) {
-            // The lockup has not landed yet; the stage calls back when it has.
+            // The logo has not landed yet; the stage calls back when it has.
             return;
         }
         long remaining = splashStage.minimumVisibleMillis() - splashStage.elapsedMillis();
