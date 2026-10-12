@@ -20,7 +20,7 @@
         android:background="@android:color/black"
         android:visibility="gone" />
 
-    <!-- Native page-load indicator. -->
+    <!-- Only shown while a real navigation is in progress, never as splash chrome. -->
     <ProgressBar
         android:id="@+id/cinemax_progress"
         style="?android:attr/progressBarStyleHorizontal"
@@ -33,19 +33,56 @@
         android:progressDrawable="@drawable/cinemax_page_progress"
         android:visibility="invisible" />
 
-    <!-- Native splash: shown until the live page has the app theme applied. -->
-    <LinearLayout
+    <!-- Native cinematic intro. It hands over after a themed first paint or a
+         short safety timeout; there is intentionally no spinner/loading copy. -->
+    <FrameLayout
         android:id="@+id/cinemax_splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/cinemax_splash_background"
-        android:gravity="center"
-        android:orientation="vertical">
+        android:background="@drawable/cinemax_splash_background">
+
+        <View
+            android:id="@+id/cinemax_splash_glow"
+            android:layout_width="330dp"
+            android:layout_height="330dp"
+            android:layout_gravity="center"
+            android:background="@drawable/cinemax_splash_glow" />
+
+        <View
+            android:id="@+id/cinemax_splash_ring_one"
+            android:layout_width="360dp"
+            android:layout_height="360dp"
+            android:layout_gravity="center"
+            android:background="@drawable/cinemax_splash_ring" />
+
+        <View
+            android:id="@+id/cinemax_splash_ring_two"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_gravity="center"
+            android:background="@drawable/cinemax_splash_ring_inner" />
+
+        <View
+            android:id="@+id/cinemax_splash_streak_one"
+            android:layout_width="520dp"
+            android:layout_height="2dp"
+            android:layout_gravity="center"
+            android:background="@drawable/cinemax_splash_light_streak"
+            android:rotation="-24" />
+
+        <View
+            android:id="@+id/cinemax_splash_streak_two"
+            android:layout_width="470dp"
+            android:layout_height="1dp"
+            android:layout_gravity="center"
+            android:background="@drawable/cinemax_splash_light_streak"
+            android:rotation="-24" />
 
         <LinearLayout
             android:id="@+id/cinemax_splash_lockup"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
@@ -69,26 +106,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/splash_tagline" />
-
-            <ProgressBar
-                android:id="@+id/cinemax_splash_spinner"
-                style="?android:attr/progressBarStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="30dp"
-                android:indeterminate="true" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/cinemax_splash_status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:letterSpacing="0.08"
-            android:text="@string/splash_loading"
-            android:textColor="@color/cinemax_text_dim"
-            android:textSize="11sp" />
-    </LinearLayout>
+    </FrameLayout>
 
     <!-- Native offline / error surface with a retry path. -->
     <LinearLayout

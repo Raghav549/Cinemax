@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
@@ -41,8 +42,10 @@ public class MainActivity extends Activity {
     public static final String PRODUCTION_HOST = NavigationPolicy.PRODUCTION_HOST;
 
     private static final String JS_BRIDGE_NAME = "CinemaxNative";
-    private static final long MIN_SPLASH_MILLIS = 1050L;
-    private static final long SPLASH_TIMEOUT_MILLIS = 15000L;
+    private static final long MIN_SPLASH_MILLIS = 900L;
+    // A first paint normally dismisses the intro much sooner. This is only a
+    // dead-network safety valve, never a generic loading screen.
+    private static final long SPLASH_TIMEOUT_MILLIS = 8000L;
     private static final long BACK_EXIT_WINDOW_MILLIS = 2000L;
 
     private FrameLayout rootView;
@@ -51,8 +54,11 @@ public class MainActivity extends Activity {
     private FrameLayout fullscreenHost;
     private View splashLayer;
     private View splashLockup;
-    private View splashSpinner;
-    private View splashStatus;
+    private View splashGlow;
+    private View splashRingOne;
+    private View splashRingTwo;
+    private View splashStreakOne;
+    private View splashStreakTwo;
     private View errorLayer;
     private TextView errorMessage;
     private ProgressBar pageProgress;
@@ -75,6 +81,8 @@ public class MainActivity extends Activity {
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
     private int requestedOrientationBeforeFullscreen = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private boolean pagePlayerFullscreen;
+    private int requestedOrientationBeforePlayerFullscreen = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
 
     private final Runnable splashTimeout = new Runnable() {
         @Override
@@ -108,8 +116,11 @@ public class MainActivity extends Activity {
         fullscreenHost = (FrameLayout) findViewById(R.id.cinemax_fullscreen_host);
         splashLayer = findViewById(R.id.cinemax_splash);
         splashLockup = findViewById(R.id.cinemax_splash_lockup);
-        splashSpinner = findViewById(R.id.cinemax_splash_spinner);
-        splashStatus = findViewById(R.id.cinemax_splash_status);
+        splashGlow = findViewById(R.id.cinemax_splash_glow);
+        splashRingOne = findViewById(R.id.cinemax_splash_ring_one);
+        splashRingTwo = findViewById(R.id.cinemax_splash_ring_two);
+        splashStreakOne = findViewById(R.id.cinemax_splash_streak_one);
+        splashStreakTwo = findViewById(R.id.cinemax_splash_streak_two);
         errorLayer = findViewById(R.id.cinemax_error);
         errorMessage = (TextView) findViewById(R.id.cinemax_error_message);
         pageProgress = (ProgressBar) findViewById(R.id.cinemax_progress);
@@ -165,6 +176,15 @@ public class MainActivity extends Activity {
             exitFullscreen();
             return;
         }
+        if (pagePlayerFullscreen) {
+            // Let the React player update its own fullscreen control, then
+            // restore portrait/system bars natively before navigating back.
+            if (web != null) {
+                web.evaluateJavascript("window.dispatchEvent(new Event('cinemax:native-fullscreen-exit'));if(document.fullscreenElement){document.exitFullscreen();}", null);
+            }
+            exitPlayerFullscreen();
+            return;
+        }
         if (errorLayer.getVisibility() == View.VISIBLE) {
             hideError();
             if (web != null && web.canGoBack()) {
@@ -211,12 +231,22 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && (customView != null || pagePlayerFullscreen)) {
+            applyImmersiveFullscreen();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         ui.removeCallbacks(splashTimeout);
         ui.removeCallbacks(dismissSplashRunnable);
         ui.removeCallbacks(exitHintRunnable);
         customView = null;
         customViewCallback = null;
+        pagePlayerFullscreen = false;
+        clearImmersiveFullscreen();
         if (web != null) {
             webContainer.removeView(web);
             web.setWebChromeClient(null);
@@ -259,12 +289,13 @@ public class MainActivity extends Activity {
 
     private void showSplashForRetry() {
         splashShownAt = System.currentTimeMillis();
-        if (splashDismissed) {
-            splashDismissed = false;
-            splashLayer.setAlpha(1f);
-            splashLayer.setVisibility(View.VISIBLE);
-            playSplashIntro();
-        }
+        splashDismissed = false;
+        splashLayer.animate().cancel();
+        splashLayer.setAlpha(1f);
+        splashLayer.setScaleX(1f);
+        splashLayer.setScaleY(1f);
+        splashLayer.setVisibility(View.VISIBLE);
+        playSplashIntro();
         ui.removeCallbacks(splashTimeout);
         ui.postDelayed(splashTimeout, SPLASH_TIMEOUT_MILLIS);
     }
@@ -275,8 +306,8 @@ public class MainActivity extends Activity {
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Transparent bars: the Cinemax gradient (window background) lights
-            // the status and navigation bars instead of a flat black strip.
+            // Transparent bars blend into the deep-black Cinemax canvas rather
+            // than creating a separate system-bar strip.
             window.setStatusBarColor(Color.TRANSPARENT);
             window.setNavigationBarColor(Color.TRANSPARENT);
         }
@@ -368,19 +399,34 @@ public class MainActivity extends Activity {
     private void applyImmersiveFullscreen() {
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        window.getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+        } else {
+            window.getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
     }
 
     private void clearImmersiveFullscreen() {
         Window window = getWindow();
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+        } else {
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
         if (rootView != null) {
             // Bars are back: re-measure so the page regains its insets.
             rootView.requestApplyInsets();
@@ -422,7 +468,10 @@ public class MainActivity extends Activity {
         settings.setUserAgentString(settings.getUserAgentString()
                 + " CinemaxAndroid/" + CinemaxBridge.APP_VERSION);
 
-        web.setBackgroundColor(Color.parseColor("#100A28"));
+        web.setBackgroundColor(Color.parseColor("#050507"));
+        // Keep compositing on the GPU without pre-rastering offscreen pages,
+        // which is a common source of memory pressure on mid-range devices.
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         web.setHorizontalScrollBarEnabled(false);
@@ -461,6 +510,8 @@ public class MainActivity extends Activity {
                 }
                 customView = null;
                 customViewCallback = null;
+                pagePlayerFullscreen = false;
+                restoreOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                 fullscreenHost.removeAllViews();
                 fullscreenHost.setVisibility(View.GONE);
                 clearImmersiveFullscreen();
@@ -477,23 +528,40 @@ public class MainActivity extends Activity {
 
     // -------------------------------------------------------------- splash
 
+    /**
+     * A short transform/opacity-only logo reveal. There is deliberately no
+     * spinner or "Starting" copy: a visible progress indicator belongs to real
+     * in-page navigation, not to this branded hand-off.
+     */
     private void playSplashIntro() {
-        splashLockup.setAlpha(0f);
-        splashLockup.setScaleX(0.88f);
-        splashLockup.setScaleY(0.88f);
-        splashLockup.setTranslationY(dp(14));
-        splashLockup.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .translationY(0f)
-                .setDuration(560)
-                .setStartDelay(60)
+        animateSplash(splashLockup, 0f, 0.88f, dp(14), 1f, 1f, 0, 560, 70);
+        animateSplash(splashGlow, 0f, 0.58f, 0, 0.52f, 1.18f, 0, 900, 0);
+        animateSplash(splashRingOne, 0f, 0.54f, 0, 0f, 1.55f, 0, 1280, 100);
+        animateSplash(splashRingTwo, 0f, 0.62f, 0, 0f, 1.42f, 0, 1120, 260);
+        animateSplash(splashStreakOne, 0f, 1f, dp(72), 0f, 1f, -dp(92), 950, 130);
+        animateSplash(splashStreakTwo, 0f, 1f, -dp(66), 0f, 1f, dp(86), 960, 250);
+    }
+
+    /** Uses only properties that stay on the render thread on normal devices. */
+    private void animateSplash(final View view, float startAlpha, float startScale,
+            float startY, float endAlpha, float endScale, float endY,
+            long duration, long delay) {
+        if (view == null) {
+            return;
+        }
+        view.animate().cancel();
+        view.setAlpha(startAlpha);
+        view.setScaleX(startScale);
+        view.setScaleY(startScale);
+        view.setTranslationY(startY);
+        view.animate()
+                .alpha(endAlpha)
+                .scaleX(endScale)
+                .scaleY(endScale)
+                .translationY(endY)
+                .setDuration(duration)
+                .setStartDelay(delay)
                 .start();
-        splashSpinner.setAlpha(0f);
-        splashSpinner.animate().alpha(1f).setDuration(420).setStartDelay(260).start();
-        splashStatus.setAlpha(0f);
-        splashStatus.animate().alpha(1f).setDuration(420).setStartDelay(360).start();
     }
 
     /** The page reports that the app presentation layer is live. */
@@ -547,6 +615,7 @@ public class MainActivity extends Activity {
             return;
         }
         splashDismissed = true;
+        ui.removeCallbacks(splashTimeout);
         splashLayer.animate()
                 .alpha(0f)
                 .scaleX(1.04f)
@@ -676,6 +745,9 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (pagePlayerFullscreen) {
+            exitPlayerFullscreen();
+        }
         customView = view;
         customViewCallback = callback;
         requestedOrientationBeforeFullscreen = getRequestedOrientation();
@@ -686,7 +758,7 @@ public class MainActivity extends Activity {
         pageProgress.setVisibility(View.INVISIBLE);
         pageProgressVisible = false;
         applyImmersiveFullscreen();
-        applyFullscreenOrientation(view);
+        requestLandscapeOrientation();
     }
 
     public void exitFullscreen() {
@@ -700,47 +772,65 @@ public class MainActivity extends Activity {
         fullscreenHost.removeView(view);
         fullscreenHost.setVisibility(View.GONE);
         clearImmersiveFullscreen();
-        try {
-            setRequestedOrientation(requestedOrientationBeforeFullscreen);
-        } catch (Exception ignored) {
-            // The device may refuse while the activity is not resumed.
-        }
+        restoreOrientation(requestedOrientationBeforeFullscreen);
         if (callback != null) {
             callback.onCustomViewHidden();
         }
     }
 
-    public boolean isFullscreen() {
-        return customView != null;
-    }
-
     /**
-     * A landscape film fills a landscape screen; a vertical clip stays vertical.
-     * The orientation follows the surface the player asked for, then is released.
+     * Fullscreen requested by the custom React player. Unlike a browser custom
+     * view, the WebView remains mounted so playback state, HLS buffers and the
+     * current route survive orientation changes.
      */
-    private void applyFullscreenOrientation(final View view) {
-        ui.postDelayed(new Runnable() {
+    public void enterPlayerFullscreen() {
+        runOnUi(new Runnable() {
             @Override
             public void run() {
-                if (customView == null) {
+                if (pagePlayerFullscreen || customView != null) {
                     return;
                 }
-                int width = view.getWidth();
-                int height = view.getHeight();
-                if (width <= 0 || height <= 0) {
-                    return;
-                }
-                try {
-                    if (width > height) {
-                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-                    } else {
-                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-                    }
-                } catch (Exception ignored) {
-                    // Orientation locks can be restricted; playback still works.
-                }
+                pagePlayerFullscreen = true;
+                requestedOrientationBeforePlayerFullscreen = getRequestedOrientation();
+                applyImmersiveFullscreen();
+                requestLandscapeOrientation();
             }
-        }, 220);
+        });
+    }
+
+    public void exitPlayerFullscreen() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (!pagePlayerFullscreen) {
+                    return;
+                }
+                pagePlayerFullscreen = false;
+                clearImmersiveFullscreen();
+                restoreOrientation(requestedOrientationBeforePlayerFullscreen);
+            }
+        });
+    }
+
+    public boolean isFullscreen() {
+        return customView != null || pagePlayerFullscreen;
+    }
+
+    /** A video fullscreen button always opens a landscape cinema surface. */
+    private void requestLandscapeOrientation() {
+        try {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        } catch (Exception ignored) {
+            // Orientation locks can be restricted; immersive playback still works.
+        }
+    }
+
+    private void restoreOrientation(int previousOrientation) {
+        try {
+            setRequestedOrientation(previousOrientation);
+        } catch (Exception ignored) {
+            // The device may refuse while the activity is not resumed.
+        }
     }
 
     // ---------------------------------------------------------------- misc

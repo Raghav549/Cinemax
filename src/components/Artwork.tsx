@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { CinemaxEmblem } from "./Logo";
 
 export function artworkSources(src: string, kind: "poster" | "backdrop") {
@@ -19,10 +19,12 @@ function ArtworkImage({ src, alt, className, kind, priority, sizes }: { src: str
   const sources = artworkSources(src, kind);
   // Admins may use any licensed image host. Responsive TMDB sources avoid an image-proxy allowlist and full-original downloads.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img {...sources} alt={alt} className={className} width={kind === "poster" ? 500 : 1280} height={kind === "poster" ? 750 : 720} sizes={sizes} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" onError={() => setFailed(true)} />;
+  return <img {...sources} alt={alt} className={className} width={kind === "poster" ? 500 : 1280} height={kind === "poster" ? 750 : 720} sizes={sizes} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "low"} decoding="async" draggable={false} onError={() => setFailed(true)} />;
 }
 
-export default function Artwork({ src, alt = "", className = "", kind = "poster", priority = false, sizes }: { src: string | null | undefined; alt?: string; className?: string; kind?: "poster" | "backdrop"; priority?: boolean; sizes?: string }) {
+function Artwork({ src, alt = "", className = "", kind = "poster", priority = false, sizes }: { src: string | null | undefined; alt?: string; className?: string; kind?: "poster" | "backdrop"; priority?: boolean; sizes?: string }) {
   if (!src) return <div className={`artwork-placeholder ${kind === "backdrop" ? "artwork-backdrop-placeholder" : ""} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined}>{kind === "poster" && <CinemaxEmblem />}</div>;
   return <ArtworkImage key={src} src={src} alt={alt} className={className} kind={kind} priority={priority} sizes={sizes ?? (kind === "poster" ? "(max-width: 640px) 40vw, (max-width: 1000px) 25vw, 200px" : "100vw")} />;
 }
+
+export default memo(Artwork);

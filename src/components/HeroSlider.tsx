@@ -27,9 +27,10 @@ export default function HeroSlider() {
   const touch = useRef<{ x: number; y: number } | null>(null);
   const reducedMotion = useReducedMotion();
 
+  const moviesById = useMemo(() => new Map(movies.map((movie) => [movie.id, movie])), [movies]);
   const features = useMemo<Feature[]>(() => {
     if (slides.length) return slides.map((slide) => {
-      const movie = movies.find((item) => item.id === slide.movieId);
+      const movie = slide.movieId === null ? undefined : moviesById.get(slide.movieId);
       return {
         id: `slide-${slide.id}`,
         title: slide.title || movie?.title || "",
@@ -45,7 +46,7 @@ export default function HeroSlider() {
       movieId: movie.id, movie,
       metadata: [movie.year ? String(movie.year) : "", ...(movie.genre ?? "").split(",").map((item) => item.trim()).slice(0, 3)].filter(Boolean),
     }));
-  }, [slides, movies]);
+  }, [slides, movies, moviesById]);
   const current = Math.max(0, Math.min(selection.current, features.length - 1));
   const feature = features[current];
   const paused = interacting || userPaused || reducedMotion || !pageVisible;

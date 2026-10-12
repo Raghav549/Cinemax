@@ -13,8 +13,8 @@ import android.webkit.JavascriptInterface;
  */
 public class CinemaxBridge {
 
-    public static final String APP_VERSION = "1.0.0";
-    public static final int APP_VERSION_CODE = 1;
+    public static final String APP_VERSION = "1.1.0";
+    public static final int APP_VERSION_CODE = 2;
 
     private final MainActivity activity;
 
@@ -60,6 +60,17 @@ public class CinemaxBridge {
     @JavascriptInterface
     public void setMediaPlaying(final boolean playing) {
         activity.onMediaPlaying(playing);
+    }
+
+    /** Called only by the injected Cinemax player fullscreen event. */
+    @JavascriptInterface
+    public void enterPlayerFullscreen() {
+        activity.enterPlayerFullscreen();
+    }
+
+    @JavascriptInterface
+    public void exitPlayerFullscreen() {
+        activity.exitPlayerFullscreen();
     }
 
     @JavascriptInterface

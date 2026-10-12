@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="cinemax_ink">#0A0622</color>
-    <color name="cinemax_ink_soft">#150A38</color>
+    <!-- Near-black foundations; accent/logo colours remain unchanged. -->
+    <color name="cinemax_ink">#050507</color>
+    <color name="cinemax_ink_soft">#08080C</color>
     <color name="cinemax_plum">#2A1157</color>
     <color name="cinemax_violet">#7C4DFF</color>
     <color name="cinemax_iris">#8B5CF6</color>

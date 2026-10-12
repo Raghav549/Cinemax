@@ -8,11 +8,30 @@ import MovieCard from "@/components/MovieCard";
 import MovieRow from "@/components/MovieRow";
 import ContinueWatchingRow from "@/components/ContinueWatchingRow";
 import { useCatalogue } from "@/components/CatalogueProvider";
-import { FILTERS, matchesCollection, tokens } from "@/lib/catalogue";
+import { FILTERS, matchesCollection, tokens, type CatalogueMovie } from "@/lib/catalogue";
 import { RowSkeletons } from "@/components/Skeletons";
 import EmptyState from "@/components/EmptyState";
 import Icon, { collectionIcon } from "@/components/Icon";
 import Logo from "@/components/Logo";
+
+function buildCollectionIndex(movies: CatalogueMovie[]) {
+  const index = new Map<string, CatalogueMovie[]>();
+  const add = (key: string, movie: CatalogueMovie) => {
+    const list = index.get(key);
+    if (list) list.push(movie);
+    else index.set(key, [movie]);
+  };
+  for (const movie of movies) {
+    // This mirrors matchesCollection for collection rows, but performs the
+    // token work once instead of filtering the whole catalogue for every rail.
+    const keys = new Set([...tokens(movie.category), ...tokens(movie.genre)]);
+    const type = movie.type?.toLowerCase();
+    if (type === "movie") keys.add("movies");
+    if (type === "series" || type === "anime" || type === "documentary") keys.add(type);
+    keys.forEach((key) => add(key, movie));
+  }
+  return index;
+}
 
 export default function HomePage() {
   const { movies, categories, loading } = useCatalogue();
@@ -22,7 +41,8 @@ export default function HomePage() {
     return [...FILTERS, ...categories.filter((item) => !known.has(item.slug)).map((item) => ({ label: item.name, value: item.slug }))];
   }, [categories]);
   const collections = useMemo(() => categories.length ? categories : [...new Set(movies.flatMap((movie) => tokens(movie.category)))].map((slug, index) => ({ id: index, slug, name: slug.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) })), [categories, movies]);
-  const rows = useMemo(() => collections.map((collection) => ({ ...collection, movies: movies.filter((movie) => matchesCollection(movie, collection.slug)) })).filter((row) => row.movies.length), [collections, movies]);
+  const collectionIndex = useMemo(() => buildCollectionIndex(movies), [movies]);
+  const rows = useMemo(() => collections.map((collection) => ({ ...collection, movies: collectionIndex.get(collection.slug.toLowerCase()) ?? [] })).filter((row) => row.movies.length), [collections, collectionIndex]);
   const filtered = useMemo(() => movies.filter((movie) => matchesCollection(movie, filter)), [movies, filter]);
 
   return <main className="home-shell" id="main-content" tabIndex={-1}>

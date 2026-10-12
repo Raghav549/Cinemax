@@ -35,6 +35,12 @@ export default function PlaybackOverlay({ movie, video, onClose }: { movie: Cata
       if (event.key === "Escape" && !layer.current?.querySelector(".player-popover")) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        // Escape/back exits fullscreen first, matching Android's native back
+        // contract. A second press then closes the player.
+        if (document.fullscreenElement || layer.current?.querySelector(".video-player-shell.is-fullscreen")) {
+          window.dispatchEvent(new Event("cinemax:request-exit-player-fullscreen"));
+          return;
+        }
         closeRef.current();
       }
       if (event.key !== "Tab" || !layer.current) return;
