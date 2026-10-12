@@ -667,6 +667,63 @@ html[data-cinemax-app="android"] .content-poster-grid .movie-card {
   animation: none;
 }
 
+/* ============================================================================
+   Scroll performance (app only)
+
+   Each rule below removes work that a mid-range Android WebView would otherwise
+   do on *every frame* of a vertical scroll gesture. Nothing here changes how the
+   page looks at rest: colours, artwork, card design and layout are untouched.
+   ========================================================================== */
+
+/* 1. Rails are never skipped with content-visibility.
+   The site skips offscreen rails (`content-visibility: auto` inside @supports)
+   and reserves `contain-intrinsic-size: auto 390px` for them. The real rail is
+   closer to 378px on a 412dp phone, so a row that scrolls back into view both
+   forces a synchronous style+layout+paint of ~20 posters *during* the scroll and
+   changes the document height - felt as a stutter with a small jump. Layout and
+   style containment keep the paint invalidation isolated; the one-off layout of
+   every rail now happens behind the native splash instead of under the finger.
+   (Poster artwork, cards and their own shadows are deliberately untouched.) */
+html[data-cinemax-app="android"] .movie-row {
+  content-visibility: visible;
+  contain-intrinsic-size: auto none;
+  contain: layout style;
+}
+
+/* 2. Document-level scrolling is immediate in the app.
+   The site's `html { scroll-behavior: smooth }` turns the router's "back to the
+   top" on every navigation into a long animated scroll of a very tall document,
+   which fights the user's own gesture (and was felt as a freeze). Rails keep
+   their own smooth arrow scrolling - that rule is untouched. */
+html[data-cinemax-app="android"] {
+  scroll-behavior: auto;
+}
+
+/* 3. Continuous decorative animations pause while the page is actually moving.
+   The shell sets [data-cinemax-scrolling] during a gesture and removes it the
+   moment scrolling stops, so the flowing button light, the skeleton shimmer and
+   the spinner all resume exactly where they were - they just stop repainting on
+   every frame of a gesture (a repeating SVG stroke animation is per-frame paint
+   work on WebView builds that cannot keep it on the compositor). Deliberately
+   limited to animations that never end: one-shot entrance animations and the
+   hero's own cross-fade are left alone, so nothing the user is looking at can
+   snap. */
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .button-light rect,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .shimmer::after,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .spin {
+  animation-play-state: paused;
+}
+
+/* 4. Keep both scroll axes on the compositor.
+   A touch-action of pan-x on a rail forces vertical pans that start on a poster
+   back through the main thread; the rails already contain their own horizontal
+   overscroll, so the default action is both correct and cheaper. */
+html[data-cinemax-app="android"] .movie-track,
+html[data-cinemax-app="android"] .filter-chips,
+html[data-cinemax-app="android"] .hero-preview-track {
+  touch-action: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html[data-cinemax-app="android"] .hero-scene {
     transition: none;

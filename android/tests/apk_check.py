@@ -126,20 +126,28 @@ def main() -> int:
     check("resources.arsc" in names, "resources.arsc is present")
     check("classes.dex" in names, "classes.dex is present")
     check(any(name.startswith("res/") for name in names), "compiled resources are present")
+    # The app-only presentation layer plus the brand wordmark font (the subset of
+    # the website's Outfit face the native splash draws with) and its licence.
+    packaged_assets = [
+        "assets/cinemax/app-shell.js",
+        "assets/cinemax/app-theme.css",
+        "assets/cinemax/fonts/OUTFIT-LICENSE.txt",
+        "assets/cinemax/fonts/outfit-550.ttf",
+    ]
     check(
-        sorted(name for name in names if name.startswith("assets/cinemax/"))
-        == ["assets/cinemax/app-shell.js", "assets/cinemax/app-theme.css"],
+        sorted(name for name in names if name.startswith("assets/cinemax/")) == packaged_assets,
         "app presentation assets are packaged under assets/cinemax/",
     )
 
     section("asset parity with the repository")
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # android/
-    for asset in ("app-theme.css", "app-shell.js"):
-        local = os.path.join(root, "app", "src", "main", "assets", "cinemax", asset)
+    for asset in packaged_assets:
+        relative = asset[len("assets/cinemax/"):]
+        local = os.path.join(root, "app", "src", "main", "assets", "cinemax", *relative.split("/"))
         with open(local, "rb") as handle:
             expected = handle.read()
-        actual = read_entry(apk, f"assets/cinemax/{asset}")
-        check(actual == expected, f"{asset} inside the APK matches the source file")
+        actual = read_entry(apk, asset)
+        check(actual == expected, f"{relative} inside the APK matches the source file")
 
     section("manifest")
     badging = run([aapt2, "dump", "badging", apk])
@@ -209,9 +217,42 @@ def main() -> int:
             f"legacy round launcher icon exists for {density}",
         )
     check(any("cinemax_emblem" in name for name in names), "the Cinemax emblem drawable is packaged")
+    check(any("cinemax_emblem_ribbon" in name for name in names), "the emblem's ribbon layer is packaged")
+    check(any("cinemax_emblem_fold" in name for name in names), "the emblem's fold layer is packaged")
     check(any("cinemax_splash_background" in name for name in names), "the splash gradient is packaged")
+    # The previous splash was a stack of separately animated drawables; the
+    # reveal is drawn by one composited view now, so those layers must not ship.
+    check(
+        not any(
+            "cinemax_splash_ring" in name or "cinemax_splash_glow" in name or "cinemax_splash_light_streak" in name
+            for name in names
+        ),
+        "the replaced static splash layers are no longer shipped",
+    )
     check(any("activity_main" in name for name in names), "the activity layout is packaged")
     check(any("values-v31" in name or name.endswith("resources.arsc") for name in names), "version-qualified values are compiled")
+
+    # The compiled layout is binary XML: parse it and assert what the device
+    # inflates, including the single-view reveal canvas that replaced the old
+    # stack of animated splash children.
+    layout_entry = next((name for name in names if name.endswith("layout/activity_main.xml")), None)
+    check(layout_entry is not None, "the splash layout entry exists in the archive")
+    if layout_entry:
+        layout = parse_axml(read_entry(apk, layout_entry))
+        element_names = []
+
+        def collect(node) -> None:
+            for child in getattr(node, "children", ()) or ():
+                element_names.append(getattr(child, "name", "") or "")
+                collect(child)
+
+        collect(layout)
+        check("com.cinemax.app.CinemaxSplashView" in element_names,
+              "the splashed layout inflates the layered native reveal view")
+        check(element_names.count("com.cinemax.app.CinemaxSplashView") == 1,
+              "exactly one reveal canvas is inflated")
+        check("FrameLayout" in element_names and "ProgressBar" in element_names,
+              "the shell layout (host, progress, error surface) is intact")
 
     section("dex content")
     dex = read_entry(apk, "classes.dex")
@@ -222,6 +263,8 @@ def main() -> int:
         b"Lcom/cinemax/app/CinemaxBridge;",
         b"Lcom/cinemax/app/NavigationPolicy;",
         b"Lcom/cinemax/app/AppTheme;",
+        b"Lcom/cinemax/app/CinemaxSplashView;",
+        b"Lcom/cinemax/app/SplashMotion;",
     ):
         check(descriptor in dex, f"{descriptor.decode()} is in classes.dex")
     check(b"cinemax-orpin.vercel.app" in dex, "the production URL is compiled into the APK")

@@ -2,6 +2,7 @@ package com.cinemax.app;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentCallbacks2;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
@@ -42,10 +43,6 @@ public class MainActivity extends Activity {
     public static final String PRODUCTION_HOST = NavigationPolicy.PRODUCTION_HOST;
 
     private static final String JS_BRIDGE_NAME = "CinemaxNative";
-    private static final long MIN_SPLASH_MILLIS = 900L;
-    // A first paint normally dismisses the intro much sooner. This is only a
-    // dead-network safety valve, never a generic loading screen.
-    private static final long SPLASH_TIMEOUT_MILLIS = 8000L;
     private static final long BACK_EXIT_WINDOW_MILLIS = 2000L;
 
     private FrameLayout rootView;
@@ -53,12 +50,7 @@ public class MainActivity extends Activity {
     private WebView web;
     private FrameLayout fullscreenHost;
     private View splashLayer;
-    private View splashLockup;
-    private View splashGlow;
-    private View splashRingOne;
-    private View splashRingTwo;
-    private View splashStreakOne;
-    private View splashStreakTwo;
+    private CinemaxSplashView splashStage;
     private View errorLayer;
     private TextView errorMessage;
     private ProgressBar pageProgress;
@@ -67,16 +59,21 @@ public class MainActivity extends Activity {
     private CinemaxChromeClient chromeClient;
     private boolean edgeToEdge;
 
-    private long splashShownAt;
     private boolean splashDismissed;
+    private boolean pageReadyForHandoff;
     private long lastBackPressAt;
     private boolean pageProgressVisible;
+    private boolean insetsPublished;
 
     /** Last measured window insets, in CSS pixels, pushed into the page. */
     private int insetTop;
     private int insetBottom;
     private int insetLeft;
     private int insetRight;
+    private int pushedInsetTop = -1;
+    private int pushedInsetBottom = -1;
+    private int pushedInsetLeft = -1;
+    private int pushedInsetRight = -1;
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -91,10 +88,18 @@ public class MainActivity extends Activity {
         }
     };
 
-    private final Runnable dismissSplashRunnable = new Runnable() {
+    private final Runnable handoffRunnable = new Runnable() {
         @Override
         public void run() {
-            dismissSplash();
+            maybeDismissSplash();
+        }
+    };
+
+    /** The stage calls this once the emblem and wordmark have landed. */
+    private final Runnable revealLanded = new Runnable() {
+        @Override
+        public void run() {
+            maybeDismissSplash();
         }
     };
 
@@ -115,12 +120,7 @@ public class MainActivity extends Activity {
         webContainer = (FrameLayout) findViewById(R.id.cinemax_web_container);
         fullscreenHost = (FrameLayout) findViewById(R.id.cinemax_fullscreen_host);
         splashLayer = findViewById(R.id.cinemax_splash);
-        splashLockup = findViewById(R.id.cinemax_splash_lockup);
-        splashGlow = findViewById(R.id.cinemax_splash_glow);
-        splashRingOne = findViewById(R.id.cinemax_splash_ring_one);
-        splashRingTwo = findViewById(R.id.cinemax_splash_ring_two);
-        splashStreakOne = findViewById(R.id.cinemax_splash_streak_one);
-        splashStreakTwo = findViewById(R.id.cinemax_splash_streak_two);
+        splashStage = (CinemaxSplashView) findViewById(R.id.cinemax_splash_stage);
         errorLayer = findViewById(R.id.cinemax_error);
         errorMessage = (TextView) findViewById(R.id.cinemax_error_message);
         pageProgress = (ProgressBar) findViewById(R.id.cinemax_progress);
@@ -142,9 +142,12 @@ public class MainActivity extends Activity {
         installSystemBarHandling();
         createWebView();
 
-        playSplashIntro();
-        splashShownAt = System.currentTimeMillis();
-        ui.postDelayed(splashTimeout, SPLASH_TIMEOUT_MILLIS);
+        splashStage.setRevealListener(revealLanded);
+        splashStage.setMode(savedInstanceState == null
+                ? CinemaxSplashView.MODE_INTRO
+                : CinemaxSplashView.MODE_HOLD);
+        splashStage.start();
+        ui.postDelayed(splashTimeout, SplashMotion.SAFETY_TIMEOUT_MILLIS);
         loadUrl(initialUrl(getIntent()));
     }
 
@@ -215,6 +218,7 @@ public class MainActivity extends Activity {
         if (web != null) {
             web.onPause();
             web.pauseTimers();
+            applyRendererPriority(false);
         }
     }
 
@@ -224,9 +228,27 @@ public class MainActivity extends Activity {
         if (web != null) {
             web.resumeTimers();
             web.onResume();
+            applyRendererPriority(true);
         }
         if (rootView != null) {
             rootView.requestApplyInsets();
+        }
+    }
+
+    /**
+     * Frees WebView caches before the system has to kill the process. The site's
+     * own image/HTTP caches live in the renderer and are reused for the pixels
+     * the user is about to scroll back into, so this is only done when the
+     * platform reports real pressure.
+     */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (web == null) {
+            return;
+        }
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            web.freeMemory();
         }
     }
 
@@ -241,8 +263,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         ui.removeCallbacks(splashTimeout);
-        ui.removeCallbacks(dismissSplashRunnable);
+        ui.removeCallbacks(handoffRunnable);
         ui.removeCallbacks(exitHintRunnable);
+        if (splashStage != null) {
+            splashStage.stop();
+            splashStage.setRevealListener(null);
+        }
         customView = null;
         customViewCallback = null;
         pagePlayerFullscreen = false;
@@ -282,22 +308,29 @@ public class MainActivity extends Activity {
 
     private void retryConnection() {
         hideError();
-        showSplashForRetry();
+        showReloadingVeil();
         String current = web == null ? null : web.getUrl();
         loadUrl(current != null && current.startsWith("http") ? current : HOME_URL);
     }
 
-    private void showSplashForRetry() {
-        splashShownAt = System.currentTimeMillis();
+    /**
+     * A branded veil for a document that is genuinely being reloaded (offline
+     * retry, renderer restart, activity recreation). It shows the finished
+     * lockup - the launch reveal is never replayed outside a real app launch.
+     */
+    private void showReloadingVeil() {
         splashDismissed = false;
+        pageReadyForHandoff = false;
         splashLayer.animate().cancel();
         splashLayer.setAlpha(1f);
         splashLayer.setScaleX(1f);
         splashLayer.setScaleY(1f);
         splashLayer.setVisibility(View.VISIBLE);
-        playSplashIntro();
+        splashStage.setMode(CinemaxSplashView.MODE_HOLD);
+        splashStage.start();
+        ui.removeCallbacks(handoffRunnable);
         ui.removeCallbacks(splashTimeout);
-        ui.postDelayed(splashTimeout, SPLASH_TIMEOUT_MILLIS);
+        ui.postDelayed(splashTimeout, SplashMotion.SAFETY_TIMEOUT_MILLIS);
     }
 
     // ------------------------------------------------------- window & insets
@@ -370,10 +403,21 @@ public class MainActivity extends Activity {
         if (density <= 0f) {
             density = 1f;
         }
-        insetTop = Math.round(topPx / density);
-        insetBottom = Math.round(bottomPx / density);
-        insetLeft = Math.round(leftPx / density);
-        insetRight = Math.round(rightPx / density);
+        int top = Math.round(topPx / density);
+        int bottom = Math.round(bottomPx / density);
+        int left = Math.round(leftPx / density);
+        int right = Math.round(rightPx / density);
+        if (top == insetTop && bottom == insetBottom && left == insetLeft && right == insetRight
+                && insetsPublished) {
+            // Insets are dispatched on every system-bar transition (and, on some
+            // devices, repeatedly during a scroll gesture). Publishing unchanged
+            // values would evaluate script on the page's main thread for nothing.
+            return;
+        }
+        insetTop = top;
+        insetBottom = bottom;
+        insetLeft = left;
+        insetRight = right;
         pushInsetsToPage();
     }
 
@@ -381,6 +425,15 @@ public class MainActivity extends Activity {
         if (web == null) {
             return;
         }
+        if (insetsPublished && insetTop == pushedInsetTop && insetBottom == pushedInsetBottom
+                && insetLeft == pushedInsetLeft && insetRight == pushedInsetRight) {
+            return;
+        }
+        pushedInsetTop = insetTop;
+        pushedInsetBottom = insetBottom;
+        pushedInsetLeft = insetLeft;
+        pushedInsetRight = insetRight;
+        insetsPublished = true;
         String script = "window.__cinemaxInsets&&window.__cinemaxInsets("
                 + insetTop + "," + insetBottom + "," + insetLeft + "," + insetRight + ");";
         web.evaluateJavascript(script, null);
@@ -448,8 +501,16 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setLoadsImagesAutomatically(true);
+        // Honour the page's own responsive viewport (width=device-width,
+        // initial-scale=1). Overview mode makes the WebView re-fit the whole
+        // document to the view every time the document height changes - which,
+        // on a catalogue that grows as rails lazily mount, is felt as sudden
+        // layout jumps and scale wobble while scrolling.
         settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(true);
+        settings.setLoadWithOverviewMode(false);
+        // Never pre-rasterise offscreen content: it costs raster time and memory
+        // on mid-range devices for pages the user has not reached.
+        settings.setOffscreenPreRaster(false);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
@@ -469,9 +530,12 @@ public class MainActivity extends Activity {
                 + " CinemaxAndroid/" + CinemaxBridge.APP_VERSION);
 
         web.setBackgroundColor(Color.parseColor("#050507"));
-        // Keep compositing on the GPU without pre-rastering offscreen pages,
-        // which is a common source of memory pressure on mid-range devices.
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // Deliberately NO setLayerType() here. Forcing LAYER_TYPE_HARDWARE on a
+        // WebView takes it out of Chromium's own tiled/scanline compositing and
+        // into a single GPU texture that has to be re-uploaded as the page
+        // scrolls - the classic cause of stuttering vertical scrolling and high
+        // GPU memory in Android WebView apps. The default (no forced layer)
+        // keeps Chromium's fast path, including its dedicated render surface.
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         web.setHorizontalScrollBarEnabled(false);
@@ -483,7 +547,14 @@ public class MainActivity extends Activity {
         if (isDebuggableBuild()) {
             // Remote inspection only where the build itself is debuggable.
             WebView.setWebContentsDebuggingEnabled(true);
+        } else {
+            WebView.setWebContentsDebuggingEnabled(false);
         }
+
+        // Keep the renderer process at foreground priority while the app is
+        // visible so the compositor is never throttled mid-scroll; it is relaxed
+        // in onPause() so a backgrounded app does not hold the process.
+        applyRendererPriority(true);
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -516,7 +587,7 @@ public class MainActivity extends Activity {
                 fullscreenHost.setVisibility(View.GONE);
                 clearImmersiveFullscreen();
                 createWebView();
-                showSplashForRetry();
+                showReloadingVeil();
                 showError(getString(R.string.error_reload_body));
                 web.loadUrl(HOME_URL);
                 if (crashed) {
@@ -529,53 +600,101 @@ public class MainActivity extends Activity {
     // -------------------------------------------------------------- splash
 
     /**
-     * A short transform/opacity-only logo reveal. There is deliberately no
-     * spinner or "Starting" copy: a visible progress indicator belongs to real
-     * in-page navigation, not to this branded hand-off.
+     * The page reports that the app presentation layer is live, i.e. the real
+     * home page has a themed first paint behind the splash.
      */
-    private void playSplashIntro() {
-        animateSplash(splashLockup, 0f, 0.88f, dp(14), 1f, 1f, 0, 560, 70);
-        animateSplash(splashGlow, 0f, 0.58f, 0, 0.52f, 1.18f, 0, 900, 0);
-        animateSplash(splashRingOne, 0f, 0.54f, 0, 0f, 1.55f, 0, 1280, 100);
-        animateSplash(splashRingTwo, 0f, 0.62f, 0, 0f, 1.42f, 0, 1120, 260);
-        animateSplash(splashStreakOne, 0f, 1f, dp(72), 0f, 1f, -dp(92), 950, 130);
-        animateSplash(splashStreakTwo, 0f, 1f, -dp(66), 0f, 1f, dp(86), 960, 250);
-    }
-
-    /** Uses only properties that stay on the render thread on normal devices. */
-    private void animateSplash(final View view, float startAlpha, float startScale,
-            float startY, float endAlpha, float endScale, float endY,
-            long duration, long delay) {
-        if (view == null) {
-            return;
-        }
-        view.animate().cancel();
-        view.setAlpha(startAlpha);
-        view.setScaleX(startScale);
-        view.setScaleY(startScale);
-        view.setTranslationY(startY);
-        view.animate()
-                .alpha(endAlpha)
-                .scaleX(endScale)
-                .scaleY(endScale)
-                .translationY(endY)
-                .setDuration(duration)
-                .setStartDelay(delay)
-                .start();
-    }
-
-    /** The page reports that the app presentation layer is live. */
     public void onThemeApplied() {
-        scheduleSplashDismiss();
+        onPageReadyForHandoff();
     }
 
     public void onShellReady() {
-        scheduleSplashDismiss();
+        onPageReadyForHandoff();
     }
 
     public void onPageFinished(String url) {
         applyAppTheme();
-        scheduleSplashDismiss();
+        onPageReadyForHandoff();
+    }
+
+    private void onPageReadyForHandoff() {
+        pageReadyForHandoff = true;
+        maybeDismissSplash();
+    }
+
+    /**
+     * Hands the screen over to the page once the reveal is actually visible and
+     * the page is painted. There is deliberately no spinner or "Starting" copy:
+     * a visible progress indicator belongs to real in-page navigation, not to
+     * this branded hand-off, and the splash never blocks startup work - the
+     * WebView starts loading the production site in onCreate().
+     */
+    private void maybeDismissSplash() {
+        if (splashDismissed || splashLayer.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        if (!pageReadyForHandoff) {
+            // Never uncover an unpainted page: a flash of empty dark canvas is
+            // exactly what the splash exists to hide.
+            return;
+        }
+        if (!splashStage.isStillFrame() && !splashStage.isHandoffReady()) {
+            // The lockup has not landed yet; the stage calls back when it has.
+            return;
+        }
+        long remaining = splashStage.minimumVisibleMillis() - splashStage.elapsedMillis();
+        if (remaining > 0L) {
+            ui.removeCallbacks(handoffRunnable);
+            ui.postDelayed(handoffRunnable, remaining + 16L);
+            return;
+        }
+        dismissSplash();
+    }
+
+    private void dismissSplash() {
+        if (splashDismissed) {
+            return;
+        }
+        splashDismissed = true;
+        ui.removeCallbacks(splashTimeout);
+        ui.removeCallbacks(handoffRunnable);
+        // Stop the timeline on the frame it reached. The cross-fade below only
+        // changes this view's alpha and scale, which the render thread applies to
+        // the recorded display list, so the hand-off costs no drawing and no
+        // main-thread work while the page finishes painting.
+        splashStage.freeze();
+        splashLayer.animate()
+                .alpha(0f)
+                .scaleX(1.035f)
+                .scaleY(1.035f)
+                .setDuration(SplashMotion.HANDOFF_FADE_MILLIS)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        splashLayer.setVisibility(View.GONE);
+                        splashLayer.setAlpha(1f);
+                        splashLayer.setScaleX(1f);
+                        splashLayer.setScaleY(1f);
+                        splashStage.stop();
+                    }
+                })
+                .start();
+    }
+
+    /**
+     * Keeps the renderer at foreground priority while the app is visible (so the
+     * compositor is never throttled mid-scroll) and lets it go in the background.
+     */
+    private void applyRendererPriority(boolean foreground) {
+        if (web == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        try {
+            web.setRendererPriorityPolicy(
+                    foreground ? WebView.RENDERER_PRIORITY_IMPORTANT : WebView.RENDERER_PRIORITY_WAIVED,
+                    true);
+        } catch (Exception ignored) {
+            // Some vendor WebViews restrict this; the default policy applies.
+        }
     }
 
     public void onPageProgress(int progress) {
@@ -600,38 +719,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void scheduleSplashDismiss() {
-        long elapsed = System.currentTimeMillis() - splashShownAt;
-        ui.removeCallbacks(dismissSplashRunnable);
-        if (elapsed >= MIN_SPLASH_MILLIS) {
-            dismissSplash();
-        } else {
-            ui.postDelayed(dismissSplashRunnable, MIN_SPLASH_MILLIS - elapsed);
-        }
-    }
-
-    private void dismissSplash() {
-        if (splashDismissed) {
-            return;
-        }
-        splashDismissed = true;
-        ui.removeCallbacks(splashTimeout);
-        splashLayer.animate()
-                .alpha(0f)
-                .scaleX(1.04f)
-                .scaleY(1.04f)
-                .setDuration(420)
-                .withEndAction(new Runnable() {
-                    @Override
-                    public void run() {
-                        splashLayer.setVisibility(View.GONE);
-                        splashLayer.setScaleX(1f);
-                        splashLayer.setScaleY(1f);
-                    }
-                })
-                .start();
-    }
-
     // -------------------------------------------------------- app theming
 
     /**
@@ -649,6 +736,9 @@ public class MainActivity extends Activity {
         //    directly so it never depends on inline script execution being
         //    allowed by a page policy.
         web.evaluateJavascript(AppTheme.shellScript(this), null);
+        // 3. A new document has a fresh (empty) page, so the insets are pushed
+        //    again even though the measured values did not change.
+        insetsPublished = false;
         pushInsetsToPage();
     }
 
@@ -714,7 +804,9 @@ public class MainActivity extends Activity {
                     errorLayer.setVisibility(View.VISIBLE);
                     errorLayer.animate().alpha(1f).setDuration(260).start();
                 }
-                scheduleSplashDismiss();
+                // The page cannot be shown, so the splash has nothing left to
+                // hand over to; the offline surface owns the screen from here.
+                dismissSplash();
             }
         });
     }
@@ -833,9 +925,4 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ---------------------------------------------------------------- misc
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
 }
