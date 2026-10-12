@@ -1,29 +1,63 @@
 "use client";
-import { useRef, useState, useEffect, useCallback } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import type Hls from "hls.js";
 
 interface VideoPlayerProps {
   src: string;
   title: string;
   poster?: string;
+  movieId: number;
+  subtitleUrl?: string | null;
+  subtitleLanguage?: string | null;
   onClose: () => void;
 }
 
 type FitMode = "contain" | "cover" | "fill";
 type PlaybackSpeed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2;
+type SubtitleChoice = "off" | "external" | `hls:${number}`;
+interface QualityOption { index: number; label: string; height: number; }
+interface SubtitleOption { value: SubtitleChoice; label: string; }
 
-function formatTime(s: number): string {
-  if (!s || isNaN(s)) return "0:00";
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
+function subtitleLanguageLabel(language: string | null | undefined): string {
+  if (!language) return "Subtitles";
+  try { return new Intl.DisplayNames(["en"], { type: "language" }).of(language) || language; }
+  catch { return language; }
 }
 
-export default function VideoPlayer({ src, title, poster, onClose }: VideoPlayerProps) {
+function subtitleLanguageTag(language: string | null | undefined): string {
+  return language && /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language) ? language : "en";
+}
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = Math.floor(seconds % 60);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function IconButton({ label, onClick, children, pressed }: { label: string; onClick: () => void; children: ReactNode; pressed?: boolean }) {
+  return (
+    <button className="player-icon-button" type="button" aria-label={label} title={label} aria-pressed={pressed} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, subtitleLanguage, onClose }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressWriteRef = useRef(0);
+  const resumeAppliedRef = useRef(false);
+  const showSettingsRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -38,405 +72,544 @@ export default function VideoPlayer({ src, title, poster, onClose }: VideoPlayer
   const [showSettings, setShowSettings] = useState(false);
   const [brightness, setBrightness] = useState(100);
   const [locked, setLocked] = useState(false);
-  const [hoveredTime, setHoveredTime] = useState<number | null>(null);
   const [pipActive, setPipActive] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [buffering, setBuffering] = useState(false);
+  const [qualityOptions, setQualityOptions] = useState<QualityOption[]>([]);
+  const [quality, setQuality] = useState(-1);
+  const [hlsSubtitleOptions, setHlsSubtitleOptions] = useState<SubtitleOption[]>([]);
+  const [subtitleChoice, setSubtitleChoice] = useState<SubtitleChoice>("off");
+  const [resumeNotice, setResumeNotice] = useState("");
 
-  /* ── show controls then auto-hide ── */
+  const isHlsSource = useMemo(() => /\.m3u8(?:$|[?#])/i.test(src), [src]);
+  const hasExternalSubtitles = Boolean(subtitleUrl);
+  const subtitleOptions = useMemo(() => [
+    ...(hasExternalSubtitles ? [{ value: "external" as const, label: subtitleLanguageLabel(subtitleLanguage) }] : []),
+    ...hlsSubtitleOptions,
+  ], [hasExternalSubtitles, hlsSubtitleOptions, subtitleLanguage]);
+
+  useEffect(() => { showSettingsRef.current = showSettings; }, [showSettings]);
+
   const showControls = useCallback(() => {
     setControlsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused) {
-        setControlsVisible(false);
-      }
+      if (videoRef.current && !videoRef.current.paused && !showSettingsRef.current) setControlsVisible(false);
     }, 3500);
   }, []);
 
-  /* Controls start visible (initial state); just schedule the first auto-hide. */
-  useEffect(() => {
-    hideTimerRef.current = setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused) {
-        setControlsVisible(false);
+  const saveProgress = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const key = `cinemax:playback:${movieId}`;
+    try {
+      if (video.currentTime > 15 && video.duration - video.currentTime > 15) {
+        window.localStorage.setItem(key, JSON.stringify({
+          currentTime: Math.floor(video.currentTime),
+          duration: Math.floor(video.duration),
+          updatedAt: Date.now(),
+        }));
+        window.dispatchEvent(new Event("cinemax:resume-change"));
+      } else if (video.duration - video.currentTime <= 15) {
+        window.localStorage.removeItem(key);
+        window.dispatchEvent(new Event("cinemax:resume-change"));
       }
-    }, 3500);
-    return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); };
-  }, []);
+    } catch {
+      // Resume playback is a convenience; storage restrictions must never interrupt playback.
+    }
+  }, [movieId]);
 
-  /* ── video element event listeners ── */
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
+    const video = videoRef.current;
+    if (!video) return;
+    let isCancelled = false;
+    let hls: Hls | null = null;
+    let networkRecoveries = 0;
+    let mediaRecoveries = 0;
+    const resumeKey = `cinemax:playback:${movieId}`;
 
-    const onPlay  = () => { setPlaying(true);  showControls(); };
-    const onPause = () => { setPlaying(false); setControlsVisible(true); };
-    const onTime  = () => {
-      setCurrentTime(v.currentTime);
-      if (v.buffered.length > 0) setBufferedEnd(v.buffered.end(v.buffered.length - 1));
+    resumeAppliedRef.current = false;
+    setErrored(false);
+    setBuffering(false);
+    setQuality(-1);
+    setQualityOptions([]);
+    setHlsSubtitleOptions([]);
+
+    const updateQualityOptions = (instance: Hls) => {
+      setQualityOptions(instance.levels
+        .map((level, index) => ({
+          index,
+          height: level.height || 0,
+          label: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)} kbps`,
+        }))
+        .sort((a, b) => a.height - b.height));
     };
-    const onMeta  = () => setDuration(v.duration || 0);
-    const onEnd   = () => { setPlaying(false); setControlsVisible(true); };
-    const onErr   = () => setErrored(true);
+    const updateSubtitleOptions = (instance: Hls) => {
+      setHlsSubtitleOptions(instance.subtitleTracks.map((track, index) => ({
+        value: `hls:${index}` as const,
+        label: track.name || track.lang || `Subtitle ${index + 1}`,
+      })));
+    };
+
+    const attachSource = async () => {
+      if (!isHlsSource) {
+        video.src = src;
+        video.load();
+        return;
+      }
+
+      try {
+        const hlsLibrary = await import("hls.js");
+        if (isCancelled) return;
+        const HlsPlayer = hlsLibrary.default;
+        if (HlsPlayer.isSupported()) {
+          hls = new HlsPlayer({
+            enableWorker: true,
+            lowLatencyMode: false,
+            capLevelToPlayerSize: true,
+            maxBufferLength: 24,
+            maxMaxBufferLength: 60,
+            backBufferLength: 40,
+            fragLoadingMaxRetry: 4,
+            manifestLoadingMaxRetry: 3,
+            levelLoadingMaxRetry: 3,
+          });
+          hlsRef.current = hls;
+          hls.on(HlsPlayer.Events.MEDIA_ATTACHED, () => hls?.loadSource(src));
+          hls.on(HlsPlayer.Events.MANIFEST_PARSED, () => {
+            if (!hls) return;
+            updateQualityOptions(hls);
+            updateSubtitleOptions(hls);
+            // The player is opened by an explicit user gesture. If browser autoplay policy
+            // still blocks the async HLS attach, the regular play button remains available.
+            void video.play().catch(() => undefined);
+          });
+          hls.on(HlsPlayer.Events.LEVELS_UPDATED, () => { if (hls) updateQualityOptions(hls); });
+          hls.on(HlsPlayer.Events.SUBTITLE_TRACKS_UPDATED, () => { if (hls) updateSubtitleOptions(hls); });
+          hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
+            if (!data.fatal || !hls) return;
+            if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR && networkRecoveries < 3) {
+              networkRecoveries += 1;
+              window.setTimeout(() => hls?.startLoad(), networkRecoveries * 450);
+            } else if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+              mediaRecoveries += 1;
+              hls.recoverMediaError();
+            } else {
+              setErrored(true);
+              setBuffering(false);
+            }
+          });
+          hls.attachMedia(video);
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          // Safari/iOS uses native HLS and its own adaptive rendition selector.
+          video.src = src;
+          video.load();
+        } else {
+          setErrored(true);
+        }
+      } catch {
+        if (!isCancelled) setErrored(true);
+      }
+    };
+
+    const onMetadata = () => {
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      if (resumeAppliedRef.current || !Number.isFinite(video.duration) || video.duration <= 0) return;
+      resumeAppliedRef.current = true;
+      try {
+        const saved = window.localStorage.getItem(resumeKey);
+        if (!saved) return;
+        const progress = JSON.parse(saved) as { currentTime?: number; duration?: number };
+        if (typeof progress.currentTime !== "number" || typeof progress.duration !== "number") return;
+        const withinSameRuntime = Math.abs(progress.duration - video.duration) < Math.max(90, video.duration * 0.08);
+        const resumeAt = Math.min(progress.currentTime, video.duration - 15);
+        if (withinSameRuntime && resumeAt > 15 && video.duration - resumeAt > 15) {
+          video.currentTime = resumeAt;
+          setCurrentTime(resumeAt);
+          setResumeNotice(`Picking up at ${formatTime(resumeAt)}`);
+          if (resumeToastTimerRef.current) clearTimeout(resumeToastTimerRef.current);
+          resumeToastTimerRef.current = setTimeout(() => setResumeNotice(""), 3000);
+        }
+      } catch {
+        // Ignore an outdated/corrupt resume marker.
+      }
+    };
+    const onTime = () => {
+      setCurrentTime(video.currentTime);
+      if (video.buffered.length > 0) setBufferedEnd(video.buffered.end(video.buffered.length - 1));
+      if (Date.now() - progressWriteRef.current > 5000) {
+        progressWriteRef.current = Date.now();
+        saveProgress();
+      }
+    };
+    const onPlay = () => { setPlaying(true); setBuffering(false); showControls(); };
+    const onPause = () => { setPlaying(false); setBuffering(false); setControlsVisible(true); saveProgress(); };
+    const onWaiting = () => {
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      bufferingTimerRef.current = setTimeout(() => setBuffering(true), 220);
+    };
+    const onCanPlay = () => {
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      setBuffering(false);
+    };
+    const onError = () => {
+      if (!isHlsSource || !hlsRef.current) setErrored(true);
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      setBuffering(false);
+      setControlsVisible(true);
+      try { window.localStorage.removeItem(resumeKey); } catch { /* storage is optional */ }
+    };
     const onPipEnter = () => setPipActive(true);
     const onPipLeave = () => setPipActive(false);
 
-    v.addEventListener("play",           onPlay);
-    v.addEventListener("pause",          onPause);
-    v.addEventListener("timeupdate",     onTime);
-    v.addEventListener("loadedmetadata", onMeta);
-    v.addEventListener("ended",          onEnd);
-    v.addEventListener("error",          onErr);
-    v.addEventListener("enterpictureinpicture",  onPipEnter);
-    v.addEventListener("leavepictureinpicture",  onPipLeave);
+    video.addEventListener("loadedmetadata", onMetadata);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("canplay", onCanPlay);
+    video.addEventListener("playing", onCanPlay);
+    video.addEventListener("error", onError);
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("enterpictureinpicture", onPipEnter);
+    video.addEventListener("leavepictureinpicture", onPipLeave);
 
+    void attachSource();
     return () => {
-      v.removeEventListener("play",           onPlay);
-      v.removeEventListener("pause",          onPause);
-      v.removeEventListener("timeupdate",     onTime);
-      v.removeEventListener("loadedmetadata", onMeta);
-      v.removeEventListener("ended",          onEnd);
-      v.removeEventListener("error",          onErr);
-      v.removeEventListener("enterpictureinpicture",  onPipEnter);
-      v.removeEventListener("leavepictureinpicture",  onPipLeave);
+      isCancelled = true;
+      if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      video.removeEventListener("loadedmetadata", onMetadata);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("canplay", onCanPlay);
+      video.removeEventListener("playing", onCanPlay);
+      video.removeEventListener("error", onError);
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("enterpictureinpicture", onPipEnter);
+      video.removeEventListener("leavepictureinpicture", onPipLeave);
+      if (hlsRef.current === hls) hlsRef.current = null;
+      hls?.destroy();
+      video.removeAttribute("src");
+      video.load();
     };
-  }, [showControls]);
+  }, [isHlsSource, movieId, retryCount, saveProgress, showControls, src]);
 
-  /* ── fullscreen change listener ── */
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
-  /* ── actions ── */
+  useEffect(() => () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (resumeToastTimerRef.current) clearTimeout(resumeToastTimerRef.current);
+    saveProgress();
+  }, [saveProgress]);
+
   const togglePlay = useCallback(() => {
-    const v = videoRef.current;
-    if (!v || locked) return;
-    v.paused ? v.play().catch(() => {}) : v.pause();
+    const video = videoRef.current;
+    if (!video || locked) return;
+    if (video.paused) void video.play().catch(() => setErrored(true));
+    else video.pause();
     showControls();
   }, [locked, showControls]);
 
+  const seekBy = useCallback((seconds: number) => {
+    const video = videoRef.current;
+    if (!video || locked || !Number.isFinite(video.duration)) return;
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    showControls();
+  }, [locked, showControls]);
+
+  const toggleMute = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setMuted(video.muted);
+    showControls();
+  }, [showControls]);
+
+  const setVolumeValue = useCallback((value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const next = Math.max(0, Math.min(1, value));
+    video.volume = next;
+    video.muted = next === 0;
+    setVolume(next);
+    setMuted(next === 0);
+    showControls();
+  }, [showControls]);
+
   const toggleFullscreen = useCallback(async () => {
-    const el = wrapRef.current;
-    if (!el) return;
+    const element = wrapRef.current;
+    if (!element) return;
     try {
-      if (!document.fullscreenElement) await el.requestFullscreen();
+      if (!document.fullscreenElement) await element.requestFullscreen();
       else await document.exitFullscreen();
-    } catch { /* ignore */ }
+    } catch { /* Fullscreen can be unavailable in embedded browsers. */ }
     showControls();
   }, [showControls]);
 
   const togglePip = useCallback(async () => {
-    const v = videoRef.current;
-    if (!v) return;
+    const video = videoRef.current;
+    if (!video || !("requestPictureInPicture" in video)) return;
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
-      else await v.requestPictureInPicture();
-    } catch { /* not supported */ }
+      else await video.requestPictureInPicture();
+    } catch { /* Picture-in-picture is not supported by every mobile browser. */ }
     showControls();
   }, [showControls]);
 
-  const skip = useCallback((sec: number) => {
-    const v = videoRef.current;
-    if (!v || locked) return;
-    v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + sec));
-    showControls();
-  }, [locked, showControls]);
-
-  const setVolumeValue = useCallback((val: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    const clamped = Math.max(0, Math.min(1, val));
-    v.volume = clamped;
-    v.muted = clamped === 0;
-    setVolume(clamped);
-    setMuted(clamped === 0);
-    showControls();
-  }, [showControls]);
-
-  const toggleMute = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = !v.muted;
-    setMuted(v.muted);
-    showControls();
-  }, [showControls]);
-
-  const setPlaybackSpeed = useCallback((s: PlaybackSpeed) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.playbackRate = s;
-    setSpeed(s);
-    setShowSettings(false);
-    showControls();
-  }, [showControls]);
-
-  const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const v = videoRef.current;
-    if (!v || locked) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    v.currentTime = ratio * (v.duration || 0);
-    showControls();
-  }, [locked, showControls]);
-
-  const handleProgressMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setHoveredTime(ratio * (duration || 0));
-  }, [duration]);
-
-  /* ── keyboard shortcuts ── */
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (locked) return;
-      const v = videoRef.current;
-      if (!v) return;
-      switch (e.key) {
-        case " ": case "k": e.preventDefault(); togglePlay(); break;
-        case "ArrowLeft":   e.preventDefault(); skip(-10); break;
-        case "ArrowRight":  e.preventDefault(); skip(10); break;
-        case "ArrowUp":     e.preventDefault(); setVolumeValue(volume + 0.1); break;
-        case "ArrowDown":   e.preventDefault(); setVolumeValue(volume - 0.1); break;
-        case "m":           toggleMute(); break;
-        case "f":           toggleFullscreen(); break;
-        case "Escape":      if (showSettings) setShowSettings(false); else onClose(); break;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (locked || target?.matches("input,textarea,select,[contenteditable=true]")) return;
+      if (target?.closest("button,[role=slider]") && event.key !== "Escape") return;
+      if (!videoRef.current) return;
+      switch (event.key) {
+        case " ":
+        case "k": event.preventDefault(); togglePlay(); break;
+        case "ArrowLeft": event.preventDefault(); seekBy(-10); break;
+        case "ArrowRight": event.preventDefault(); seekBy(10); break;
+        case "ArrowUp": event.preventDefault(); setVolumeValue(volume + 0.1); break;
+        case "ArrowDown": event.preventDefault(); setVolumeValue(volume - 0.1); break;
+        case "m": toggleMute(); break;
+        case "f": void toggleFullscreen(); break;
+        case "Escape": if (showSettings) setShowSettings(false); else onClose(); break;
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [locked, showSettings, volume, togglePlay, skip, setVolumeValue, toggleMute, toggleFullscreen, onClose]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [locked, onClose, setVolumeValue, seekBy, showSettings, toggleFullscreen, toggleMute, togglePlay, volume]);
 
-  /* ── derived values ── */
-  const progressPct  = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const bufferedPct  = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
-
-  const btnBase: React.CSSProperties = {
-    background: "none", border: "none", color: "#fff",
-    cursor: "pointer", padding: 8,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    borderRadius: 8, flexShrink: 0,
+  const setPlaybackSpeed = (value: PlaybackSpeed) => {
+    if (videoRef.current) videoRef.current.playbackRate = value;
+    setSpeed(value);
+    showControls();
   };
 
-  /* ── error state ── */
-  if (errored) return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <p style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>Could not load video</p>
-      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center", maxWidth: 280, lineHeight: 1.6 }}>The video URL may be invalid or unavailable.</p>
-      <button onClick={onClose} style={{ marginTop: 8, padding: "12px 28px", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 800, fontSize: 12, border: "none", cursor: "pointer" }}>Go Back</button>
-    </div>
-  );
+  const setQualityLevel = (level: number) => {
+    if (hlsRef.current) hlsRef.current.currentLevel = level;
+    setQuality(level);
+  };
 
-  /* ── render ── */
+  const setSubtitle = (choice: SubtitleChoice) => {
+    const hls = hlsRef.current;
+    if (hls) hls.subtitleTrack = choice.startsWith("hls:") ? Number(choice.slice(4)) : -1;
+    const video = videoRef.current;
+    if (video) {
+      Array.from(video.textTracks).forEach((track) => {
+        track.mode = choice === "external" && track.kind === "subtitles" ? "showing" : "disabled";
+      });
+    }
+    setSubtitleChoice(choice);
+  };
+
+  const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const buffered = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
+  const qualityChoices = [{ index: -1, label: isHlsSource ? "Auto" : "Source default", height: 0 }, ...qualityOptions];
+
+  const retry = () => {
+    setErrored(false);
+    setRetryCount((count) => count + 1);
+  };
+
+  if (errored) {
+    return (
+      <div className="video-player-shell" role="dialog" aria-modal="true" aria-label={`Playback error: ${title}`}>
+        <div className="player-error">
+          <span className="player-error-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 8v4m0 4h.01" /></svg>
+          </span>
+          <h2 className="player-error-title">This stream needs another moment</h2>
+          <p className="player-error-copy">The source may be temporarily unavailable or the connection may have dropped. Try again, or return to the title page.</p>
+          <div className="player-error-actions">
+            <button className="primary" type="button" onClick={retry}>Try again</button>
+            <button type="button" onClick={onClose}>Back to title</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={wrapRef}
+      className="video-player-shell"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Now playing ${title}`}
       onMouseMove={showControls}
       onTouchStart={showControls}
-      style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column", userSelect: "none" }}
     >
-      {/* ── VIDEO ── */}
-      <div
-        onClick={togglePlay}
-        style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", cursor: "pointer" }}
-      >
+      <div className="video-screen" onClick={togglePlay}>
         <video
           ref={videoRef}
-          src={src}
           poster={poster}
           autoPlay
           playsInline
-          style={{ width: "100%", height: "100%", objectFit: fitMode, background: "#000", filter: `brightness(${brightness}%)`, display: "block" }}
-        />
+          preload="auto"
+          style={{ objectFit: fitMode, filter: `brightness(${brightness}%)` }}
+          className="video-element"
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {subtitleUrl && (
+            <track
+              kind="subtitles"
+              src={subtitleUrl}
+              srcLang={subtitleLanguageTag(subtitleLanguage)}
+              label={subtitleLanguageLabel(subtitleLanguage)}
+              onLoad={() => {
+                const video = videoRef.current;
+                if (video && subtitleChoice === "external" && video.textTracks[0]) video.textTracks[0].mode = "showing";
+              }}
+            />
+          )}
+        </video>
 
-        {/* Locked overlay */}
+        {buffering && (
+          <div className="player-notice" role="status">
+            <svg className="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="9" strokeOpacity=".25" /><path d="M21 12a9 9 0 0 0-9-9" /></svg>
+            Buffering
+          </div>
+        )}
+        {resumeNotice && <div className="player-notice" role="status">{resumeNotice}</div>}
+
         {locked && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <button
-              onClick={() => setLocked(false)}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 24px", borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Tap to Unlock
+          <div style={{ position: "absolute", inset: 0, zIndex: 6, display: "grid", placeItems: "center" }} onClick={(event) => event.stopPropagation()}>
+            <button className="detail-action-button" type="button" onClick={() => setLocked(false)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+              Tap to unlock
             </button>
           </div>
         )}
 
-        {/* Center skip buttons — only when controls visible and not locked */}
-        {controlsVisible && !locked && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 52, pointerEvents: "none" }}
-          >
-            <button
-              onClick={(e) => { e.stopPropagation(); skip(-10); }}
-              style={{ ...btnBase, pointerEvents: "auto", width: 52, height: 52, borderRadius: "50%", background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
-                <path d="M12.5 3a9 9 0 1 0 9 9" strokeWidth="0"/>
-                <path d="M2 3v5h5" fill="white"/>
-                <path d="M2 8 C2 4.5 4.5 2 8 2" fill="none" stroke="white" strokeWidth="2"/>
-                <text x="12" y="15.5" textAnchor="middle" fontSize="6" fontWeight="bold" fill="white" fontFamily="system-ui">10</text>
-              </svg>
-            </button>
-
-            <button
-              onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-              style={{ ...btnBase, pointerEvents: "auto", width: 68, height: 68, borderRadius: "50%", background: "rgba(255,255,255,0.18)", border: "2px solid rgba(255,255,255,0.4)" }}
-            >
-              {playing
-                ? <svg width="30" height="30" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>
-                : <svg width="30" height="30" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-              }
-            </button>
-
-            <button
-              onClick={(e) => { e.stopPropagation(); skip(10); }}
-              style={{ ...btnBase, pointerEvents: "auto", width: 52, height: 52, borderRadius: "50%", background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
-                <path d="M11.5 3a9 9 0 1 1-9 9" strokeWidth="0"/>
-                <path d="M22 3v5h-5" fill="white"/>
-                <path d="M22 8 C22 4.5 19.5 2 16 2" fill="none" stroke="white" strokeWidth="2"/>
-                <text x="12" y="15.5" textAnchor="middle" fontSize="6" fontWeight="bold" fill="white" fontFamily="system-ui">10</text>
-              </svg>
-            </button>
-          </div>
-        )}
+        <div className={`player-center-controls${controlsVisible ? "" : " hidden"}`} onClick={(event) => event.stopPropagation()}>
+          <button className="player-center-button" type="button" aria-label="Back 10 seconds" onClick={() => seekBy(-10)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a9 9 0 1 0 2.5-6.2L3 7" /><path d="M3 3v4h4" /><text x="8.2" y="15.4" fill="currentColor" stroke="none" fontSize="6" fontWeight="800">10</text></svg>
+          </button>
+          <button className="player-center-button primary" type="button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
+            {playing ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5" /><rect x="14" y="4" width="4" height="16" rx="1.5" /></svg> : <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7-11-7Z" /></svg>}
+          </button>
+          <button className="player-center-button" type="button" aria-label="Forward 10 seconds" onClick={() => seekBy(10)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a9 9 0 1 1-2.5-6.2L21 7" /><path d="M21 3v4h-4" /><text x="8.2" y="15.4" fill="currentColor" stroke="none" fontSize="6" fontWeight="800">10</text></svg>
+          </button>
+        </div>
       </div>
 
-      {/* ── CONTROLS BAR ── */}
-      {controlsVisible && !locked && (
+      <div className={`player-topbar${controlsVisible ? "" : " hidden"}`} onClick={(event) => event.stopPropagation()}>
+        <div className="player-title-wrap">
+          <IconButton label="Close player" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </IconButton>
+          <span className="player-title">{title}</span>
+        </div>
+        <div className="player-control-group">
+          <IconButton label={pipActive ? "Exit picture in picture" : "Picture in picture"} onClick={() => void togglePip()} pressed={pipActive}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="2.5" y="4" width="19" height="15" rx="2.4" /><rect x="12.5" y="11" width="7" height="5" rx=".8" /></svg>
+          </IconButton>
+          <IconButton label={locked ? "Unlock player controls" : "Lock player controls"} onClick={() => setLocked((value) => !value)} pressed={locked}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+          </IconButton>
+          <IconButton label={showSettings ? "Close playback settings" : "Open playback settings"} onClick={() => setShowSettings((value) => !value)} pressed={showSettings}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1a1.9 1.9 0 1 1-2.7 2.7l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.9 1.9 0 1 1-3.8 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.9 1.9 0 1 1-2.7-2.7l.1-.1a1.8 1.8 0 0 0-.9-3H3a1.9 1.9 0 1 1 0-3.8h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.9 1.9 0 1 1 2.7-2.7l.1.1a1.8 1.8 0 0 0 3-.9V2.4a1.9 1.9 0 1 1 3.8 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.9 1.9 0 1 1 2.7 2.7l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.9 1.9 0 1 1 0 3.8H21a1.8 1.8 0 0 0-1.6 3Z" /></svg>
+          </IconButton>
+        </div>
+      </div>
+
+      <div className={`player-control-dock${controlsVisible ? "" : " hidden"}`} onClick={(event) => event.stopPropagation()}>
         <div
-          onClick={(e) => e.stopPropagation()}
-          style={{ position: "absolute", inset: 0, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "space-between" }}
+          className="player-progress"
+          role="slider"
+          aria-label="Playback position"
+          aria-valuemin={0}
+          aria-valuemax={Math.floor(duration || 0)}
+          aria-valuenow={Math.floor(currentTime)}
+          tabIndex={0}
+          onClick={(event) => {
+            const video = videoRef.current;
+            if (!video || !Number.isFinite(video.duration) || locked) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            video.currentTime = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * video.duration;
+            showControls();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") seekBy(-5);
+            if (event.key === "ArrowRight") seekBy(5);
+          }}
         >
-          {/* Top bar */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)", pointerEvents: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-              <button onClick={onClose} style={btnBase}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <span style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <button onClick={togglePip} title="Picture in Picture" style={{ ...btnBase, color: pipActive ? "#fbbf24" : "#fff" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="12" y="9" width="8" height="6" rx="1"/></svg>
-              </button>
-              <button onClick={() => setLocked(true)} title="Lock screen" style={btnBase}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              </button>
-              <button onClick={() => setShowSettings(!showSettings)} title="Settings" style={{ ...btnBase, background: showSettings ? "rgba(255,255,255,0.15)" : "none", borderRadius: 8 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom controls */}
-          <div style={{ padding: "0 12px 16px", background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)", pointerEvents: "auto" }}>
-            {/* Seek bar */}
-            <div
-              onClick={handleProgressClick}
-              onMouseMove={handleProgressMove}
-              onMouseLeave={() => setHoveredTime(null)}
-              style={{ height: 32, display: "flex", alignItems: "center", cursor: "pointer", position: "relative" }}
-            >
-              <div style={{ width: "100%", height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", position: "relative" }}>
-                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${bufferedPct}%`, borderRadius: 2, background: "rgba(255,255,255,0.25)" }} />
-                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${progressPct}%`, borderRadius: 2, background: "#fff" }} />
-                <div style={{ position: "absolute", top: "50%", left: `${progressPct}%`, transform: "translate(-50%,-50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", boxShadow: "0 0 8px rgba(0,0,0,0.6)", transition: "transform 0.1s" }} />
-              </div>
-              {hoveredTime !== null && duration > 0 && (
-                <div style={{ position: "absolute", bottom: 28, left: `${(hoveredTime / duration) * 100}%`, transform: "translateX(-50%)", background: "rgba(0,0,0,0.85)", padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, pointerEvents: "none", whiteSpace: "nowrap", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  {formatTime(hoveredTime)}
-                </div>
-              )}
-            </div>
-
-            {/* Buttons row */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-              {/* Left group */}
-              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <button onClick={togglePlay} style={btnBase}>
-                  {playing
-                    ? <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>
-                    : <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
-                  }
-                </button>
-                <button onClick={() => skip(-10)} style={btnBase}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-5"/></svg>
-                </button>
-                <button onClick={() => skip(10)} style={btnBase}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 20 9"/></svg>
-                </button>
-                <button onClick={toggleMute} style={btnBase}>
-                  {muted
-                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                  }
-                </button>
-                <input
-                  type="range" min={0} max={1} step={0.05}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => setVolumeValue(parseFloat(e.target.value))}
-                  style={{ width: 56, accentColor: "#fff", cursor: "pointer" }}
-                />
-                <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.55)", marginLeft: 4, whiteSpace: "nowrap" }}>
-                  {formatTime(currentTime)} / {formatTime(duration)}
-                </span>
-              </div>
-
-              {/* Right group */}
-              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <button
-                  onClick={() => { setShowSettings(!showSettings); }}
-                  style={{ ...btnBase, fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 6, background: speed !== 1 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)" }}
-                >
-                  {speed}x
-                </button>
-                <button onClick={toggleFullscreen} style={btnBase}>
-                  {isFullscreen
-                    ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
-                    : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                  }
-                </button>
-              </div>
-            </div>
+          <div className="player-progress-rail">
+            <span className="player-progress-buffer" style={{ width: `${buffered}%` }} />
+            <span className="player-progress-fill" style={{ width: `${progress}%` }} />
+            <span className="player-progress-thumb" style={{ left: `${progress}%` }} />
           </div>
         </div>
-      )}
 
-      {/* ── SETTINGS PANEL ── */}
+        <div className="player-bottom-row">
+          <div className="player-control-group">
+            <IconButton label={playing ? "Pause" : "Play"} onClick={togglePlay}>
+              {playing ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5" /><rect x="14" y="4" width="4" height="16" rx="1.5" /></svg> : <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7-11-7Z" /></svg>}
+            </IconButton>
+            <IconButton label="Back 10 seconds" onClick={() => seekBy(-10)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a9 9 0 1 0 2.5-6.2L3 7" /><path d="M3 3v4h4" /><text x="8.2" y="15.4" fill="currentColor" stroke="none" fontSize="6" fontWeight="800">10</text></svg></IconButton>
+            <IconButton label="Forward 10 seconds" onClick={() => seekBy(10)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a9 9 0 1 1-2.5-6.2L21 7" /><path d="M21 3v4h-4" /><text x="8.2" y="15.4" fill="currentColor" stroke="none" fontSize="6" fontWeight="800">10</text></svg></IconButton>
+            <IconButton label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>
+              {muted ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6" /></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m2.5-10.5a9.5 9.5 0 0 1 0 13" /></svg>}
+            </IconButton>
+            <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => setVolumeValue(Number(event.target.value))} style={{ width: 62, accentColor: "#a5f3d0" }} />
+            <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
+          </div>
+          <div className="player-control-group">
+            <button className="player-setting-option" type="button" aria-label="Playback speed" onClick={() => setShowSettings((value) => !value)}>{speed}×</button>
+            <IconButton label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => void toggleFullscreen()}>
+              {isFullscreen ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" /></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
+            </IconButton>
+          </div>
+        </div>
+      </div>
+
       {showSettings && !locked && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{ position: "absolute", right: 12, top: 56, width: 220, background: "rgba(12,12,12,0.97)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, padding: 18, zIndex: 10000, backdropFilter: "blur(24px)" }}
-        >
-          <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>Playback Speed</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
-            {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((s) => (
-              <button key={s} onClick={() => setPlaybackSpeed(s)} style={{ padding: "7px 12px", borderRadius: 9, fontSize: 12, fontWeight: 800, border: "none", cursor: "pointer", background: speed === s ? "#fff" : "rgba(255,255,255,0.07)", color: speed === s ? "#000" : "rgba(255,255,255,0.55)" }}>
-                {s}x
+        <div className="player-popover" role="dialog" aria-label="Playback settings" onClick={(event) => event.stopPropagation()}>
+          <span className="player-setting-label">Stream quality</span>
+          <div className="player-setting-group" role="group" aria-label="Choose stream quality">
+            {qualityChoices.map((option) => (
+              <button key={option.index} className="player-setting-option" type="button" aria-pressed={quality === option.index} onClick={() => setQualityLevel(option.index)}>
+                {option.label}
               </button>
             ))}
           </div>
+          {!isHlsSource && <p style={{ margin: "-9px 0 16px", color: "rgba(255,255,255,.38)", fontSize: 9, lineHeight: 1.5 }}>This source manages quality automatically, or supplies a single rendition.</p>}
 
-          <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>Zoom Mode</p>
-          <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-            {([{ v: "contain", l: "Fit" }, { v: "cover", l: "Fill" }, { v: "fill", l: "Stretch" }] as { v: FitMode; l: string }[]).map((f) => (
-              <button key={f.v} onClick={() => { setFitMode(f.v); setShowSettings(false); showControls(); }} style={{ flex: 1, padding: "8px 0", borderRadius: 9, fontSize: 11, fontWeight: 800, border: "none", cursor: "pointer", background: fitMode === f.v ? "#fff" : "rgba(255,255,255,0.07)", color: fitMode === f.v ? "#000" : "rgba(255,255,255,0.55)" }}>
-                {f.l}
-              </button>
+          <span className="player-setting-label">Subtitles</span>
+          {subtitleOptions.length > 0 ? (
+            <div className="player-setting-group" role="group" aria-label="Choose subtitles">
+              <button className="player-setting-option" type="button" aria-pressed={subtitleChoice === "off"} onClick={() => setSubtitle("off")}>Off</button>
+              {subtitleOptions.map((option) => (
+                <button key={option.value} className="player-setting-option" type="button" aria-pressed={subtitleChoice === option.value} onClick={() => setSubtitle(option.value)}>{option.label}</button>
+              ))}
+            </div>
+          ) : <p style={{ margin: "-2px 0 17px", color: "rgba(255,255,255,.38)", fontSize: 9 }}>No subtitle tracks were supplied for this title.</p>}
+
+          <span className="player-setting-label">Playback speed</span>
+          <div className="player-setting-group">
+            {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((value) => (
+              <button key={value} className="player-setting-option" type="button" aria-pressed={speed === value} onClick={() => setPlaybackSpeed(value)}>{value}×</button>
             ))}
           </div>
 
-          <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>Brightness</p>
-          <input type="range" min={30} max={150} value={brightness} onChange={(e) => setBrightness(parseInt(e.target.value))} style={{ width: "100%", accentColor: "#fff" }} />
-          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", textAlign: "center", marginTop: 6, fontWeight: 600 }}>{brightness}%</p>
+          <span className="player-setting-label">Picture</span>
+          <div className="player-setting-group">
+            {([{ value: "contain", label: "Fit" }, { value: "cover", label: "Fill" }, { value: "fill", label: "Stretch" }] as { value: FitMode; label: string }[]).map((option) => (
+              <button key={option.value} className="player-setting-option" type="button" aria-pressed={fitMode === option.value} onClick={() => setFitMode(option.value)}>{option.label}</button>
+            ))}
+          </div>
+
+          <span className="player-setting-label">Brightness · {brightness}%</span>
+          <input aria-label="Screen brightness" type="range" min={40} max={140} value={brightness} onChange={(event) => setBrightness(Number(event.target.value))} style={{ width: "100%", accentColor: "#a5f3d0" }} />
         </div>
       )}
     </div>

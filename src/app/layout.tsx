@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import SplashScreen from "@/components/SplashScreen";
 
 export const metadata: Metadata = {
-  title: "CineMax - Premium Movie Streaming",
-  description: "Discover and stream the best movies with CineMax",
+  title: "Cinemax — A World Beyond Play",
+  description: "Discover a world of stories, curated around you.",
   manifest: "/manifest.json",
   icons: [
     { rel: "icon", url: "/icon-192.png" },
@@ -13,17 +14,16 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#080a0b",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="antialiased">
+        <SplashScreen />
         {children}
         <script
           dangerouslySetInnerHTML={{

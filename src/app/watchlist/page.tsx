@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
+import Header from "@/components/Header";
 
 interface Movie {
   id: number;
@@ -35,8 +36,9 @@ export default function WatchlistPage() {
   };
 
   return (
-    <div style={{ background: "#000", minHeight: "100vh", paddingBottom: 100 }}>
-      <div style={{ padding: "24px 20px 0" }}>
+    <div style={{ background: "var(--bg)", minHeight: "100vh", paddingBottom: 100 }}>
+      <Header />
+      <div className="secondary-page-content" style={{ padding: "24px 20px 0" }}>
         <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.4)", textDecoration: "none", fontSize: 13, marginBottom: 16 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>
           Home

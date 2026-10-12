@@ -78,6 +78,9 @@ export interface MovieRow {
   posterUrl: string;
   backdropUrl: string;
   videoUrl: string;
+  subtitleUrl: string;
+  subtitleLanguage: string;
+  rightsConfirmed: boolean;
   category: string;
   featured: boolean;
   createdAt: string | null;
@@ -99,10 +102,38 @@ export function normalizeMovie(row: Row): MovieRow {
     posterUrl: asText(pick(row, "posterUrl", "poster_url", "poster", "thumbnail")),
     backdropUrl: asText(pick(row, "backdropUrl", "backdrop_url", "backdrop", "banner")),
     videoUrl: asText(pick(row, "videoUrl", "video_url", "video", "stream_url")),
+    subtitleUrl: asText(pick(row, "subtitleUrl", "subtitle_url", "captions_url", "captions")),
+    subtitleLanguage: asText(pick(row, "subtitleLanguage", "subtitle_language", "caption_language")),
+    rightsConfirmed: asBoolean(pick(row, "rightsConfirmed", "rights_confirmed", "distribution_authorized")),
     category: asText(pick(row, "category", "categories", "section"), "trending"),
     featured: asBoolean(pick(row, "featured", "is_featured")),
     createdAt: asDateText(pick(row, "createdAt", "created_at")),
   };
+}
+
+export function isHttpOrLocalUrl(value: string): boolean {
+  if (value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") && !/[\x00-\x1f]/.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/** Accept v1 info hashes (hex/base32) and v2 multihashes, not arbitrary magnet payloads. */
+export function isValidMagnetUri(value: string): boolean {
+  if (!/^[\x20-\x7e]+$/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "magnet:") return false;
+    return url.searchParams.getAll("xt").some((xt) =>
+      /^urn:btih:(?:[a-f0-9]{40}|[a-z2-7]{32})$/i.test(xt) ||
+      /^urn:btmh:1220[a-f0-9]{64}$/i.test(xt)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export type MovieInput = Omit<MovieRow, "id" | "createdAt">;
@@ -134,6 +165,21 @@ export function movieInput(
     throw new ValidationError("year must be between 1800 and 2200");
   }
 
+  const rawVideoUrl = text("videoUrl", "", 4096);
+  const videoUrl = rawVideoUrl.replace(/^magnet:/i, "magnet:");
+  const rightsConfirmed = asBoolean(body.rightsConfirmed);
+  if (videoUrl.startsWith("magnet:")) {
+    if (!isValidMagnetUri(videoUrl)) throw new ValidationError("videoUrl must be a valid BitTorrent magnet URI");
+    if (!rightsConfirmed) throw new ValidationError("Confirm distribution rights before adding a magnet stream");
+  } else if (videoUrl && !isHttpOrLocalUrl(videoUrl)) {
+    throw new ValidationError("videoUrl must use http(s), a local path, or an authorized magnet URI");
+  }
+
+  const subtitleUrl = text("subtitleUrl", "", 2048);
+  if (subtitleUrl && !isHttpOrLocalUrl(subtitleUrl)) {
+    throw new ValidationError("subtitleUrl must use http(s) or a local path");
+  }
+
   return {
     title,
     description: text("description", ""),
@@ -147,7 +193,10 @@ export function movieInput(
     cast: text("cast", ""),
     posterUrl: text("posterUrl", ""),
     backdropUrl: text("backdropUrl", ""),
-    videoUrl: text("videoUrl", ""),
+    videoUrl,
+    subtitleUrl,
+    subtitleLanguage: text("subtitleLanguage", "", 100),
+    rightsConfirmed,
     category: text("category", "trending", 100),
     featured: asBoolean(body.featured),
   };

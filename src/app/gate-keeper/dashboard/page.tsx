@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; category: string | null; featured: boolean | null; }
+interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; subtitleUrl: string | null; subtitleLanguage: string | null; rightsConfirmed: boolean | null; category: string | null; featured: boolean | null; }
 interface Slide { id: number; title: string; subtitle: string | null; imageUrl: string | null; movieId: number | null; sortOrder: number | null; active: boolean | null; }
 interface Category { id: number; name: string; slug: string; sortOrder: number | null; }
 interface WatchlistEntry { id: number; movieId: number; sessionId: string; createdAt: string | null; movie: Movie | null; }
@@ -30,7 +30,7 @@ export default function AdminDashboard() {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
+  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mSubtitle, setMSubtitle] = useState(""); const [mSubtitleLanguage, setMSubtitleLanguage] = useState("en"); const [mRightsConfirmed, setMRightsConfirmed] = useState(false); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
 
   const [sTitle, setSTitle] = useState(""); const [sSubtitle, setSSubtitle] = useState(""); const [sImage, setSImage] = useState(""); const [sMovieId, setSMovieId] = useState<number | null>(null); const [sOrder, setSOrder] = useState(0); const [sActive, setSActive] = useState(true);
 
@@ -109,17 +109,18 @@ export default function AdminDashboard() {
     }
   };
 
-  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
+  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMSubtitle(""); setMSubtitleLanguage("en"); setMRightsConfirmed(false); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
   const resetSlide = () => { setSTitle(""); setSSubtitle(""); setSImage(""); setSMovieId(null); setSOrder(0); setSActive(true); setEditingSlide(null); };
   const resetCat = () => { setCName(""); setCSlug(""); setEditingCat(null); };
 
-  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
+  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMSubtitle(m.subtitleUrl||""); setMSubtitleLanguage(m.subtitleLanguage||"en"); setMRightsConfirmed(m.rightsConfirmed||false); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
   const editSlide = (s: Slide) => { setEditingSlide(s); setSTitle(s.title); setSSubtitle(s.subtitle||""); setSImage(s.imageUrl||""); setSMovieId(s.movieId); setSOrder(s.sortOrder||0); setSActive(s.active!==false); setShowSlideForm(true); };
   const editCat = (c: Category) => { setEditingCat(c); setCName(c.name); setCSlug(c.slug); setShowCatForm(true); };
 
   const saveMovie = async () => {
     if (!mTitle.trim()) { flash("Title is required", "error"); return; }
-    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,category:mCategory,featured:mFeatured };
+    if (mVideo.trim().toLowerCase().startsWith("magnet:") && !mRightsConfirmed) { flash("Confirm public distribution rights before saving a magnet stream", "error"); return; }
+    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,subtitleUrl:mSubtitle,subtitleLanguage:mSubtitleLanguage,rightsConfirmed:mRightsConfirmed,category:mCategory,featured:mFeatured };
     const url = editingMovie ? `/api/movies/${editingMovie.id}` : "/api/movies";
     setBusy(true);
     const result = await mutate(url, editingMovie ? "PUT" : "POST", body);
@@ -260,8 +261,16 @@ export default function AdminDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                     <div><label style={labelStyle}>Poster URL</label><input className="glass-input" value={mPoster} onChange={e=>setMPoster(e.target.value)} /></div>
                     <div><label style={labelStyle}>Backdrop URL</label><input className="glass-input" value={mBackdrop} onChange={e=>setMBackdrop(e.target.value)} /></div>
-                    <div><label style={labelStyle}>Video URL</label><input className="glass-input" value={mVideo} onChange={e=>setMVideo(e.target.value)} /></div>
+                    <div><label style={labelStyle}>Playback source</label><input className="glass-input" value={mVideo} onChange={e=>setMVideo(e.target.value)} placeholder="MP4, HLS, YouTube, Vimeo, or magnet URI" /><p style={{ color: "rgba(255,255,255,0.32)", fontSize: 10, lineHeight: 1.5, marginTop: 6 }}>Magnet streams are private server-side and require a configured persistent gateway.</p></div>
                   </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+                    <div><label style={labelStyle}>Subtitle / captions URL (WebVTT)</label><input className="glass-input" value={mSubtitle} onChange={e=>setMSubtitle(e.target.value)} placeholder="https://…/captions.vtt" /></div>
+                    <div><label style={labelStyle}>Subtitle language code</label><input className="glass-input" value={mSubtitleLanguage} onChange={e=>setMSubtitleLanguage(e.target.value)} placeholder="en" /></div>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", padding: "12px 13px", border: "1px solid rgba(165,243,208,0.16)", borderRadius: 12, background: "rgba(165,243,208,0.035)" }}>
+                    <input type="checkbox" checked={mRightsConfirmed} onChange={e=>setMRightsConfirmed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "#a5f3d0" }} />
+                    <span style={{ fontSize: 11, fontWeight: 650, lineHeight: 1.55, color: "rgba(238,248,243,0.7)" }}>I confirm Cinemax is authorized to publicly stream and distribute this title. Required before a magnet source can be played.</span>
+                  </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={mFeatured} onChange={e=>setMFeatured(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Featured</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                     <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { movies, watchlist } from "@/db/schema";
 import { describeDbError, withDb } from "@/db/with-db";
-import { normalizeMovie } from "@/db/rows";
+import { publicMovie } from "@/lib/movies";
 import { badRequest, parseId, readJson } from "@/lib/api";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     );
 
     const payload = rows.map((row) => ({
-      ...normalizeMovie(row.movie as Record<string, unknown>),
+      ...publicMovie(row.movie as Record<string, unknown>),
       watchlistId: row.entry.id,
     }));
 

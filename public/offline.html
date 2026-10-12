@@ -3,20 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CineMax — Offline</title>
+<meta name="theme-color" content="#080a0b">
+<title>Cinemax — Offline</title>
 <style>
-  body { background: #000; color: #fff; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; padding: 20px; }
-  h1 { font-size: 28px; font-weight: 900; margin-bottom: 12px; }
-  p { color: rgba(255,255,255,0.4); font-size: 15px; margin-bottom: 28px; }
-  a { display: inline-block; padding: 14px 32px; background: #fff; color: #000; border-radius: 14px; font-weight: 900; text-decoration: none; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+  * { box-sizing: border-box; }
+  body { background: radial-gradient(ellipse at 50% 20%, rgba(96, 165, 140, .16), transparent 42rem), #080a0b; color: #f5f8f7; font-family: Inter, system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; padding: 24px; }
+  main { width: min(100%, 420px); padding: 40px 30px; border: 1px solid rgba(226,255,246,.09); border-radius: 26px; background: rgba(16,22,22,.7); box-shadow: 0 28px 85px rgba(0,0,0,.24); }
+  .brand { margin-bottom: 32px; color: rgba(245,251,248,.82); font-size: 12px; font-weight: 850; letter-spacing: .24em; }
+  .mark { display: grid; width: 62px; height: 62px; place-items: center; margin: 0 auto 20px; border: 1px solid rgba(201,255,233,.38); border-radius: 20px; background: linear-gradient(145deg,rgba(144,245,206,.2),rgba(104,147,141,.04)); color: #a5f3d0; box-shadow: 0 0 32px rgba(121,228,192,.13); }
+  .mark svg { width: 24px; height: 24px; }
+  h1 { font-size: 23px; font-weight: 800; letter-spacing: -.04em; margin: 0 0 10px; }
+  p { color: rgba(235,245,241,.52); font-size: 13px; line-height: 1.65; margin: 0 0 24px; }
+  a { display: inline-flex; align-items: center; justify-content: center; min-height: 45px; padding: 0 22px; background: linear-gradient(130deg,#c8ffe7,#94eacb 58%,#a3e4f0); color: #09100e; border-radius: 14px; font-weight: 850; text-decoration: none; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 </style>
 </head>
 <body>
-  <div>
-    <div style="font-size:48px;margin-bottom:20px">📡</div>
-    <h1>You're Offline</h1>
-    <p>Connect to the internet to continue watching on CineMax.</p>
-    <a href="/">Try Again</a>
-  </div>
+  <main>
+    <div class="brand">CINEMAX</div>
+    <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.3 5.2v13.6L19 12 7.3 5.2Z" /></svg></div>
+    <h1>Somewhere off the grid</h1>
+    <p>Connect to the internet and we’ll bring the stories back into focus.</p>
+    <a href="/">Try again</a>
+  </main>
 </body>
 </html>

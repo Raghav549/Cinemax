@@ -1,13 +1,13 @@
 {
-  "name": "CineMax - Movie Streaming",
-  "short_name": "CineMax",
-  "description": "Premium movie streaming experience — discover, watch and manage your favorites.",
+  "name": "Cinemax — A World Beyond Play",
+  "short_name": "Cinemax",
+  "description": "Discover a world of stories, curated around you.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#080a0b",
+  "theme_color": "#080a0b",
   "orientation": "portrait-primary",
   "categories": ["entertainment", "video"],
   "screenshots": [
