@@ -63,7 +63,31 @@ jobs:
         run: bash android/build.sh
 
       - name: Run the Android test suite
-        run: bash android/tests/run-tests.sh --skip-build
+        run: |
+          mkdir -p android/build
+          bash android/tests/run-tests.sh --skip-build | tee android/build/test-suite.log
+
+      - name: Verify the test evidence
+        run: |
+          log=android/build/test-suite.log
+          grep -q "All Android checks passed." "$log" \
+            || { echo "::error::the Android test suite did not report success"; exit 1; }
+          if grep -qE "^[[:space:]]*(SKIP|FAIL)\b" "$log"; then
+            echo "::error::a layer was skipped or failed:"
+            grep -E "^[[:space:]]*(SKIP|FAIL)\b" "$log"
+            exit 1
+          fi
+          layers="$(grep -c "checks: " "$log")"
+          if [ "$layers" -ne 3 ]; then
+            echo "::error::expected a JVM, a DOM and an APK check summary - found $layers"
+            exit 1
+          fi
+          {
+            echo "### Android checks"
+            grep -E "checks: " "$log" | sed 's/^/ - /'
+            echo " - APK: $(wc -c <android/dist/Cinemax-1.0.0.apk) bytes"
+          } >>"$GITHUB_STEP_SUMMARY"
+          grep -E "checks: " "$log"
 
       - name: Report the artefact
         run: |
@@ -79,5 +103,6 @@ jobs:
             android/dist/Cinemax-1.0.0.apk
             android/dist/Cinemax-latest.apk
             android/dist/Cinemax-1.0.0.apk.sha256
+            android/build/test-suite.log
           if-no-files-found: error
           retention-days: 90
