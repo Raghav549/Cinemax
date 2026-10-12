@@ -11,8 +11,18 @@ interface Catalogue {
   loading: boolean;
   error: string;
 }
+interface CachedCatalogue {
+  savedAt: number;
+  movies: CatalogueMovie[];
+  categories: Category[];
+  slides: FeaturedSlide[];
+}
+
+const CACHE_KEY = "cinemax:catalogue:v1";
+const CACHE_TTL = 60_000;
 const initial: Catalogue = { movies: [], categories: [], slides: [], loading: true, error: "" };
 const Context = createContext<Catalogue & { refresh: () => void } | null>(null);
+let memoryCache: CachedCatalogue | null = null;
 
 async function readList<T>(url: string, signal: AbortSignal): Promise<T[]> {
   const response = await fetch(url, { signal });
@@ -22,12 +32,43 @@ async function readList<T>(url: string, signal: AbortSignal): Promise<T[]> {
   return data as T[];
 }
 
+function validCache(value: unknown): CachedCatalogue | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<CachedCatalogue>;
+  if (typeof candidate.savedAt !== "number" || Date.now() - candidate.savedAt > CACHE_TTL) return null;
+  if (!Array.isArray(candidate.movies) || !Array.isArray(candidate.categories) || !Array.isArray(candidate.slides)) return null;
+  return candidate as CachedCatalogue;
+}
+
+function readCache(): CachedCatalogue | null {
+  if (memoryCache && Date.now() - memoryCache.savedAt <= CACHE_TTL) return memoryCache;
+  try {
+    const cached = validCache(JSON.parse(window.sessionStorage.getItem(CACHE_KEY) ?? "null"));
+    if (cached) memoryCache = cached;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(value: CachedCatalogue) {
+  memoryCache = value;
+  try { window.sessionStorage.setItem(CACHE_KEY, JSON.stringify(value)); } catch { /* Storage is an optional fast path. */ }
+}
+
 export default function CatalogueProvider({ children }: { children: ReactNode }) {
   const [catalogue, setCatalogue] = useState<Catalogue>(initial);
   useEffect(() => {
-    let controller: AbortController;
-    const load = async () => {
+    let controller: AbortController | undefined;
+    const load = async (force = false) => {
       controller?.abort();
+      if (!force) {
+        const cached = readCache();
+        if (cached) {
+          setCatalogue({ ...cached, loading: false, error: "" });
+          return;
+        }
+      }
       controller = new AbortController();
       const signal = controller.signal;
       const [movies, categories, slides] = await Promise.allSettled([
@@ -36,19 +77,24 @@ export default function CatalogueProvider({ children }: { children: ReactNode })
         readList<FeaturedSlide>("/api/slides", signal),
       ]);
       if (signal.aborted) return;
-      setCatalogue({
+      const next = {
         movies: movies.status === "fulfilled" ? movies.value : [],
         categories: categories.status === "fulfilled" ? categories.value : [],
         slides: slides.status === "fulfilled" ? slides.value : [],
+      };
+      if (movies.status === "fulfilled") writeCache({ savedAt: Date.now(), ...next });
+      setCatalogue({
+        ...next,
         loading: false,
         error: movies.status === "rejected" ? "The library is temporarily unavailable. Please try again." : "",
       });
     };
+    const refreshFromEvent = () => { void load(true); };
     void load();
-    window.addEventListener(CATALOGUE_REFRESH_EVENT, load);
+    window.addEventListener(CATALOGUE_REFRESH_EVENT, refreshFromEvent);
     return () => {
       controller?.abort();
-      window.removeEventListener(CATALOGUE_REFRESH_EVENT, load);
+      window.removeEventListener(CATALOGUE_REFRESH_EVENT, refreshFromEvent);
     };
   }, []);
 

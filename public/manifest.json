@@ -9,8 +9,8 @@
     "standalone",
     "minimal-ui"
   ],
-  "background_color": "#080914",
-  "theme_color": "#080914",
+  "background_color": "#050507",
+  "theme_color": "#050507",
   "orientation": "portrait-primary",
   "categories": [
     "entertainment",

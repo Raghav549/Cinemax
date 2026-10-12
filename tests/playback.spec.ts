@@ -17,6 +17,8 @@ test("Watch Now launches direct playback with subtitles, speed, resume and focus
     expect(await page.locator("#cinemax-app").evaluate((element) => (element as HTMLElement).inert)).toBe(true);
     await player.getByRole("button", { name: "Open playback settings", exact: true }).click();
     const settings = player.getByRole("dialog", { name: "Playback settings" });
+    await expect(settings.getByText(/Only .*source/)).toBeVisible();
+    await expect(settings.getByRole("group", { name: "Choose stream quality" })).toHaveCount(0);
     await settings.getByRole("button", { name: "1.5×", exact: true }).click();
     expect(await video.evaluate((element) => (element as HTMLVideoElement).playbackRate)).toBe(1.5);
     await settings.getByRole("group", { name: "Choose subtitles" }).getByRole("button", { name: "English", exact: true }).click();
@@ -48,9 +50,30 @@ test("HLS uses the real adaptive player and exposes selectable stream quality", 
     await player.getByRole("button", { name: "Open playback settings", exact: true }).click();
     const quality = page.getByRole("group", { name: "Choose stream quality" });
     await expect(quality.getByRole("button", { name: "Auto", exact: true })).toBeVisible();
-    await quality.getByRole("button", { name: "180p", exact: true }).click();
-    await expect(quality.getByRole("button", { name: "180p", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(quality.getByRole("button", { name: "180p", exact: true })).toBeVisible();
+    await expect(quality.getByRole("button", { name: "360p", exact: true })).toBeVisible();
+    await expect(quality.getByRole("button", { name: "1080p", exact: true })).toHaveCount(0);
+    await quality.getByRole("button", { name: "360p", exact: true }).click();
+    await expect(quality.getByRole("button", { name: "360p", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(player).toHaveCount(0);
+  } finally { await request.delete(`/api/movies/${movie.id}`); }
+});
+
+test("fullscreen fills the browser surface and exits before closing playback", async ({ page, request }) => {
+  const movie = await createPlaybackMovie(request, "/__e2e__/prism-test.webm");
+  try {
+    await page.goto(`/movie/${movie.id}?play=1`, { waitUntil: "domcontentloaded" });
+    const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
+    await expect(player).toBeVisible();
+    const fullscreen = player.getByRole("button", { name: "Enter fullscreen", exact: true });
+    await fullscreen.click();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+    await expect(player).toHaveClass(/is-fullscreen/);
+    await player.getByRole("button", { name: "Exit fullscreen", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
+    await expect(player).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(player).toHaveCount(0);
   } finally { await request.delete(`/api/movies/${movie.id}`); }

@@ -35,7 +35,7 @@ export async function createPlaybackMovie(request: APIRequestContext, source: st
 export async function servePlaybackFixtures(page: Page) {
   await page.route("**/__e2e__/**", async (route) => {
     const file = new URL(route.request().url()).pathname.split("/").pop()!;
-    if (!/^prism-(?:test\.webm|master\.m3u8|stream\.m3u8|segment-\d+\.ts|subtitles\.vtt)$/.test(file)) return route.abort();
+    if (!/^prism-(?:test\.webm|master\.m3u8|stream(?:-360)?\.m3u8|(?:360-)?segment-\d+\.ts|subtitles\.vtt)$/.test(file)) return route.abort();
     const body = await readFile(join(process.cwd(), "tests/fixtures", file));
     const contentType = file.endsWith("webm") ? "video/webm" : file.endsWith("m3u8") ? "application/vnd.apple.mpegurl" : file.endsWith("vtt") ? "text/vtt" : "video/mp2t";
     const range = route.request().headers().range?.match(/^bytes=(\d+)-(\d*)$/);

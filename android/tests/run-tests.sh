@@ -47,7 +47,7 @@ result() { if [ "$1" = "0" ]; then printf '    \033[1;32mPASS\033[0m %s\n' "$2";
 JAVA="$CACHE/jdk/bin/java"
 ECJ_JAR="$CACHE/lib/ecj.jar"
 ANDROID_JAR="$CACHE/lib/android.jar"
-APK="$PROJECT/dist/Cinemax-1.0.0.apk"
+APK="$PROJECT/dist/Cinemax-1.1.0.apk"
 JSDOM_DIR="$CACHE/tests/node_modules/jsdom"
 REQUIRE_JSDOM="${CINEMAX_REQUIRE_JSDOM:-0}"
 

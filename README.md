@@ -118,7 +118,7 @@ It prints one line per check and exits non-zero if anything fails.
 ## Android app
 
 The repository also ships a real, installable Android app
-(`android/dist/Cinemax-1.0.0.apk`, package `com.cinemax.app`). It is a native
+(`android/dist/Cinemax-1.1.0.apk`, package `com.cinemax.app`). It is a native
 shell around this same deployment — `https://cinemax-orpin.vercel.app` — so the
 existing web app, API routes, PostgreSQL data, studio/admin panel, authentication
 and playback all run unchanged. The app adds a native splash, app icon, adaptive
@@ -128,14 +128,14 @@ app-only premium presentation layer (its own stylesheet, scoped to the app, that
 never affects the website).
 
 ```bash
-bash android/build.sh            # signed APK → android/dist/Cinemax-1.0.0.apk
-bash android/tests/run-tests.sh  # 53 JVM + 38 DOM + 88 APK checks
-adb install -r android/dist/Cinemax-1.0.0.apk
+bash android/build.sh            # signed APK → android/dist/Cinemax-1.1.0.apk
+bash android/tests/run-tests.sh  # 58 JVM + 40 DOM + 88 APK checks
+adb install -r android/dist/Cinemax-1.1.0.apk
 ```
 
 Gradle-free and SDK-manager-free: the build fetches a pinned, checksum-verified
 toolchain. The same build runs in CI on every push and pull request, and the
-finished `Cinemax-1.0.0.apk` (with its SHA-256) is attached to the run as the
+finished `Cinemax-1.1.0.apk` (with its SHA-256) is attached to the run as the
 `cinemax-android-apk` artifact — download it from the *Actions* tab and open it
 on the device. Full details, the design system, device verification steps and
 the remaining notes live in [android/README.md](android/README.md).

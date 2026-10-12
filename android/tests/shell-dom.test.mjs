@@ -154,11 +154,13 @@ const { document } = window;
 const bridgeCalls = [];
 window.CinemaxNative = {
   platform: () => "android-34",
-  appVersion: () => "1.0.0",
+  appVersion: () => "1.1.0",
   homeUrl: () => "https://cinemax-orpin.vercel.app/",
   themeApplied: () => bridgeCalls.push("themeApplied"),
   shellReady: () => bridgeCalls.push("shellReady"),
   setMediaPlaying: (playing) => bridgeCalls.push(`media:${playing}`),
+  enterPlayerFullscreen: () => bridgeCalls.push("enterFullscreen"),
+  exitPlayerFullscreen: () => bridgeCalls.push("exitFullscreen"),
   toast: (message) => bridgeCalls.push(`toast:${message}`),
   deviceInfo: () => "test",
 };
@@ -195,8 +197,8 @@ const themeText = document.getElementById("cinemax-native-theme").textContent;
 check(themeText.includes("cinemax-app=\"android\""), "theme CSS is loaded from the APK assets");
 check(themeText.length > 2000, "theme CSS is the full app stylesheet");
 check(themeText.includes("--cinemax-inset-top"), "theme reads the native inset variables");
-check(/background:\s*transparent/.test(themeText), "body background is lifted so the aurora shows");
-check(themeText.includes("radial-gradient"), "aurora lighting rules are present");
+check(/background:\s*transparent/.test(themeText), "body background defers to the deep app canvas");
+check(themeText.includes("radial-gradient"), "cinematic gradient details remain available");
 check(themeText.includes("#4fd8ff") || themeText.includes("#4FD8FF"), "brand gradient colours are present");
 check(themeText.includes(".bottom-nav"), "bottom navigation restyled");
 check(themeText.includes(".movie-poster"), "movie cards restyled");
@@ -240,6 +242,12 @@ bridgeCalls.length = 0;
 video.dispatchEvent(new window.Event("pause"));
 check(bridgeCalls.includes("media:false"), "paused media releases the wake lock");
 
+bridgeCalls.length = 0;
+window.dispatchEvent(new window.CustomEvent("cinemax:player-fullscreen", { detail: { active: true } }));
+window.dispatchEvent(new window.CustomEvent("cinemax:player-fullscreen", { detail: { active: false } }));
+check(bridgeCalls.includes("enterFullscreen"), "web player fullscreen enters native landscape mode");
+check(bridgeCalls.includes("exitFullscreen"), "web player fullscreen restores native portrait mode");
+
 console.log("\n== safety");
 check(!document.querySelector("script[src]"), "injection adds no remote script");
 check(themeText.includes("html[data-cinemax-app=\"android\"]"), "every app rule is scoped to the app attribute");
@@ -249,8 +257,8 @@ check(
 );
 check(!/(^|\})\s*#cinemax-app\s*\{/.test(themeText.replace(/html\[data-cinemax-app="android"\]/g, "SCOPED")),
   "no stacking context is created over the app root");
-check(!/z-index:\s*[0-9]+/.test(themeText.split("--- misc polish")[0].split("aurora")[0]) || true, "aurora paints behind the page");
-check(/html\[data-cinemax-app="android"\]::before\s*\{[^}]*z-index:\s*-1/.test(themeText), "the aurora sits at z-index -1 behind the content");
+check(/html\[data-cinemax-app="android"\]::before\s*\{[^}]*display:\s*none/.test(themeText), "the expensive fixed aurora layer is disabled");
+check(!shellScript.includes("MutationObserver"), "the shell does not observe the full React subtree");
 
 if (hostilePath) {
   console.log("\n== hostile input cannot break out of the injected string");

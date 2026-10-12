@@ -1,19 +1,15 @@
 /* ============================================================================
-   Cinemax · Android app shell runtime  (v1.0.0)
+   Cinemax · Android app shell runtime  (v1.1.0)
 
    Injected (additively) into the live Cinemax page inside the Android app.
    Responsibilities, all of them presentation or signalling only:
 
-     · publish the real device insets so the existing layout can respect the
-       status bar, gesture bar, notches and rounded corners;
-     · tell the native shell when the themed first paint is ready, so the
-       native splash can hand over without a flash of unstyled content;
-     · report media playback so the screen stays awake while a film plays;
-     · keep native-feeling touch behaviour (no double-tap zoom, no long-press
-       selection of chrome).
-
-   It never touches Cinemax data, API calls, routing, playback sources, the
-   database or authentication.
+     · publish real device insets so the existing layout clears system bars;
+     · tell the native shell when its themed first paint is ready;
+     · report media playback so the screen stays awake only while a film plays;
+     · bridge the web player's fullscreen intent to Android landscape/immersive
+       mode, while leaving routes, sources, API calls and authentication alone;
+     · keep touch behaviour direct and avoid an expensive DOM mutation observer.
    ========================================================================== */
 (function () {
   "use strict";
@@ -23,9 +19,14 @@
   }
   window.__cinemaxAppShellInstalled = true;
 
-  var SHELL_VERSION = "1.0.0";
+  var SHELL_VERSION = "1.1.0";
   var root = document.documentElement;
   var bridge = window.CinemaxNative || null;
+  var mediaListenersInstalled = false;
+
+  function nativeBridge() {
+    return bridge || window.CinemaxNative || null;
+  }
 
   function px(value) {
     var number = typeof value === "number" ? value : parseFloat(value);
@@ -80,12 +81,13 @@
   }
 
   function reportReady() {
+    var appBridge = nativeBridge();
     try {
-      if (bridge && typeof bridge.themeApplied === "function") {
-        bridge.themeApplied();
+      if (appBridge && typeof appBridge.themeApplied === "function") {
+        appBridge.themeApplied();
       }
-      if (bridge && typeof bridge.shellReady === "function") {
-        bridge.shellReady();
+      if (appBridge && typeof appBridge.shellReady === "function") {
+        appBridge.shellReady();
       }
     } catch (error) {
       /* The native side may already be gone; nothing else to do. */
@@ -97,9 +99,10 @@
   var playingCount = 0;
 
   function reportPlayback(playing) {
+    var appBridge = nativeBridge();
     try {
-      if (bridge && typeof bridge.setMediaPlaying === "function") {
-        bridge.setMediaPlaying(!!playing);
+      if (appBridge && typeof appBridge.setMediaPlaying === "function") {
+        appBridge.setMediaPlaying(!!playing);
       }
     } catch (error) {
       /* Ignore: the screen simply follows the platform default. */
@@ -130,19 +133,34 @@
   }
 
   function attachMediaListeners() {
-    var medias = document.getElementsByTagName("video");
-    for (var index = 0; index < medias.length; index++) {
-      var element = medias[index];
-      if (element.__cinemaxBound) {
-        continue;
-      }
-      element.__cinemaxBound = true;
-      element.addEventListener("playing", refreshPlaybackState, true);
-      element.addEventListener("play", refreshPlaybackState, true);
-      element.addEventListener("pause", refreshPlaybackState, true);
-      element.addEventListener("ended", refreshPlaybackState, true);
-      element.addEventListener("emptied", refreshPlaybackState, true);
+    if (mediaListenersInstalled) {
+      return;
     }
+    mediaListenersInstalled = true;
+    // Capture from document instead of attaching a listener to every video and
+    // watching the entire React DOM. It handles dynamically mounted players
+    // with no subtree watcher work during normal browsing/scrolling.
+    ["playing", "play", "pause", "ended", "emptied"].forEach(function (name) {
+      document.addEventListener(name, refreshPlaybackState, true);
+    });
+  }
+
+  /* ------------------------------------------------------------- fullscreen */
+
+  function installFullscreenBridge() {
+    window.addEventListener("cinemax:player-fullscreen", function (event) {
+      var appBridge = nativeBridge();
+      var detail = event && event.detail ? event.detail : {};
+      try {
+        if (detail.active && appBridge && typeof appBridge.enterPlayerFullscreen === "function") {
+          appBridge.enterPlayerFullscreen();
+        } else if (!detail.active && appBridge && typeof appBridge.exitPlayerFullscreen === "function") {
+          appBridge.exitPlayerFullscreen();
+        }
+      } catch (error) {
+        /* DOM fullscreen remains available if the activity is not resumed. */
+      }
+    }, false);
   }
 
   /* --------------------------------------------------------- touch polish */
@@ -169,7 +187,6 @@
     ));
     (document.head || root).appendChild(style);
 
-    // Keep the themed layer applied through client-side navigation.
     document.addEventListener("visibilitychange", refreshPlaybackState, true);
   }
 
@@ -178,6 +195,7 @@
   function boot() {
     markApp();
     installTouchPolish();
+    installFullscreenBridge();
     attachMediaListeners();
     reportReady();
   }
@@ -190,27 +208,5 @@
     requestAnimationFrame(reportReady);
   } else {
     boot();
-  }
-
-  // The catalogue renders posters lazily, so new <video> elements can appear
-  // at any time. A light, cheap observer keeps playback reporting correct.
-  try {
-    if (window.MutationObserver && document.body) {
-      var pending = false;
-      var observer = new MutationObserver(function () {
-        if (pending) {
-          return;
-        }
-        pending = true;
-        setTimeout(function () {
-          pending = false;
-          attachMediaListeners();
-          refreshPlaybackState();
-        }, 400);
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-  } catch (error) {
-    /* Optional enhancement only. */
   }
 })();

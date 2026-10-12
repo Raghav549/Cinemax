@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Instant branded launch window: same atmosphere, emblem already centred. -->
+<!-- Instant dark launch window; the full cinematic reveal follows in activity_main. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@drawable/cinemax_splash_background" />
     <item

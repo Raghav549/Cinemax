@@ -4,7 +4,7 @@
 Independent of the build script: it re-opens the finished APK and asserts the
 properties that make it a real, installable Android app.
 
-Usage: python3 android/tests/apk_check.py android/dist/Cinemax-1.0.0.apk <toolchain-dir>
+Usage: python3 android/tests/apk_check.py android/dist/Cinemax-1.1.0.apk <toolchain-dir>
 """
 from __future__ import annotations
 
@@ -144,8 +144,8 @@ def main() -> int:
     section("manifest")
     badging = run([aapt2, "dump", "badging", apk])
     check("package: name='com.cinemax.app'" in badging, "package id is com.cinemax.app")
-    check("versionCode='1'" in badging, "versionCode is 1")
-    check("versionName='1.0.0'" in badging, "versionName is 1.0.0")
+    check("versionCode='2'" in badging, "versionCode is 2")
+    check("versionName='1.1.0'" in badging, "versionName is 1.1.0")
     check("application-label:'Cinemax'" in badging, "app label is Cinemax")
     check("sdkVersion:'24'" in badging, "minSdkVersion is 24 (Android 7.0)")
     check("targetSdkVersion:'34'" in badging, "targetSdkVersion is 34 (Android 14)")
@@ -156,7 +156,7 @@ def main() -> int:
     # Parsed from the compiled binary XML - exactly what the device reads.
     manifest = parse_axml(load_manifest(apk))
     check(manifest.attr("package", namespace="") == "com.cinemax.app", "compiled manifest declares the package")
-    check(manifest.attr("versionName") == "1.0.0", "compiled manifest declares the version name")
+    check(manifest.attr("versionName") == "1.1.0", "compiled manifest declares the version name")
 
     application = manifest.find("application")
     check(application is not None, "compiled manifest has an <application>")

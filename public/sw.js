@@ -1,5 +1,5 @@
 // Bump this version whenever the caching strategy changes so old caches are cleared.
-const CACHE = "cinemax-prism-v5";
+const CACHE = "cinemax-prism-v6";
 const PRECACHE = ["/offline.html", "/manifest.json", "/icon-192.png", "/icon-512.png", "/brand/cinemax-symbol.svg"];
 
 self.addEventListener("install", (e) => {

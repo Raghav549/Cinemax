@@ -25,13 +25,13 @@ android/
 │   ├── shell-dom.test.mjs        the injected layer executed against a DOM
 │   ├── apk_check.py              manifest, resources, dex, signature, alignment
 │   └── axml.py                   binary AndroidManifest.xml reader
-└── dist/                         built artefacts (Cinemax-1.0.0.apk)
+└── dist/                         built artefacts (Cinemax-1.1.0.apk)
 ```
 
 `.github/workflows/android.yml` builds this same way in CI (no Gradle, no SDK
 manager): it fetches the pinned toolchain, installs jsdom, runs
 `android/build.sh`, then `android/tests/run-tests.sh`, and uploads
-`Cinemax-1.0.0.apk` plus its `.sha256` as the `cinemax-android-apk` artifact.
+`Cinemax-1.1.0.apk` plus its `.sha256` as the `cinemax-android-apk` artifact.
 Every push and pull request builds it, and the workflow can be started by hand
 with *Run workflow*.
 ```
@@ -39,7 +39,7 @@ with *Run workflow*.
 ## Build
 
 ```bash
-bash android/build.sh              # build, sign and verify  →  android/dist/Cinemax-1.0.0.apk
+bash android/build.sh              # build, sign and verify  →  android/dist/Cinemax-1.1.0.apk
 bash android/build.sh --no-verify  # skip the verification pass
 bash android/tests/run-tests.sh    # build if needed, then run all checks
 bash android/tests/run-tests.sh --skip-build
@@ -80,7 +80,7 @@ module layout.
 ## Install
 
 ```bash
-adb install -r android/dist/Cinemax-1.0.0.apk
+adb install -r android/dist/Cinemax-1.1.0.apk
 ```
 
 Or copy the APK to the device and open it (enable *Install unknown apps* for the
@@ -99,38 +99,39 @@ file manager/browser you use). Requirements: **Android 7.0 (API 24) or newer**,
 | Rotation | The activity handles configuration changes itself, so rotating (or the player switching to landscape) never reloads the page. |
 | Edge to edge | API 30+ draws behind transparent status/navigation bars; the real insets are measured natively and published to the page as CSS variables, so the existing layout clears the status bar, gesture bar, cutout and rounded corners. Themed brand gradient shows in the very top and bottom strips. |
 | Keyboard | `adjustResize` + IME padding, so the studio forms are never hidden behind the keyboard. |
-| Playback | Media autoplay is permitted, HLS/MSE run in-page, HTML5 fullscreen expands into a native black surface with immersive bars, and the screen stays awake only while something is actually playing. |
-| Session intro | The native splash replaces the web intro; the web one is marked as already seen for the session so it never plays twice. |
+| Playback | Media autoplay is permitted, HLS/MSE run in-page, and the Cinemax player bridge puts direct video into immersive **sensor-landscape** fullscreen. Exit (or Android Back) restores the prior orientation and normal system bars; the screen stays awake only while media is actually playing. |
+| Session intro | The native splash replaces the web intro with a transform/opacity Cinemax emblem reveal, restrained light rings and streaks, then a themed first-paint hand-off. It has no generic spinner or “Starting Cinemax” screen. |
 | Crash resilience | If the WebView renderer dies, the shell rebuilds it and reloads instead of crashing the app. |
 | Offline | A native Cinemax screen with *Try again* and *Open in browser* appears when the main document cannot load. |
 
-## The premium presentation layer
+## The Android presentation and performance layer
 
 Presentation only. Nothing about data, routing, API calls or authentication
 changes; the layer is an extra stylesheet plus a small runtime, scoped to
-`html[data-cinemax-app="android"]`, and it is invisible to the website.
+`html[data-cinemax-app="android"]`, and is invisible to the website.
 
-* **Palette** – deep indigo/plum foundation (`#100a28`, surfaces `#1d1246` /
-  `#251758`) with Cinemax's own prism accents: violet `#8b5cf6`, sapphire
-  `#4d7cff`, magenta `#ff4fa3`, cyan `#4fd8ff`. Cinemax branding and emblem
-  only – no third-party logo or colour copy.
-* **Never a flat black screen** – a fixed four-stop aurora (violet, magenta,
-  cyan, sapphire) lights the background behind the content, plus a brand
-  gradient accent line inside the status-bar band.
-* **Cards** – 18 px rounded posters, layered shadows, gradient type badges,
-  glass rating chips, gradient progress bars and a staggered entrance.
-* **Chrome** – gradient wordmark rails, glass bottom navigation with a
-  gradient indicator, gradient CTA/chips, pill "View all" controls.
-* **Detail, player, studio, toasts** – same palette and radii across every
-  surface, including the admin panel, which keeps its exact fields and flow.
-* **Responsive** – line lengths, gutters, hit targets (≥ 48 dp) and type scale
-  adapt from 320 dp phones to tablets; `prefers-reduced-motion` still disables
-  every animation.
+* **Deep-black foundation** – page and large surface backgrounds use `#050507`
+  / `#08080c`. The existing violet, blue and pink buttons, borders, icons,
+  logo, active indicators and artwork are deliberately untouched.
+* **Scroll work removed** – the fixed full-page aurora, blur filters and
+  per-poster entrance animation were removed from the Android-only layer.
+  Rails retain momentum scrolling; source images remain responsive/lazy and
+  decode asynchronously.
+* **Less React work** – card artwork is memoized, watchlist changes only
+  re-render the compact save control, collection rows are indexed once, and
+  rail edge state is coalesced to one animation frame rather than every scroll
+  event.
+* **Fullscreen hand-off** – `app-shell.js` listens for the player’s fullscreen
+  event and asks the native bridge for landscape immersive mode. It delegates
+  media events at the document level instead of observing the full React DOM.
+* **Responsive** – gutters, hit targets (≥ 48 dp) and type scale adapt from
+  320 dp phones to tablets; `prefers-reduced-motion` remains respected.
 
 `android/app/src/main/assets/cinemax/app-theme.css` is the stylesheet and
-`app-shell.js` is the runtime (insets, playback reporting, viewport, touch
-behaviour). Both are evaluated by `MainActivity.applyAppTheme()` after the first
-paint, so the native splash lifts onto an already-themed page.
+`app-shell.js` is the runtime (insets, playback reporting, fullscreen hand-off,
+viewport and touch behaviour). Both are evaluated by
+`MainActivity.applyAppTheme()` after the first paint, so the native splash lifts
+onto an already-themed page.
 
 ## Digital Asset Links
 
@@ -159,15 +160,16 @@ itself when it is missing and npm is available). `CINEMAX_REQUIRE_JSDOM=1` turns
 a missing jsdom/node into a failure instead of a skip — CI sets it, so the DOM
 layer can never silently disappear from a build:
 
-1. **JVM unit checks (53)** – navigation policy (in-app vs external, including
+1. **JVM unit checks (58)** – navigation policy (in-app vs external, including
    localhost/emulator rejection and suffix-spoofing hosts) and injection
    escaping (hostile CSS/JS cannot break out of the generated script).
 2. **JavaScript syntax** – `node --check` on the generated injection script, the
    packaged shell runtime and the source shell.
-3. **DOM behaviour (38, jsdom)** – the real injected layer runs against a
+3. **DOM behaviour (40, jsdom)** – the real injected layer runs against a
    fixture of the Cinemax page: theme installed once, bridge signalled, insets
-   published and clamped, viewport tuned, playback reported on play/pause, no
-   unscoped selectors, no inline-script dependency, hostile input inert.
+   published and clamped, viewport tuned, playback reported on play/pause,
+   fullscreen reaches and leaves the native bridge, no full-subtree observer,
+   no unscoped selectors, no inline-script dependency, hostile input inert.
 4. **APK structure (88)** – parsed binary manifest (package, SDK versions,
    `singleTask`, `adjustResize`, `configChanges`, deep link, permissions),
    adaptive + legacy icons, splash and theme resources, classes in `classes.dex`,
@@ -191,23 +193,29 @@ intact.
 These checks need a real device or emulator with the production site reachable –
 they are the final gate:
 
-1. `adb install -r android/dist/Cinemax-1.0.0.apk`, then launch Cinemax.
-2. Confirm the splash → home hand-off and that the hero, rails and every poster
-   load from `cinemax-orpin.vercel.app` (no local content).
-3. Tap through **Home → Search → Explore → Watchlist**, open a title, start
-   playback, switch to fullscreen landscape and back, then press back until the
-   app exits (double-back toast on the last screen).
-4. Open `/gate-keeper`, log in with the studio credentials and confirm the
-   dashboard loads and edits save.
-5. Toggle airplane mode and reopen the app to see the native offline screen and
-   *Try again*.
+1. `adb install -r android/dist/Cinemax-1.1.0.apk`, then launch Cinemax.
+2. Confirm the animated logo → home hand-off completes without a spinner or
+   “Starting Cinemax” label, and that the hero, rails and every poster load from
+   `cinemax-orpin.vercel.app` (no local content).
+3. On a mid-range phone, rapidly scroll several rails and a long collection;
+   repeat on a throttled/slow network and verify touch input stays responsive.
+4. Open a direct title and an adaptive HLS title. Verify the settings menu lists
+   only manifest-provided levels (including Auto for multiple levels), while a
+   single rendition plainly explains that it cannot switch quality.
+5. Start playback, switch to fullscreen landscape and back, then press Android
+   Back once in fullscreen (it must restore portrait/system bars rather than
+   close playback) and again to leave the player.
+6. Open `/gate-keeper`, log in with the studio credentials and confirm the
+   dashboard loads and edits save. Toggle airplane mode and reopen the app to
+   see the native offline screen and *Try again*.
 
 ## Remaining notes
 
 * The sandbox used to build this APK has **no network route to the production
-  deployment**, so the live URL could not be fetched here. The URL is compiled
-  into the APK, asserted by the tests, and exercised the same way a browser
-  would on a device.
+  deployment and no attached Android device/emulator**, so final GPU frame-time,
+  physical rotation and live-source playback checks could not be performed here.
+  The production URL is compiled into the APK and asserted by the tests; run the
+  device checklist above against the deployed site before releasing.
 * Playback of any licence-restricted source still depends on the deployment's
   own configuration (`TORRENT_*` gateway) exactly as on the web; the app adds
   nothing to that path.

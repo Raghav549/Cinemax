@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import Link from "next/link";
 import Artwork from "./Artwork";
 import Icon from "./Icon";
@@ -16,9 +17,29 @@ export interface MovieCardData {
   type?: string | null;
 }
 
-export default function MovieCard({ movie, progress }: { movie: MovieCardData; progress?: number }) {
+/**
+ * Keep the catalogue card itself independent from watchlist context. A saved
+ * item used to invalidate the full artwork/card tree for every visible title;
+ * now only this small control subscribes to that changing state.
+ */
+const MovieSaveButton = memo(function MovieSaveButton({ movieId, title }: { movieId: number; title: string }) {
   const { savedIds, pendingIds, toggle } = useWatchlist();
-  const saved = savedIds.has(movie.id);
+  const saved = savedIds.has(movieId);
+  return (
+    <button
+      className={`movie-save ${saved ? "is-saved" : ""}`}
+      type="button"
+      aria-label={`${saved ? "Remove" : "Save"} ${title}${saved ? " from" : " to"} watchlist`}
+      aria-pressed={saved}
+      disabled={pendingIds.has(movieId)}
+      onClick={() => void toggle(movieId)}
+    >
+      <Icon name={saved ? "check" : "plus"} />
+    </button>
+  );
+});
+
+function MovieCard({ movie, progress }: { movie: MovieCardData; progress?: number }) {
   const progressValue = progress === undefined ? undefined : Math.max(0, Math.min(100, progress));
   return <article className="movie-card" role="listitem">
     <Link className="movie-card-link" href={`/movie/${movie.id}${progressValue !== undefined ? "?play=1" : ""}`} aria-label={`${progressValue !== undefined ? "Continue watching" : "View"} ${movie.title}`}>
@@ -31,6 +52,8 @@ export default function MovieCard({ movie, progress }: { movie: MovieCardData; p
       </div>
       <div className="movie-card-copy"><h3 className="movie-card-title">{movie.title}</h3><p className="movie-card-meta">{[movie.year, movie.genre?.split(",")[0]?.trim() || movie.duration].filter(Boolean).join(" · ")}</p></div>
     </Link>
-    <button className={`movie-save ${saved ? "is-saved" : ""}`} type="button" aria-label={`${saved ? "Remove" : "Save"} ${movie.title}${saved ? " from" : " to"} watchlist`} aria-pressed={saved} disabled={pendingIds.has(movie.id)} onClick={() => void toggle(movie.id)}><Icon name={saved ? "check" : "plus"} /></button>
+    <MovieSaveButton movieId={movie.id} title={movie.title} />
   </article>;
 }
+
+export default memo(MovieCard);

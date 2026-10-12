@@ -96,8 +96,14 @@ public final class CinemaxAppTest {
 
         String theme = read(asset("app-theme.css"));
         String shell = read(asset("app-shell.js"));
+        String splashLayout = read(new File(projectDirectory, "app/src/main/res/layout/activity_main.xml"));
+        String strings = read(new File(projectDirectory, "app/src/main/res/values/strings.xml"));
 
         check(theme.length() > 4000, "app-theme.css asset is present (" + theme.length() + " bytes)");
+        check(!splashLayout.contains("cinemax_splash_spinner"), "the native splash has no generic spinner");
+        check(!strings.contains("Starting Cinemax"), "the native splash has no generic loading copy");
+        check(splashLayout.contains("cinemax_splash_ring_one") && splashLayout.contains("cinemax_splash_streak_one"),
+                "the native splash packages the animated logo light layers");
         check(shell.length() > 2000, "app-shell.js asset is present (" + shell.length() + " bytes)");
         check(theme.contains("html[data-cinemax-app=\"android\"]"), "the theme is scoped to the app attribute");
 
@@ -123,7 +129,7 @@ public final class CinemaxAppTest {
         write(new File(outputDirectory, "injection-script-hostile.js"), hostileScript);
 
         // The real media layers must carry the premium presentation rules.
-        check(theme.contains("#100a28"), "the theme replaces the flat near-black background");
+        check(theme.contains("#050507"), "the theme uses the deep-black Cinemax background");
         check(theme.contains("radial-gradient"), "the theme adds colourful cinematic lighting");
         check(theme.contains("--cinemax-inset-top"), "the theme consumes the native status-bar inset");
         check(theme.contains(".bottom-nav"), "the theme restyles the bottom navigation");
@@ -139,6 +145,8 @@ public final class CinemaxAppTest {
         check(shell.contains("setMediaPlaying"), "the shell reports playback to the native layer");
         check(shell.contains("__cinemaxAppShellInstalled"), "the shell installs exactly once");
         check(shell.contains("user-scalable=no"), "the shell tunes the viewport for the app");
+        check(shell.contains("cinemax:player-fullscreen"), "the shell bridges player fullscreen to Android");
+        check(!shell.contains("MutationObserver"), "the shell avoids a subtree observer during scrolling");
 
         write(new File(outputDirectory, "injection-script.js"), script);
         write(new File(outputDirectory, "shell-script.js"), shell);

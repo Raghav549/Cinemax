@@ -1,52 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Cinemax atmosphere: a deep indigo / plum / magenta gradient with soft colour
-  lighting. Deliberately never a plain black screen.
--->
+<!-- Near-black cinema canvas with restrained logo-colour light for the reveal. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:centerColor="#2A1157"
-                android:endColor="#0A0622"
-                android:startColor="#1E0C4E"
+                android:centerColor="#090910"
+                android:endColor="#050507"
+                android:startColor="#050507"
                 android:type="linear" />
         </shape>
     </item>
 
-    <item android:alpha="0.9">
+    <item android:alpha="0.34">
         <shape android:shape="rectangle">
             <gradient
-                android:centerX="0.22"
-                android:centerY="0.14"
-                android:endColor="#005B2BD0"
-                android:gradientRadius="560dp"
-                android:startColor="#5B2BD0"
+                android:centerX="0.28"
+                android:centerY="0.25"
+                android:endColor="#005E96FF"
+                android:gradientRadius="540dp"
+                android:startColor="#5E96FF"
                 android:type="radial" />
         </shape>
     </item>
 
-    <item android:alpha="0.62">
+    <item android:alpha="0.26">
         <shape android:shape="rectangle">
             <gradient
-                android:centerX="0.85"
-                android:centerY="0.32"
-                android:endColor="#00E23DA8"
-                android:gradientRadius="480dp"
-                android:startColor="#E23DA8"
-                android:type="radial" />
-        </shape>
-    </item>
-
-    <item android:alpha="0.42">
-        <shape android:shape="rectangle">
-            <gradient
-                android:centerX="0.5"
-                android:centerY="1.05"
-                android:endColor="#002E6BFF"
-                android:gradientRadius="600dp"
-                android:startColor="#2E6BFF"
+                android:centerX="0.76"
+                android:centerY="0.58"
+                android:endColor="#00EF76CB"
+                android:gradientRadius="500dp"
+                android:startColor="#EF76CB"
                 android:type="radial" />
         </shape>
     </item>

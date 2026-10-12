@@ -8,7 +8,7 @@ name: Android CI
 # android/tools/fetch-toolchain.sh, so the build runs the same command here as it
 # does on a developer machine:
 #
-#   bash android/build.sh              -> android/dist/Cinemax-1.0.0.apk
+#   bash android/build.sh              -> android/dist/Cinemax-1.1.0.apk
 #   bash android/tests/run-tests.sh    -> JVM + JS + DOM + APK checks
 #
 # The finished APK is uploaded as a downloadable artifact.
@@ -85,24 +85,24 @@ jobs:
           {
             echo "### Android checks"
             grep -E "checks: " "$log" | sed 's/^/ - /'
-            echo " - APK: $(wc -c <android/dist/Cinemax-1.0.0.apk) bytes"
+            echo " - APK: $(wc -c <android/dist/Cinemax-1.1.0.apk) bytes"
           } >>"$GITHUB_STEP_SUMMARY"
           grep -E "checks: " "$log"
 
       - name: Report the artefact
         run: |
           cd android/dist
-          sha256sum Cinemax-1.0.0.apk | tee Cinemax-1.0.0.apk.sha256
-          ls -l Cinemax-1.0.0.apk
+          sha256sum Cinemax-1.1.0.apk | tee Cinemax-1.1.0.apk.sha256
+          ls -l Cinemax-1.1.0.apk
 
       - name: Upload the installable APK
         uses: actions/upload-artifact@v7
         with:
           name: cinemax-android-apk
           path: |
-            android/dist/Cinemax-1.0.0.apk
+            android/dist/Cinemax-1.1.0.apk
             android/dist/Cinemax-latest.apk
-            android/dist/Cinemax-1.0.0.apk.sha256
+            android/dist/Cinemax-1.1.0.apk.sha256
             android/build/test-suite.log
           if-no-files-found: error
           retention-days: 90

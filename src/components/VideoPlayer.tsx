@@ -17,7 +17,7 @@ interface VideoPlayerProps {
 type FitMode = "contain" | "cover" | "fill";
 type PlaybackSpeed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2;
 type SubtitleChoice = "off" | "external" | `hls:${number}`;
-interface QualityOption { index: number; label: string; height: number; }
+interface QualityOption { index: number; label: string; height: number; bitrate: number; }
 interface SubtitleOption { value: SubtitleChoice; label: string; }
 
 function subtitleLanguageLabel(language: string | null | undefined): string {
@@ -28,6 +28,12 @@ function subtitleLanguageLabel(language: string | null | undefined): string {
 
 function subtitleLanguageTag(language: string | null | undefined): string {
   return language && /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(language) ? language : "en";
+}
+
+function qualityLabel(height: number, bitrate: number, duplicateResolution: boolean): string {
+  const resolution = height > 0 ? `${height}p` : "Source bitrate";
+  if (!duplicateResolution || !bitrate) return resolution;
+  return `${resolution} · ${Math.round(bitrate / 1000)} kbps`;
 }
 
 function formatTime(seconds: number): string {
@@ -56,6 +62,11 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const resumeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressWriteRef = useRef(0);
+  const playbackFrameRef = useRef<number | null>(null);
+  const pendingPlaybackRef = useRef({ currentTime: 0, bufferedEnd: 0 });
+  const seekFrameRef = useRef<number | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekingRef = useRef(false);
   const resumeAppliedRef = useRef(false);
   const showSettingsRef = useRef(false);
 
@@ -78,6 +89,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const [buffering, setBuffering] = useState(false);
   const [qualityOptions, setQualityOptions] = useState<QualityOption[]>([]);
   const [quality, setQuality] = useState(-1);
+  const [sourceQuality, setSourceQuality] = useState("");
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [hlsSubtitleOptions, setHlsSubtitleOptions] = useState<SubtitleOption[]>([]);
   const [subtitleChoice, setSubtitleChoice] = useState<SubtitleChoice>("off");
   const [resumeNotice, setResumeNotice] = useState("");
@@ -134,16 +147,21 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     setBuffering(false);
     setQuality(-1);
     setQualityOptions([]);
+    setSourceQuality("");
     setHlsSubtitleOptions([]);
 
     const updateQualityOptions = (instance: Hls) => {
-      setQualityOptions(instance.levels
-        .map((level, index) => ({
-          index,
-          height: level.height || 0,
-          label: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)} kbps`,
-        }))
-        .sort((a, b) => a.height - b.height));
+      const levels = instance.levels.map((level, index) => ({
+        index,
+        height: level.height || 0,
+        bitrate: level.bitrate || 0,
+      })).sort((a, b) => a.height - b.height || a.bitrate - b.bitrate);
+      const resolutionCounts = new Map<number, number>();
+      levels.forEach((level) => resolutionCounts.set(level.height, (resolutionCounts.get(level.height) ?? 0) + 1));
+      setQualityOptions(levels.map((level) => ({
+        ...level,
+        label: qualityLabel(level.height, level.bitrate, (resolutionCounts.get(level.height) ?? 0) > 1),
+      })));
     };
     const updateSubtitleOptions = (instance: Hls) => {
       setHlsSubtitleOptions(instance.subtitleTracks.map((track, index) => ({
@@ -215,6 +233,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
 
     const onMetadata = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      if (!isHlsSource && video.videoHeight > 0) setSourceQuality(`${video.videoHeight}p`);
       if (resumeAppliedRef.current || !Number.isFinite(video.duration) || video.duration <= 0) return;
       resumeAppliedRef.current = true;
       try {
@@ -236,8 +255,16 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       }
     };
     const onTime = () => {
-      setCurrentTime(video.currentTime);
-      if (video.buffered.length > 0) setBufferedEnd(video.buffered.end(video.buffered.length - 1));
+      pendingPlaybackRef.current.currentTime = video.currentTime;
+      pendingPlaybackRef.current.bufferedEnd = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
+      if (playbackFrameRef.current === null) {
+        playbackFrameRef.current = window.requestAnimationFrame(() => {
+          playbackFrameRef.current = null;
+          const snapshot = pendingPlaybackRef.current;
+          setCurrentTime(snapshot.currentTime);
+          setBufferedEnd(snapshot.bufferedEnd);
+        });
+      }
       if (Date.now() - progressWriteRef.current > 5000) {
         progressWriteRef.current = Date.now();
         saveProgress();
@@ -253,6 +280,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
       setBuffering(false);
     };
+    const onSeeking = () => { if (!seekingRef.current) setBuffering(true); };
+    const onSeeked = () => { if (!seekingRef.current) setBuffering(false); };
     const onError = () => {
       if (!isHlsSource || !hlsRef.current) setErrored(true);
     };
@@ -270,8 +299,11 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     video.addEventListener("waiting", onWaiting);
+    video.addEventListener("stalled", onWaiting);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("playing", onCanPlay);
+    video.addEventListener("seeking", onSeeking);
+    video.addEventListener("seeked", onSeeked);
     video.addEventListener("error", onError);
     video.addEventListener("ended", onEnded);
     video.addEventListener("enterpictureinpicture", onPipEnter);
@@ -281,13 +313,25 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     return () => {
       isCancelled = true;
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
+      if (playbackFrameRef.current !== null) {
+        window.cancelAnimationFrame(playbackFrameRef.current);
+        playbackFrameRef.current = null;
+      }
+      if (seekFrameRef.current !== null) {
+        window.cancelAnimationFrame(seekFrameRef.current);
+        seekFrameRef.current = null;
+      }
+      saveProgress();
       video.removeEventListener("loadedmetadata", onMetadata);
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("stalled", onWaiting);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("playing", onCanPlay);
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("enterpictureinpicture", onPipEnter);
@@ -298,12 +342,6 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       video.load();
     };
   }, [isHlsSource, movieId, retryCount, saveProgress, showControls, src]);
-
-  useEffect(() => {
-    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
 
   useEffect(() => () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -326,6 +364,32 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     showControls();
   }, [locked, showControls]);
 
+  const seekToPointer = useCallback((clientX: number, rail: HTMLElement, immediate = false) => {
+    const video = videoRef.current;
+    if (!video || locked || !Number.isFinite(video.duration) || rail.clientWidth <= 0) return;
+    const rect = rail.getBoundingClientRect();
+    const nextTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * video.duration;
+    pendingSeekRef.current = nextTime;
+    const apply = () => {
+      seekFrameRef.current = null;
+      const value = pendingSeekRef.current;
+      if (value === null) return;
+      pendingSeekRef.current = null;
+      video.currentTime = value;
+      setCurrentTime(value);
+    };
+    if (immediate) {
+      if (seekFrameRef.current !== null) {
+        window.cancelAnimationFrame(seekFrameRef.current);
+        seekFrameRef.current = null;
+      }
+      apply();
+    } else if (seekFrameRef.current === null) {
+      seekFrameRef.current = window.requestAnimationFrame(apply);
+    }
+    showControls();
+  }, [locked, showControls]);
+
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -345,15 +409,80 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     showControls();
   }, [showControls]);
 
+  const dispatchNativeFullscreen = useCallback((active: boolean) => {
+    window.dispatchEvent(new CustomEvent("cinemax:player-fullscreen", { detail: { active } }));
+  }, []);
+
+  const exitPlayerFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch {
+      // The native shell still restores orientation and system bars below.
+    }
+    setNativeFullscreen(false);
+    setIsFullscreen(false);
+    dispatchNativeFullscreen(false);
+    showControls();
+  }, [dispatchNativeFullscreen, showControls]);
+
   const toggleFullscreen = useCallback(async () => {
     const element = wrapRef.current;
     if (!element) return;
+    if (document.fullscreenElement || nativeFullscreen) {
+      await exitPlayerFullscreen();
+      return;
+    }
+    const nativeBridge = (window as typeof window & { CinemaxNative?: { enterPlayerFullscreen?: () => void } }).CinemaxNative;
+    const hasNativeFullscreen = typeof nativeBridge?.enterPlayerFullscreen === "function";
+    if (hasNativeFullscreen) {
+      // Android keeps the WebView in place, rotates it to landscape and hides
+      // system bars. The CSS shell continues to fill that native surface.
+      setNativeFullscreen(true);
+      setIsFullscreen(true);
+      dispatchNativeFullscreen(true);
+    }
     try {
-      if (!document.fullscreenElement) await element.requestFullscreen();
-      else await document.exitFullscreen();
-    } catch { /* Fullscreen can be unavailable in embedded browsers. */ }
+      await element.requestFullscreen();
+    } catch {
+      // A WebView can deny the DOM Fullscreen API; the native Android path above
+      // remains a complete fullscreen experience in that case.
+      if (!hasNativeFullscreen) setIsFullscreen(false);
+    }
     showControls();
-  }, [showControls]);
+  }, [dispatchNativeFullscreen, exitPlayerFullscreen, nativeFullscreen, showControls]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const browserFullscreen = Boolean(document.fullscreenElement);
+      if (!browserFullscreen && nativeFullscreen) {
+        setNativeFullscreen(false);
+        setIsFullscreen(false);
+        dispatchNativeFullscreen(false);
+        return;
+      }
+      setIsFullscreen(browserFullscreen);
+    };
+    const onNativeExit = () => {
+      setNativeFullscreen(false);
+      setIsFullscreen(false);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+    const onExitRequest = () => { void exitPlayerFullscreen(); };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    window.addEventListener("cinemax:native-fullscreen-exit", onNativeExit);
+    window.addEventListener("cinemax:request-exit-player-fullscreen", onExitRequest);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("cinemax:native-fullscreen-exit", onNativeExit);
+      window.removeEventListener("cinemax:request-exit-player-fullscreen", onExitRequest);
+    };
+  }, [dispatchNativeFullscreen, exitPlayerFullscreen, nativeFullscreen]);
+
+  useEffect(() => () => {
+    // Closing the overlay must restore Android orientation even if the route
+    // changes while playback is fullscreen.
+    dispatchNativeFullscreen(false);
+  }, [dispatchNativeFullscreen]);
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;
@@ -380,12 +509,16 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
         case "ArrowDown": event.preventDefault(); setVolumeValue(volume - 0.1); break;
         case "m": toggleMute(); break;
         case "f": void toggleFullscreen(); break;
-        case "Escape": if (showSettings) setShowSettings(false); else onClose(); break;
+        case "Escape":
+          if (showSettings) setShowSettings(false);
+          else if (isFullscreen) void exitPlayerFullscreen();
+          else onClose();
+          break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [locked, onClose, setVolumeValue, seekBy, showSettings, toggleFullscreen, toggleMute, togglePlay, volume]);
+  }, [exitPlayerFullscreen, isFullscreen, locked, onClose, setVolumeValue, seekBy, showSettings, toggleFullscreen, toggleMute, togglePlay, volume]);
 
   const setPlaybackSpeed = (value: PlaybackSpeed) => {
     if (videoRef.current) videoRef.current.playbackRate = value;
@@ -394,8 +527,14 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   };
 
   const setQualityLevel = (level: number) => {
-    if (hlsRef.current) hlsRef.current.currentLevel = level;
+    const hls = hlsRef.current;
+    if (!hls || (level !== -1 && !hls.levels[level])) return;
+    // -1 returns hls.js to adaptive Auto. A concrete level is applied to both
+    // the current and next fragment so a manual choice takes effect promptly.
+    hls.currentLevel = level;
+    hls.nextLevel = level;
     setQuality(level);
+    showControls();
   };
 
   const setSubtitle = (choice: SubtitleChoice) => {
@@ -412,7 +551,9 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
 
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const buffered = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
-  const qualityChoices = [{ index: -1, label: isHlsSource ? "Auto" : "Source default", height: 0 }, ...qualityOptions];
+  const hasAdaptiveQualities = isHlsSource && qualityOptions.length > 1;
+  const singleQualityLabel = qualityOptions[0]?.label || sourceQuality;
+  const qualityChoices = hasAdaptiveQualities ? [{ index: -1, label: "Auto", height: 0, bitrate: 0 }, ...qualityOptions] : [];
 
   const retry = () => {
     setErrored(false);
@@ -440,7 +581,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   return (
     <div
       ref={wrapRef}
-      className="video-player-shell"
+      className={`video-player-shell${isFullscreen ? " is-fullscreen" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={`Now playing ${title}`}
@@ -453,7 +594,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           poster={poster}
           autoPlay
           playsInline
-          preload="auto"
+          preload="metadata"
           style={{ objectFit: fitMode, filter: `brightness(${brightness}%)` }}
           className="video-element"
           onContextMenu={(event) => event.preventDefault()}
@@ -530,14 +671,25 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           aria-valuemin={0}
           aria-valuemax={Math.floor(duration || 0)}
           aria-valuenow={Math.floor(currentTime)}
+          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
           tabIndex={0}
-          onClick={(event) => {
-            const video = videoRef.current;
-            if (!video || !Number.isFinite(video.duration) || locked) return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            video.currentTime = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * video.duration;
-            showControls();
+          onPointerDown={(event) => {
+            if (locked) return;
+            seekingRef.current = true;
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            seekToPointer(event.clientX, event.currentTarget);
           }}
+          onPointerMove={(event) => {
+            if (seekingRef.current) seekToPointer(event.clientX, event.currentTarget);
+          }}
+          onPointerUp={(event) => {
+            if (!seekingRef.current) return;
+            seekToPointer(event.clientX, event.currentTarget, true);
+            seekingRef.current = false;
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
+          }}
+          onPointerCancel={() => { seekingRef.current = false; }}
+          onClick={(event) => seekToPointer(event.clientX, event.currentTarget, true)}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") seekBy(-5);
             if (event.key === "ArrowRight") seekBy(5);
@@ -575,14 +727,17 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       {showSettings && !locked && (
         <div className="player-popover" role="dialog" aria-label="Playback settings" onClick={(event) => event.stopPropagation()}>
           <span className="player-setting-label">Stream quality</span>
-          <div className="player-setting-group" role="group" aria-label="Choose stream quality">
-            {qualityChoices.map((option) => (
-              <button key={option.index} className="player-setting-option" type="button" aria-pressed={quality === option.index} onClick={() => setQualityLevel(option.index)}>
-                {option.label}
-              </button>
-            ))}
-          </div>
-          {!isHlsSource && <p style={{ margin: "-9px 0 16px", color: "rgba(255,255,255,.38)", fontSize: 9, lineHeight: 1.5 }}>This source manages quality automatically, or supplies a single rendition.</p>}
+          {hasAdaptiveQualities ? (
+            <div className="player-setting-group" role="group" aria-label="Choose stream quality">
+              {qualityChoices.map((option) => (
+                <button key={option.index} className="player-setting-option" type="button" aria-pressed={quality === option.index} onClick={() => setQualityLevel(option.index)}>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="player-setting-help">{singleQualityLabel ? `Only ${singleQualityLabel} is supplied by this source.` : isHlsSource ? "This stream supplies one rendition; adaptive quality switching is unavailable." : "Only the available source rendition can be used."}</p>
+          )}
 
           <span className="player-setting-label">Subtitles</span>
           {subtitleOptions.length > 0 ? (
