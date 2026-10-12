@@ -1,197 +1,103 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCatalogue } from "./CatalogueProvider";
+import Artwork from "./Artwork";
+import Icon from "./Icon";
+import CinematicButton, { CinematicLink } from "./CinematicButton";
+import Logo from "./Logo";
+import useReducedMotion from "@/hooks/useReducedMotion";
+import type { CatalogueMovie } from "@/lib/catalogue";
 
-interface Slide {
-  id: number;
+interface Feature {
+  id: string;
   title: string;
-  subtitle: string | null;
   imageUrl: string | null;
   movieId: number | null;
-  fallback?: boolean;
-}
-
-const FALLBACK_SLIDES: Slide[] = [
-  {
-    id: -1,
-    title: "The night is yours.",
-    subtitle: "A world of stories, made for the way you want to watch.",
-    imageUrl: "/cinemax-hero.jpg",
-    movieId: null,
-    fallback: true,
-  },
-];
-
-function Arrow({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {direction === "left" ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
-    </svg>
-  );
+  movie?: CatalogueMovie;
+  metadata: string[];
 }
 
 export default function HeroSlider() {
-  const [slides, setSlides] = useState<Slide[]>([]);
-  const [current, setCurrent] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [paused, setPaused] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const activeSlides = slides.length > 0 ? slides : FALLBACK_SLIDES;
-  const slide = activeSlides[current] ?? activeSlides[0];
+  const { slides, movies, loading, error, refresh } = useCatalogue();
+  const [selection, setSelection] = useState({ current: 0, previous: -1 });
+  const [interacting, setInteracting] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
+  const [pageVisible, setPageVisible] = useState(true);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const reducedMotion = useReducedMotion();
+
+  const features = useMemo<Feature[]>(() => {
+    if (slides.length) return slides.map((slide) => {
+      const movie = movies.find((item) => item.id === slide.movieId);
+      return {
+        id: `slide-${slide.id}`,
+        title: slide.title || movie?.title || "",
+        imageUrl: slide.imageUrl || movie?.backdropUrl || movie?.posterUrl || null,
+        movieId: slide.movieId,
+        movie,
+        metadata: movie ? [movie.year ? String(movie.year) : "", ...(movie.genre ?? "").split(",").map((item) => item.trim()).slice(0, 3)].filter(Boolean) : (slide.subtitle ?? "").split(/\s*[•·]\s*/).filter(Boolean),
+      };
+    });
+    const featured = movies.filter((movie) => movie.featured);
+    return (featured.length ? featured : movies).slice(0, 5).map((movie) => ({
+      id: `movie-${movie.id}`, title: movie.title, imageUrl: movie.backdropUrl || movie.posterUrl,
+      movieId: movie.id, movie,
+      metadata: [movie.year ? String(movie.year) : "", ...(movie.genre ?? "").split(",").map((item) => item.trim()).slice(0, 3)].filter(Boolean),
+    }));
+  }, [slides, movies]);
+  const current = Math.max(0, Math.min(selection.current, features.length - 1));
+  const feature = features[current];
+  const paused = interacting || userPaused || reducedMotion || !pageVisible;
+
+  const choose = useCallback((index: number) => {
+    setSelection((previous) => ({ current: (index + features.length) % features.length, previous: Math.min(previous.current, features.length - 1) }));
+  }, [features.length]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/slides", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Slides unavailable");
-        return response.json();
-      })
-      .then((data: unknown) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setSlides(data as Slide[]);
-          setCurrent(0);
-        }
-      })
-      .catch(() => {
-        // A local, art-directed hero keeps the front door polished while the library is being connected.
-      })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+    const update = () => setPageVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
   }, []);
-
-  const next = useCallback(() => {
-    setCurrent((index) => (index + 1) % activeSlides.length);
-    setImageFailed(false);
-  }, [activeSlides.length]);
-  const previous = useCallback(() => {
-    setCurrent((index) => (index - 1 + activeSlides.length) % activeSlides.length);
-    setImageFailed(false);
-  }, [activeSlides.length]);
-
   useEffect(() => {
-    if (activeSlides.length < 2 || paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(next, 7000);
+    if (features.length < 2 || paused) return;
+    const timer = window.setInterval(() => {
+      setSelection((previous) => ({ current: (previous.current + 1) % features.length, previous: previous.current }));
+    }, 9000);
     return () => window.clearInterval(timer);
-  }, [activeSlides.length, next, paused]);
+  }, [features.length, paused]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft") previous();
-      if (event.key === "ArrowRight") next();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [next, previous]);
+  if (loading && !feature) return <section className="hero-card hero-loading" aria-label="Loading featured titles" aria-busy="true"><div className="hero-loading-atmosphere" /><div className="hero-copy"><div className="shimmer hero-skeleton-title" /><div className="shimmer hero-skeleton-meta" /><div className="shimmer hero-skeleton-button" /></div></section>;
+  if (!feature) return <section className="hero-card hero-empty" aria-label="Cinemax library">
+    <Artwork src="/cinemax-atmosphere.webp" className="hero-image" kind="backdrop" priority />
+    <div className="hero-vignette" />
+    <div className="hero-copy"><Logo className="hero-empty-logo" /><h1 className="hero-title">{error ? "Library unavailable" : "Your library is ready"}</h1><p className="hero-empty-copy">{error || "Add your first titles in the Cinemax studio."}</p><div className="hero-actions">{error ? <CinematicButton onClick={refresh} icon={<Icon name="refresh" />}>Try again</CinematicButton> : <CinematicLink href="/gate-keeper" icon={<Icon name="plus" />}>Open studio</CinematicLink>}</div></div>
+  </section>;
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    touchStartX.current = event.touches[0]?.clientX ?? null;
-    touchStartY.current = event.touches[0]?.clientY ?? null;
-  };
-  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-    const x = touchStartX.current;
-    const y = touchStartY.current;
-    const endX = event.changedTouches[0]?.clientX;
-    const endY = event.changedTouches[0]?.clientY;
-    if (x !== null && y !== null && endX !== undefined && endY !== undefined && Math.abs(endX - x) > 48 && Math.abs(endY - y) < 80) {
-      endX < x ? next() : previous();
-    }
-    touchStartX.current = null;
-    touchStartY.current = null;
-  };
-
-  if (loading) return <div className="hero-loading shimmer" aria-label="Loading featured titles" />;
-
-  return (
-    <section
-      aria-label="Featured stories"
-      className="hero-card"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false);
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div className="hero-image-fallback" />
-      {slide.imageUrl && !imageFailed && (
-        <img
-          key={slide.id}
-          className="hero-image"
-          src={slide.imageUrl}
-          alt=""
-          fetchPriority={current === 0 ? "high" : "auto"}
-          decoding="async"
-          onError={() => setImageFailed(true)}
-        />
-      )}
-      <div className="hero-vignette" />
-      <div className="hero-glow" />
-
-      <div className="hero-topline" aria-live="polite">
-        <span className="hero-topline-pill">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" />
-            <circle cx="12" cy="12" r="4" />
-          </svg>
-          {slide.fallback ? "Your next story" : "Featured on Cinemax"}
-        </span>
-        <span className="hero-slide-count">{String(current + 1).padStart(2, "0")} <span aria-hidden="true">/</span> {String(activeSlides.length).padStart(2, "0")}</span>
+  return <section className="hero-card" aria-label="Featured titles" aria-roledescription="carousel" tabIndex={0}
+    onMouseEnter={() => setInteracting(true)} onMouseLeave={() => setInteracting(false)}
+    onFocus={() => setInteracting(true)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setInteracting(false); }}
+    onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); choose(current + (event.key === "ArrowRight" ? 1 : -1)); } }}
+    onTouchStart={(event) => { const point = event.touches[0]; if (point) touch.current = { x: point.clientX, y: point.clientY }; }}
+    onTouchEnd={(event) => { const point = event.changedTouches[0]; if (touch.current && point && Math.abs(point.clientX - touch.current.x) > 55 && Math.abs(point.clientY - touch.current.y) < 60) choose(current + (point.clientX < touch.current.x ? 1 : -1)); touch.current = null; }}>
+    <div className="hero-image-fallback" aria-hidden="true" />
+    {features.filter((_, index) => index === current || index === selection.previous).map((item) => <div className="hero-scene" key={item.id} data-active={item.id === feature.id} aria-hidden="true"><Artwork src={item.imageUrl} className="hero-image" kind="backdrop" priority={item.id === feature.id} /></div>)}
+    <div className="hero-vignette" />
+    <div className="hero-colour-reflection" aria-hidden="true" />
+    <div className="hero-copy" key={feature.id}>
+      <h1 className={`hero-title ${feature.title.length > 28 ? "hero-title-long" : ""}`}>{feature.title}</h1>
+      {feature.metadata.length > 0 && <div className="hero-meta">{feature.metadata.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div>}
+      <div className="hero-actions">
+        {feature.movieId ? <>
+          <CinematicLink href={`/movie/${feature.movieId}?play=1`} icon={<Icon name="play" filled />}>Watch Now</CinematicLink>
+          <CinematicLink href={`/movie/${feature.movieId}`} variant="secondary" icon={<Icon name="info" />}>More Details</CinematicLink>
+        </> : <CinematicLink href="/categories" icon={<Icon name="explore" />}>Explore</CinematicLink>}
       </div>
-
-      <div key={`copy-${slide.id}`} className="hero-copy">
-        <div className="hero-kicker">A world beyond play</div>
-        <h1 className="hero-title">{slide.title}</h1>
-        {slide.subtitle && <p className="hero-subtitle">{slide.subtitle}</p>}
-        <div className="hero-meta" aria-label="Featured collection">
-          <span>Made for movie nights</span><span className="hero-meta-dot" /><span>Find your next favourite</span>
-        </div>
-        <div className="hero-actions">
-          {slide.movieId ? (
-            <Link className="hero-button" href={`/movie/${slide.movieId}`}>
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6L19 12 8 5.2Z" /></svg>
-              Watch now
-            </Link>
-          ) : (
-            <Link className="hero-button" href="/search">
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6L19 12 8 5.2Z" /></svg>
-              Explore titles
-            </Link>
-          )}
-          {slide.movieId ? (
-            <Link className="hero-button hero-button-secondary" href={`/movie/${slide.movieId}`}>
-              More details
-            </Link>
-          ) : (
-            <Link className="hero-button hero-button-secondary" href="/categories">Browse collections</Link>
-          )}
-        </div>
-      </div>
-
-      {activeSlides.length > 1 && (
-        <>
-          <div className="hero-indicators" aria-label="Choose featured story">
-            {activeSlides.map((item, index) => (
-              <button
-                key={item.id}
-                className="hero-indicator"
-                type="button"
-                aria-label={`Show featured story ${index + 1}: ${item.title}`}
-                aria-current={index === current}
-                onClick={() => { setCurrent(index); setImageFailed(false); }}
-              />
-            ))}
-          </div>
-          <div className="hero-controls">
-            <button className="hero-arrow" type="button" aria-label="Previous featured story" onClick={previous}><Arrow direction="left" /></button>
-            <button className="hero-arrow" type="button" aria-label="Next featured story" onClick={next}><Arrow direction="right" /></button>
-          </div>
-        </>
-      )}
-    </section>
-  );
+    </div>
+    {features.length > 1 && <div className="hero-pagination">
+      <div className="hero-dots" aria-label="Choose a featured title">{features.map((item, index) => <button className="hero-dot" key={item.id} type="button" aria-label={`Show ${item.title}`} aria-current={index === current ? "true" : undefined} onClick={() => choose(index)}><span /></button>)}</div>
+      <div className="hero-preview-track" aria-label="Featured titles">{features.slice(0, 5).map((item, index) => <button key={item.id} type="button" className="hero-preview" aria-label={`Feature ${item.title}`} aria-current={index === current ? "true" : undefined} onClick={() => choose(index)}><Artwork src={item.imageUrl} kind="backdrop" sizes="140px" /><span>{item.title}</span></button>)}</div>
+      <div className="hero-controls"><span className="hero-slide-count"><strong>{String(current + 1).padStart(2, "0")}</strong><span>/ {String(features.length).padStart(2, "0")}</span></span><button className="icon-button hero-arrow" type="button" aria-label="Previous featured title" onClick={() => choose(current - 1)}><Icon name="chevron-left" /></button><button className="icon-button hero-arrow" type="button" aria-label="Next featured title" onClick={() => choose(current + 1)}><Icon name="chevron-right" /></button>{!reducedMotion && <button className="icon-button hero-pause" type="button" aria-label={userPaused ? "Resume featured slideshow" : "Pause featured slideshow"} aria-pressed={userPaused} onClick={() => setUserPaused((previous) => !previous)}><Icon name={userPaused ? "play" : "pause"} /></button>}</div>
+    </div>}
+  </section>;
 }

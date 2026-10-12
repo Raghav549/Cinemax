@@ -560,7 +560,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
             <IconButton label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>
               {muted ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6" /></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m2.5-10.5a9.5 9.5 0 0 1 0 13" /></svg>}
             </IconButton>
-            <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => setVolumeValue(Number(event.target.value))} style={{ width: 62, accentColor: "#a5f3d0" }} />
+            <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => setVolumeValue(Number(event.target.value))} style={{ width: 62, accentColor: "var(--accent)" }} />
             <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
           </div>
           <div className="player-control-group">
@@ -609,7 +609,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           </div>
 
           <span className="player-setting-label">Brightness · {brightness}%</span>
-          <input aria-label="Screen brightness" type="range" min={40} max={140} value={brightness} onChange={(event) => setBrightness(Number(event.target.value))} style={{ width: "100%", accentColor: "#a5f3d0" }} />
+          <input aria-label="Screen brightness" type="range" min={40} max={140} value={brightness} onChange={(event) => setBrightness(Number(event.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
         </div>
       )}
     </div>

@@ -1,64 +1,54 @@
 "use client";
 
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import Logo from "./Logo";
+import Icon from "./Icon";
+import { useWatchlist } from "./WatchlistProvider";
 
-const links = [
-  { href: "/", label: "Home" },
-  { href: "/categories", label: "Explore" },
-  { href: "/watchlist", label: "My list" },
-];
-
-function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M7.3 5.2v13.6L19 12 7.3 5.2Z" fill="currentColor" />
-      </svg>
-    </span>
-  );
-}
+const links = [{ href: "/", label: "Home" }, { href: "/categories", label: "Explore" }, { href: "/watchlist", label: "Watchlist" }];
 
 export default function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+  const sentinel = useRef<HTMLDivElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const { savedIds } = useWatchlist();
+  const active = pathname === "/categories" || pathname.startsWith("/category/") ? 1 : pathname === "/watchlist" ? 2 : pathname === "/" || pathname.startsWith("/movie/") ? 0 : -1;
 
-  return (
-    <header className="site-header-wrap">
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => setScrolled(!entry.isIntersecting));
+    if (sentinel.current) observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !target.closest("input, textarea, select, [contenteditable=true]")) {
+        event.preventDefault();
+        router.push("/search");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
+
+  return <>
+    <div className="header-sentinel" ref={sentinel} aria-hidden="true" />
+    <header className="site-header-wrap" data-scrolled={scrolled} data-home={pathname === "/" || pathname.startsWith("/movie/")}>
       <div className="site-header">
-        <Link href="/" className="brand-lockup" aria-label="Cinemax home">
-          <BrandMark />
-          <span>
-            <span className="brand-word">CINEMAX</span>
-            <span className="brand-tagline">A world beyond play</span>
-          </span>
-        </Link>
-
-        <nav className="desktop-nav" aria-label="Main navigation">
-          {links.map((link) => {
-            const active = link.href === "/" ? pathname === "/" : link.href === "/categories" ? pathname === "/categories" || pathname.startsWith("/category/") : pathname === link.href || pathname.startsWith(`${link.href}/`);
-            return (
-              <Link key={link.href} href={link.href} className="desktop-nav-link" aria-current={active ? "page" : undefined}>
-                {link.label}
-              </Link>
-            );
-          })}
+        <Link href="/" className="brand-lockup" aria-label="Cinemax home"><Logo /></Link>
+        <nav className="desktop-nav" aria-label="Main navigation" style={{ "--nav-index": Math.max(0, active) } as CSSProperties}>
+          <span className="desktop-nav-indicator" data-visible={active >= 0} aria-hidden="true" />
+          {links.map((link, index) => <Link key={link.href} href={link.href} className="desktop-nav-link" aria-current={active === index ? "page" : undefined}>{link.label}</Link>)}
         </nav>
-
         <div className="header-actions">
-          <Link href="/search" className="header-icon-link" aria-label="Search movies and shows" aria-current={pathname === "/search" ? "page" : undefined} title="Search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-              <circle cx="10.8" cy="10.8" r="6.8" />
-              <path d="m16 16 4.3 4.3" />
-            </svg>
-          </Link>
-          <Link href="/watchlist" className="header-icon-link" aria-label="Open your list" title="My list">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-3.7L6 21V4.5Z" />
-            </svg>
-          </Link>
-          <span className="header-profile" aria-label="Cinemax profile">CX</span>
+          <Link href="/search" className="header-search" aria-label="Search movies and shows" aria-current={pathname === "/search" ? "page" : undefined}><Icon name="search" /><span>Search titles</span><kbd>/</kbd></Link>
+          <Link href="/watchlist" className="header-icon-link" aria-label={`Open watchlist${savedIds.size ? `, ${savedIds.size} saved titles` : ""}`} aria-current={pathname === "/watchlist" ? "page" : undefined}><Icon name="bookmark" />{savedIds.size > 0 && <span className="header-count" aria-hidden="true">{savedIds.size > 99 ? "99+" : savedIds.size}</span>}</Link>
+          <Link href="/gate-keeper" className="header-studio" aria-label="Open Cinemax studio" title="Cinemax studio">C</Link>
         </div>
       </div>
     </header>
-  );
+  </>;
 }

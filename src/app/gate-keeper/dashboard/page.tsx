@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Logo from "@/components/Logo";
+import Artwork from "@/components/Artwork";
 
 interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; subtitleUrl: string | null; subtitleLanguage: string | null; rightsConfirmed: boolean | null; category: string | null; featured: boolean | null; }
 interface Slide { id: number; title: string; subtitle: string | null; imageUrl: string | null; movieId: number | null; sortOrder: number | null; active: boolean | null; }
@@ -183,16 +186,16 @@ export default function AdminDashboard() {
 
   if (!authed) return null;
 
-  const labelStyle: React.CSSProperties = { display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 6 };
+  const labelStyle: React.CSSProperties = { display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--text-dim)", marginBottom: 6 };
 
   return (
-    <div style={{ background: "#000", minHeight: "100vh", color: "#fff", paddingBottom: 40 }}>
+    <div className="studio-dashboard" style={{ background: "var(--bg)", minHeight: "100vh", color: "var(--text)", paddingBottom: 40 }}>
       {msg && <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, padding: "10px 20px", borderRadius: 12, background: msg.kind === "error" ? "#ef4444" : "#fff", color: msg.kind === "error" ? "#fff" : "#000", fontWeight: 800, fontSize: 12, maxWidth: "min(90vw, 420px)", lineHeight: 1.4 }}>{msg.text}</div>}
 
       <header style={{ padding: "20px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 900 }}>CineMax Admin</h1>
-          <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>Control Panel</p>
+          <Link href="/" aria-label="Cinemax home"><Logo /></Link>
+          <h1 style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 5, fontWeight: 600 }}>Cinemax studio</h1>
         </div>
         <button onClick={() => fetch("/api/admin/logout",{method:"POST"}).then(() => router.push("/gate-keeper"))} style={{ padding: "10px 20px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Logout</button>
       </header>
@@ -212,7 +215,7 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <nav style={{ display: "flex", gap: 8, padding: "16px 20px", overflowX: "auto" }} className="hide-scrollbar">
         {(["overview","movies","slides","categories","lists"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 12, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", border: "none", cursor: "pointer", flexShrink: 0, background: tab===t ? "#fff" : "rgba(255,255,255,0.05)", color: tab===t ? "#000" : "rgba(255,255,255,0.4)" }}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 12, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", border: "none", cursor: "pointer", flexShrink: 0, background: tab===t ? "linear-gradient(115deg, #457afa, #9554de)" : "var(--surface)", color: tab===t ? "#fff" : "var(--text-soft)" }}>{t}</button>
         ))}
       </nav>
 
@@ -234,7 +237,7 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Library ({movies.length})</h2>
-              <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showMovieForm && (
@@ -268,12 +271,12 @@ export default function AdminDashboard() {
                     <div><label style={labelStyle}>Subtitle language code</label><input className="glass-input" value={mSubtitleLanguage} onChange={e=>setMSubtitleLanguage(e.target.value)} placeholder="en" /></div>
                   </div>
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", padding: "12px 13px", border: "1px solid rgba(165,243,208,0.16)", borderRadius: 12, background: "rgba(165,243,208,0.035)" }}>
-                    <input type="checkbox" checked={mRightsConfirmed} onChange={e=>setMRightsConfirmed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "#a5f3d0" }} />
+                    <input type="checkbox" checked={mRightsConfirmed} onChange={e=>setMRightsConfirmed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "var(--accent)" }} />
                     <span style={{ fontSize: 11, fontWeight: 650, lineHeight: 1.55, color: "rgba(238,248,243,0.7)" }}>I confirm Cinemax is authorized to publicly stream and distribute this title. Required before a magnet source can be played.</span>
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={mFeatured} onChange={e=>setMFeatured(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Featured</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowMovieForm(false); resetMovie(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -283,7 +286,7 @@ export default function AdminDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {movies.map((m) => (
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, background: "rgba(20,20,20,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ width: 44, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}><img src={m.posterUrl||""} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>
+                  <div style={{ width: 44, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}><Artwork src={m.posterUrl} sizes="48px" /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</p>
                     <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>{m.year} • {m.type} • {m.rating}★</p>
@@ -303,7 +306,7 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Hero Slides ({slides.length})</h2>
-              <button onClick={() => { resetSlide(); setShowSlideForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetSlide(); setShowSlideForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showSlideForm && (
@@ -319,7 +322,7 @@ export default function AdminDashboard() {
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={sActive} onChange={e=>setSActive(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Active</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveSlide} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveSlide} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowSlideForm(false); resetSlide(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -329,7 +332,7 @@ export default function AdminDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {slides.map((s) => (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, background: "rgba(20,20,20,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ width: 72, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}><img src={s.imageUrl||""} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>
+                  <div style={{ width: 72, height: 44, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}><Artwork src={s.imageUrl} kind="backdrop" sizes="72px" /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</p>
                     <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>Order: {s.sortOrder} • {s.active ? "Active" : "Inactive"}</p>
@@ -349,7 +352,7 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Categories ({categories.length})</h2>
-              <button onClick={() => { resetCat(); setShowCatForm(!showCatForm); }} style={{ padding: "10px 20px", borderRadius: 12, background: "#fff", color: "#000", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetCat(); setShowCatForm(!showCatForm); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showCatForm && (
@@ -359,7 +362,7 @@ export default function AdminDashboard() {
                   <div><label style={labelStyle}>Name</label><input className="glass-input" value={cName} onChange={e=>setCName(e.target.value)} /></div>
                   <div><label style={labelStyle}>Slug (optional)</label><input className="glass-input" value={cSlug} onChange={e=>setCSlug(e.target.value)} placeholder="auto-generated" /></div>
                   <div style={{ display: "flex", gap: 12 }}>
-                    <button onClick={saveCat} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "#fff", color: "#000", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveCat} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowCatForm(false); resetCat(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -395,7 +398,7 @@ export default function AdminDashboard() {
               {entries.map((entry) => (
                 <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, background: "rgba(20,20,20,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <div style={{ width: 44, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}>
-                    <img src={entry.movie?.posterUrl || ""} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <Artwork src={entry.movie?.posterUrl} sizes="44px" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.movie?.title || `Movie #${entry.movieId} (deleted)`}</p>

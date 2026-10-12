@@ -51,11 +51,10 @@ export default function ContinueWatchingRow({ movies }: { movies: MovieCardData[
 
   return (
     <MovieRow
-      title="Pick up where you left off"
+      title="Continue watching"
       category="continue"
       movies={resumable}
       progressByMovie={progressByMovie}
-      kicker="Continue watching"
     />
   );
 }

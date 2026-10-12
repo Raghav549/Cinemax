@@ -92,6 +92,8 @@ The Cinemax `/api/stream/{movieId}` Node route is the public playback endpoint a
 | `npm run build`     | Production build                                                   |
 | `npm run lint`      | ESLint                                                             |
 | `npm run typecheck` | TypeScript check                                                   |
+| `npm run test:ui`   | API-backed Playwright regression checks (desktop/mobile/reduced motion) |
+| `npm run test:ui:report` | Open the latest browser-check report                          |
 | `npm run db:push`   | Push Drizzle schema to database                                    |
 | `npm run verify:api`| End-to-end check of every admin/public API route (see below)        |
 
@@ -112,3 +114,13 @@ BASE_URL=https://your-app.vercel.app ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run 
 ```
 
 It prints one line per check and exits non-zero if anything fails.
+
+## Cinemax / Prism visual redesign
+
+The public UI now uses an original multicolour aperture emblem, cinematic
+artwork, a session-only intro, flowing SVG button lighting, and persistent
+responsive navigation. Existing APIs, database records, studio/authentication,
+and playback are retained.
+
+See [the redesign and verification notes](docs/prism-redesign.md) for the design
+system, interaction fixes, browser-check setup, and deployment caveats.
