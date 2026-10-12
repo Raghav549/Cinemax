@@ -33,80 +33,22 @@
         android:progressDrawable="@drawable/cinemax_page_progress"
         android:visibility="invisible" />
 
-    <!-- Native cinematic intro. It hands over after a themed first paint or a
-         short safety timeout; there is intentionally no spinner/loading copy. -->
+    <!-- Native cinematic intro: one composited canvas view draws the whole
+         layered logo reveal (halo, aperture iris, expanding rings, sweeping
+         arc, light streaks, the emblem's two ribbons, a light sweep, wordmark,
+         brand rule, tagline). It hands over after a themed first paint or a
+         safety timeout; there is intentionally no spinner/loading copy. -->
     <FrameLayout
         android:id="@+id/cinemax_splash"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@drawable/cinemax_splash_background">
+        android:background="@color/cinemax_ink">
 
-        <View
-            android:id="@+id/cinemax_splash_glow"
-            android:layout_width="330dp"
-            android:layout_height="330dp"
-            android:layout_gravity="center"
-            android:background="@drawable/cinemax_splash_glow" />
-
-        <View
-            android:id="@+id/cinemax_splash_ring_one"
-            android:layout_width="360dp"
-            android:layout_height="360dp"
-            android:layout_gravity="center"
-            android:background="@drawable/cinemax_splash_ring" />
-
-        <View
-            android:id="@+id/cinemax_splash_ring_two"
-            android:layout_width="260dp"
-            android:layout_height="260dp"
-            android:layout_gravity="center"
-            android:background="@drawable/cinemax_splash_ring_inner" />
-
-        <View
-            android:id="@+id/cinemax_splash_streak_one"
-            android:layout_width="520dp"
-            android:layout_height="2dp"
-            android:layout_gravity="center"
-            android:background="@drawable/cinemax_splash_light_streak"
-            android:rotation="-24" />
-
-        <View
-            android:id="@+id/cinemax_splash_streak_two"
-            android:layout_width="470dp"
-            android:layout_height="1dp"
-            android:layout_gravity="center"
-            android:background="@drawable/cinemax_splash_light_streak"
-            android:rotation="-24" />
-
-        <LinearLayout
-            android:id="@+id/cinemax_splash_lockup"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
-
-            <ImageView
-                android:id="@+id/cinemax_splash_emblem"
-                android:layout_width="118dp"
-                android:layout_height="118dp"
-                android:contentDescription="@string/splash_emblem_desc"
-                android:src="@drawable/cinemax_emblem" />
-
-            <TextView
-                style="@style/CinemaxWordmark"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="@string/app_name" />
-
-            <TextView
-                style="@style/CinemaxTagline"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/splash_tagline" />
-        </LinearLayout>
+        <com.cinemax.app.CinemaxSplashView
+            android:id="@+id/cinemax_splash_stage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/splash_lockup_desc" />
     </FrameLayout>
 
     <!-- Native offline / error surface with a retry path. -->

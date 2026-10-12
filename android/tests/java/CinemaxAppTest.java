@@ -1,5 +1,6 @@
 import com.cinemax.app.NavigationPolicy;
 import com.cinemax.app.NavigationPolicy.Decision;
+import com.cinemax.app.SplashMotion;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,6 +45,8 @@ public final class CinemaxAppTest {
 
         navigationPolicyChecks();
         injectionChecks(outputDirectory);
+        splashChecks();
+        scrollPerformanceChecks();
 
         System.out.println();
         System.out.println("checks: " + checks + ", failures: " + failures);
@@ -102,8 +105,8 @@ public final class CinemaxAppTest {
         check(theme.length() > 4000, "app-theme.css asset is present (" + theme.length() + " bytes)");
         check(!splashLayout.contains("cinemax_splash_spinner"), "the native splash has no generic spinner");
         check(!strings.contains("Starting Cinemax"), "the native splash has no generic loading copy");
-        check(splashLayout.contains("cinemax_splash_ring_one") && splashLayout.contains("cinemax_splash_streak_one"),
-                "the native splash packages the animated logo light layers");
+        check(splashLayout.contains("com.cinemax.app.CinemaxSplashView") && splashLayout.contains("cinemax_splash_stage"),
+                "the native splash hosts the layered reveal canvas");
         check(shell.length() > 2000, "app-shell.js asset is present (" + shell.length() + " bytes)");
         check(theme.contains("html[data-cinemax-app=\"android\"]"), "the theme is scoped to the app attribute");
 
@@ -152,6 +155,243 @@ public final class CinemaxAppTest {
         write(new File(outputDirectory, "shell-script.js"), shell);
     }
 
+    // -------------------------------------------------------- splash reveal
+
+    /**
+     * The premium splash has to be a layered, transform-only reveal that cannot
+     * delay startup, must keep the existing logo/typography, and must never be
+     * replayed outside a real app launch. The timeline itself is pure arithmetic
+     * (SplashMotion), so it is verified here frame by frame rather than by
+     * looking at a device.
+     */
+    private static void splashChecks() throws Exception {
+        section("native splash reveal (SplashMotion)");
+
+        long reveal = SplashMotion.REVEAL_MILLIS;
+        check(reveal >= 900L && reveal <= 1400L, "the reveal is a short clip (" + reveal + " ms)");
+        check(SplashMotion.HANDOFF_MIN_VISIBLE_MILLIS <= reveal,
+                "the hand-off never waits longer than the reveal itself");
+        check(SplashMotion.HANDOFF_FADE_MILLIS <= 500L,
+                "the hand-off cross-fade is quick (" + SplashMotion.HANDOFF_FADE_MILLIS + " ms)");
+        check(SplashMotion.layerCount() >= 10, "the reveal is layered (" + SplashMotion.layerCount() + " layers)");
+
+        boolean allFinish = true;
+        for (int layer = 0; layer < SplashMotion.layerCount(); layer++) {
+            if (SplashMotion.end(layer) > reveal || SplashMotion.duration(layer) <= 0L) {
+                allFinish = false;
+            }
+        }
+        check(allFinish, "every layer finishes inside the reveal clip");
+
+        check(SplashMotion.delay(SplashMotion.LAYER_RIBBON) < SplashMotion.delay(SplashMotion.LAYER_FOLD),
+                "the emblem's ribbon arrives before the fold");
+        check(SplashMotion.delay(SplashMotion.LAYER_SHEEN) > SplashMotion.delay(SplashMotion.LAYER_RIBBON),
+                "the light sweep crosses the emblem only after it has arrived");
+        check(SplashMotion.delay(SplashMotion.LAYER_WORDMARK) > SplashMotion.delay(SplashMotion.LAYER_RIBBON),
+                "the wordmark follows the emblem");
+        check(SplashMotion.end(SplashMotion.LAYER_TAGLINE) == reveal,
+                "the tagline settles exactly at the end of the reveal");
+        check(SplashMotion.delay(SplashMotion.LAYER_STREAK_A) < SplashMotion.delay(SplashMotion.LAYER_WORDMARK)
+                        && SplashMotion.delay(SplashMotion.LAYER_STREAK_B) < SplashMotion.delay(SplashMotion.LAYER_WORDMARK),
+                "both light streaks travel while the logo is still revealing");
+        check(SplashMotion.end(SplashMotion.LAYER_RING_OUTER) == reveal
+                        && SplashMotion.end(SplashMotion.LAYER_RING_ARC) == reveal,
+                "the expanding rings are the longest running layer");
+
+        // Progress is clamped, starts at zero and is monotonic per layer.
+        boolean progressOk = true;
+        for (int layer = 0; layer < SplashMotion.layerCount(); layer++) {
+            if (SplashMotion.progress(0L, layer) != 0f && SplashMotion.delay(layer) > 0L) {
+                progressOk = false;
+            }
+            if (SplashMotion.progress(reveal, layer) != 1f) {
+                progressOk = false;
+            }
+            float previous = -1f;
+            for (long t = 0L; t <= reveal; t += 40L) {
+                float value = SplashMotion.progress(t, layer);
+                if (value < previous || value < 0f || value > 1f) {
+                    progressOk = false;
+                    break;
+                }
+                previous = value;
+            }
+        }
+        check(progressOk, "layer progress is clamped and monotonic");
+
+        check(SplashMotion.handoffReady(SplashMotion.HANDOFF_READY_MILLIS)
+                        && !SplashMotion.handoffReady(SplashMotion.HANDOFF_READY_MILLIS - 20L),
+                "the page may take over once the lockup has landed");
+        check(!SplashMotion.revealComplete(reveal - 20L) && SplashMotion.revealComplete(reveal),
+                "the reveal reports completion at its last frame");
+
+        boolean easingOk = true;
+        for (int step = 0; step <= 100; step++) {
+            float t = step / 100f;
+            if (SplashMotion.easeOutCubic(t) < 0f || SplashMotion.easeInOutSine(t) < 0f
+                    || SplashMotion.easeOutQuint(t) < 0f || SplashMotion.easeInOutCubic(t) < 0f) {
+                easingOk = false;
+            }
+        }
+        check(easingOk, "easings stay in range for the whole clip");
+        check(SplashMotion.easeOutCubic(0f) == 0f && Math.abs(SplashMotion.easeOutCubic(1f) - 1f) < 0.0001f,
+                "easings are anchored at both ends");
+        check(SplashMotion.easeOutBack(0.72f) > 1f, "the emblem lands with a small overshoot");
+        check(SplashMotion.clamp01(-4f) == 0f && SplashMotion.clamp01(9f) == 1f, "clamp is defensive");
+
+        // Ring/sheen/streak curves: silent at the ends, present in the middle.
+        check(SplashMotion.ringAlpha(0.5f, 0f) == 0f
+                        && SplashMotion.ringAlpha(0.5f, 1f) < 0.02f
+                        && SplashMotion.ringAlpha(0.5f, 0.2f) > 0.4f,
+                "a ring fades in, peaks early and dissolves");
+        check(SplashMotion.ringScale(0.5f, 1.6f, 0f) < 0.6f && SplashMotion.ringScale(0.5f, 1.6f, 1f) > 1.5f,
+                "rings expand outwards across the whole clip");
+        check(SplashMotion.sheenAlpha(0.3f, 0f) == 0f && SplashMotion.sheenAlpha(0.3f, 1f) < 0.02f
+                        && SplashMotion.sheenAlpha(0.3f, 0.35f) > 0.25f,
+                "the light sweep crosses the emblem once and disappears");
+        check(SplashMotion.streakAlpha(0.5f, 0f) == 0f && SplashMotion.streakAlpha(0.5f, 1f) == 0f
+                        && SplashMotion.streakAlpha(0.5f, 0.4f) > 0.4f,
+                "streaks fade in on approach and out on departure");
+        check(SplashMotion.arcHeadAlpha(0.9f, 0f) == 0f && SplashMotion.arcHeadAlpha(0.9f, 1f) > 0.3f,
+                "the aperture arc keeps a travelling light head");
+        check(SplashMotion.breathScale(reveal - 1L) == 1f
+                        && Math.abs(SplashMotion.breathScale(reveal + 650L) - 1f) <= 0.03f,
+                "the idle halo only breathes by a couple of percent");
+        check(Math.abs(SplashMotion.wordmarkLetterSpacing(0.085f, -0.055f, 1f) + 0.055f) < 0.0001f,
+                "the wordmark settles on the brand's tight tracking");
+        check(SplashMotion.irisRotation(-9f, 4f, 1f) > 3.5f, "the aperture blades finish their rotation");
+        check(SplashMotion.emblemLift(0f) == 1f && SplashMotion.emblemLift(1f) == 0f
+                        && SplashMotion.emblemLift(0.4f) > SplashMotion.emblemLift(0.6f),
+                "the lockup starts at the launch position and settles into place");
+
+        section("native splash resources and launch gating");
+
+        String layout = read(new File(projectDirectory, "app/src/main/res/layout/activity_main.xml"));
+        String mainActivity = read(new File(projectDirectory, "app/src/main/java/com/cinemax/app/MainActivity.java"));
+        String splashView = read(new File(projectDirectory, "app/src/main/java/com/cinemax/app/CinemaxSplashView.java"));
+        String emblem = read(new File(projectDirectory, "app/src/main/res/drawable/cinemax_emblem.xml"));
+        String ribbon = read(new File(projectDirectory, "app/src/main/res/drawable/cinemax_emblem_ribbon.xml"));
+        String fold = read(new File(projectDirectory, "app/src/main/res/drawable/cinemax_emblem_fold.xml"));
+        String styles = read(new File(projectDirectory, "app/src/main/res/values/styles.xml"));
+
+        check(layout.contains("com.cinemax.app.CinemaxSplashView"), "the splash stage is a single composited view");
+        check(layout.contains("android:background=\"@color/cinemax_ink\""),
+                "the splash layer stays a flat brand canvas (no gradient stack to composite)");
+        check(!layout.contains("cinemax_splash_glow") && !layout.contains("cinemax_splash_streak_one"),
+                "the old static splash view stack is gone");
+        check(splashView.contains("setContentDescription"), "the splash exposes an accessibility label");
+        check(splashView.contains("ANIMATOR_DURATION_SCALE"),
+                "the reveal honours the system animation scale (reduced motion)");
+        check(splashView.contains("splash_lockup_desc"), "the splash lockup has a brand description");
+        check(styles.contains("CinemaxWordmark") && styles.contains("sans-serif-light"),
+                "the existing wordmark style is preserved");
+        check(splashView.contains("cinemax/fonts/outfit-550.ttf"),
+                "the splash wordmark uses the website's Outfit brand font");
+        check(splashView.contains("revealLift") && splashView.contains("emblemLift"),
+                "the reveal starts at the launch position and rises into the lockup");
+
+        // The two reveal halves must be exactly the emblem's artwork.
+        String ribbonPath = pathDataOf(emblem, 0);
+        String foldPath = pathDataOf(emblem, 1);
+        check(ribbonPath.length() > 40 && foldPath.length() > 40, "the emblem exposes its two light ribbons");
+        check(ribbon.contains(ribbonPath) && fold.contains(foldPath),
+                "the layered splash drawables reuse the emblem paths verbatim");
+        check(!ribbon.contains(foldPath) && !fold.contains(ribbonPath),
+                "the two emblem layers carry the same artwork, not swapped copies");
+        check(ribbon.contains("70E0FF") && fold.contains("FF65AE"),
+                "both emblem layers keep the original brand gradients");
+
+        File font = new File(projectDirectory, "app/src/main/assets/cinemax/fonts/outfit-550.ttf");
+        check(font.isFile() && font.length() > 4096,
+                "the brand wordmark font is packaged (" + (font.isFile() ? font.length() : 0) + " bytes)");
+        check(new File(projectDirectory, "app/src/main/assets/cinemax/fonts/OUTFIT-LICENSE.txt").isFile(),
+                "the bundled font ships with its SIL OFL licence");
+
+        // Launch gating: the reveal plays once, on a genuine launch only.
+        int introUses = countOccurrences(mainActivity, "CinemaxSplashView.MODE_INTRO");
+        check(introUses == 1, "the animated intro is requested from exactly one place");
+        check(mainActivity.contains("savedInstanceState == null"),
+                "the animated intro is limited to a genuine app launch");
+        check(mainActivity.contains("CinemaxSplashView.MODE_HOLD"),
+                "reloads show the still frame instead of replaying the intro");
+        check(mainActivity.contains("showReloadingVeil"),
+                "offline retry and renderer restarts use the quiet reloading veil");
+        check(mainActivity.contains("splashStage.setRevealListener"),
+                "the page takes over as soon as the lockup has landed");
+        check(!mainActivity.contains("playSplashIntro"),
+                "the old view-stack splash animation is gone");
+        check(mainActivity.contains("splashStage.freeze()"),
+                "the timeline freezes before the hand-off (the fade costs no drawing)");
+        check(!splashView.contains("ValueAnimator.ofFloat(0f, 1f).setDuration(0)"),
+                "the reveal is never instant");
+    }
+
+    // ------------------------------------------------- scroll performance
+
+    /**
+     * Every rule below exists because of a specific cause of WebView scrolling
+     * jank or of a sudden layout jump during scroll. Asserting them in the suite
+     * keeps them from being "cleaned up" later.
+     */
+    private static void scrollPerformanceChecks() throws Exception {
+        section("scroll performance (native + injected layer)");
+
+        String mainActivity = read(new File(projectDirectory, "app/src/main/java/com/cinemax/app/MainActivity.java"));
+        String theme = read(asset("app-theme.css"));
+        String shell = read(asset("app-shell.js"));
+
+        // Native WebView configuration.
+        check(mainActivity.contains("setLoadWithOverviewMode(false)"),
+                "the WebView honours the page viewport instead of re-fitting it (no scale jumps)");
+        check(!mainActivity.contains("setLayerType(View.LAYER_TYPE_HARDWARE"),
+                "the WebView is not forced into a single hardware layer (keeps tiled compositing)");
+        check(mainActivity.contains("setOffscreenPreRaster(false)"),
+                "offscreen content is not pre-rasterised (memory + raster time)");
+        check(mainActivity.contains("setRendererPriorityPolicy"),
+                "the renderer stays at foreground priority while the app is visible");
+        check(mainActivity.contains("RENDERER_PRIORITY_WAIVED"),
+                "the renderer priority is released in the background");
+        check(mainActivity.contains("onTrimMemory") && mainActivity.contains("freeMemory()"),
+                "WebView caches are trimmed when the platform reports pressure");
+        check(mainActivity.contains("pushedInsetTop") && mainActivity.contains("insetsPublished"),
+                "unchanged window insets are never pushed into the page (no idle JS work)");
+        check(mainActivity.contains("SCROLL") || mainActivity.contains("splashStage.minimumVisibleMillis()"),
+                "the splash hand-off is driven by the page, not by a fixed startup delay");
+
+        // Injected stylesheet: the actual scroll-jank fixes.
+        check(theme.contains("content-visibility: visible"),
+                "rails are no longer skipped with content-visibility (no mid-scroll layout)");
+        check(theme.contains("contain-intrinsic-size: auto none"),
+                "the 390px rail estimate can no longer shift the document height");
+        check(theme.contains("contain: layout style"), "rails isolate their own layout invalidation");
+        check(theme.contains("scroll-behavior: auto"),
+                "document scrolling is immediate on Android (rails keep their own smooth scroll)");
+        check(theme.contains("[data-cinemax-scrolling=\"true\"]"),
+                "the theme reacts to the scrolling state published by the shell");
+        check(theme.contains("animation-play-state: paused"),
+                "decorative animations park while the page is scrolling");
+        check(theme.contains("touch-action: auto"),
+                "rails keep both pan axes on the compositor");
+        check(!theme.contains("filter: blur") && !theme.contains("will-change"),
+                "the scroll layer adds no new GPU/repaint hotspots of its own");
+        check(!theme.contains("backdrop-filter"), "no backdrop blur is added to the app layer");
+
+        // Injected runtime: one passive listener, no per-card wiring.
+        check(shell.contains("data-cinemax-scrolling"), "the shell publishes the scrolling state");
+        check(shell.contains("installScrollEngine"), "the shell owns a single scroll coordinator");
+        check(shell.contains("{ passive: true }"), "the scroll listener is passive");
+        check(shell.contains("requestAnimationFrame(scrollTick)"),
+                "the scroll state is coalesced to one animation frame");
+        check(!shell.contains("touch-action:pan-x"), "rails no longer force vertical pans to the main thread");
+        check(shell.contains("runArtworkWarmup") && shell.contains("requestIdleCallback"),
+                "artwork just ahead of the viewport is decoded during idle time");
+        check(shell.contains("image.decode()"), "images are decoded through the browser's own decoder cache");
+        check(shell.contains("saveData"), "the warm-up respects data-saving connections");
+        check(shell.contains("SCROLL_IDLE_MILLIS"), "the scrolling state clears when the gesture stops");
+        check(!shell.contains("addEventListener(\"scroll\", onScroll, false)"),
+                "no blocking scroll listener was introduced");
+    }
+
     // ---------------------------------------------------------------- utils
 
     private static void section(String name) {
@@ -176,6 +416,34 @@ public final class CinemaxAppTest {
 
     private static File asset(String name) {
         return new File(new File(projectDirectory, "app/src/main/assets/cinemax"), name);
+    }
+
+    /** Nth `android:pathData="..."` value of a vector drawable. */
+    private static String pathDataOf(String vector, int index) {
+        String marker = "android:pathData=\"";
+        int cursor = -1;
+        for (int found = 0; found <= index; found++) {
+            cursor = vector.indexOf(marker, cursor + 1);
+            if (cursor < 0) {
+                return "";
+            }
+        }
+        int start = cursor + marker.length();
+        int end = vector.indexOf('"', start);
+        return end > start ? vector.substring(start, end) : "";
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        if (needle.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        int cursor = haystack.indexOf(needle);
+        while (cursor >= 0) {
+            count++;
+            cursor = haystack.indexOf(needle, cursor + needle.length());
+        }
+        return count;
     }
 
     private static String read(File file) throws Exception {

@@ -10,18 +10,20 @@ served from **`https://cinemax-orpin.vercel.app`**.
 android/
 ├── app/src/main/                 Android application module
 │   ├── AndroidManifest.xml       permissions, deep links, single activity
-│   ├── java/com/cinemax/app/     six small classes (see below)
+│   ├── java/com/cinemax/app/     activity, theme, bridge, policy, splash (8 files)
 │   ├── assets/cinemax/           app-only presentation layer (CSS + runtime)
+│   │   └── fonts/                brand wordmark subset (Outfit 550 + OFL)
 │   └── res/                      adaptive + legacy icons, splash, themes, layout
 ├── build.sh                      Gradle-free build → signed APK
 ├── tools/
 │   ├── fetch-toolchain.sh        pinned, checksum-verified tool downloads
 │   ├── align_apk.py              zipalign-equivalent alignment (4-byte / 4096-byte)
+│   ├── make_brand_font.py        builds the native wordmark font from the web face
 │   └── make_legacy_icons.py      raster launcher icons for API 24/25
 ├── tests/
 │   ├── run-tests.sh              one command runs every layer
 │   ├── install-test-deps.sh      installs jsdom for the DOM layer (cached)
-│   ├── java/CinemaxAppTest.java  navigation policy + injection escaping (JVM)
+│   ├── java/CinemaxAppTest.java  policy, escaping, splash timeline, scroll rules (JVM)
 │   ├── shell-dom.test.mjs        the injected layer executed against a DOM
 │   ├── apk_check.py              manifest, resources, dex, signature, alignment
 │   └── axml.py                   binary AndroidManifest.xml reader
@@ -34,7 +36,6 @@ manager): it fetches the pinned toolchain, installs jsdom, runs
 `Cinemax-1.1.0.apk` plus its `.sha256` as the `cinemax-android-apk` artifact.
 Every push and pull request builds it, and the workflow can be started by hand
 with *Run workflow*.
-```
 
 ## Build
 
@@ -100,7 +101,7 @@ file manager/browser you use). Requirements: **Android 7.0 (API 24) or newer**,
 | Edge to edge | API 30+ draws behind transparent status/navigation bars; the real insets are measured natively and published to the page as CSS variables, so the existing layout clears the status bar, gesture bar, cutout and rounded corners. Themed brand gradient shows in the very top and bottom strips. |
 | Keyboard | `adjustResize` + IME padding, so the studio forms are never hidden behind the keyboard. |
 | Playback | Media autoplay is permitted, HLS/MSE run in-page, and the Cinemax player bridge puts direct video into immersive **sensor-landscape** fullscreen. Exit (or Android Back) restores the prior orientation and normal system bars; the screen stays awake only while media is actually playing. |
-| Session intro | The native splash replaces the web intro with a transform/opacity Cinemax emblem reveal, restrained light rings and streaks, then a themed first-paint hand-off. It has no generic spinner or “Starting Cinemax” screen. |
+| Session intro | The native splash is a layered Cinemax reveal drawn by one composited view: it starts where the launch window left the emblem (dead centre), rises into the lockup as the emblem's two ribbons land, a light stripe sweeps across the logo, rings expand, streaks travel, and the wordmark rises in the site's own Outfit typeface with the gradient “x”. It plays **only on a genuine app launch**, hands over to the page as soon as the themed first paint is ready (a 340 ms cross-fade on the render thread), and has no spinner or “Starting Cinemax” screen. Reloads after an offline retry or a renderer restart show the finished lockup instead of replaying it. |
 | Crash resilience | If the WebView renderer dies, the shell rebuilds it and reloads instead of crashing the app. |
 | Offline | A native Cinemax screen with *Try again* and *Open in browser* appears when the main document cannot load. |
 
@@ -113,10 +114,11 @@ changes; the layer is an extra stylesheet plus a small runtime, scoped to
 * **Deep-black foundation** – page and large surface backgrounds use `#050507`
   / `#08080c`. The existing violet, blue and pink buttons, borders, icons,
   logo, active indicators and artwork are deliberately untouched.
-* **Scroll work removed** – the fixed full-page aurora, blur filters and
-  per-poster entrance animation were removed from the Android-only layer.
-  Rails retain momentum scrolling; source images remain responsive/lazy and
-  decode asynchronously.
+* **Scrolling** – the fixed full-page aurora, blur filters and per-poster
+  entrance animation are removed, and the causes of mid-scroll stutter are
+  handled explicitly (see *Scroll performance* below). Rails retain momentum
+  scrolling; source images remain responsive/lazy and decode asynchronously.
+  Artwork, cards, layout, theme and every route are unchanged.
 * **Less React work** – card artwork is memoized, watchlist changes only
   re-render the compact save control, collection rows are indexed once, and
   rail edge state is coalesced to one animation frame rather than every scroll
@@ -129,9 +131,36 @@ changes; the layer is an extra stylesheet plus a small runtime, scoped to
 
 `android/app/src/main/assets/cinemax/app-theme.css` is the stylesheet and
 `app-shell.js` is the runtime (insets, playback reporting, fullscreen hand-off,
-viewport and touch behaviour). Both are evaluated by
-`MainActivity.applyAppTheme()` after the first paint, so the native splash lifts
-onto an already-themed page.
+viewport, touch behaviour, scroll state and artwork warm-up). Both are evaluated
+by `MainActivity.applyAppTheme()` after the first paint, so the native splash
+lifts onto an already-themed page. `assets/cinemax/fonts/` carries the subset of
+the website's Outfit face (weight 550) that the native wordmark draws with, built
+by `android/tools/make_brand_font.py`; `--check` fails if it drifts from
+`src/app/fonts/outfit.woff2`.
+
+## Scroll performance
+
+Vertical scrolling used to stutter and occasionally feel frozen in both
+directions. Each cause is addressed in Android-only code; the website, its data
+and its components are untouched.
+
+| Cause | Fix |
+| --- | --- |
+| The WebView was forced into `LAYER_TYPE_HARDWARE`, which takes it out of Chromium's tiled compositing and into one texture that is re-uploaded as the page scrolls. | No forced layer type: Chromium's own compositing and render surface are kept. |
+| `loadWithOverviewMode(true)` made the WebView re-fit the whole document whenever its height changed — and the catalogue grows as rails lazily mount — which showed up as scale wobble and sudden layout jumps. | `useWideViewPort(true)` + `loadWithOverviewMode(false)`: the page's own responsive viewport is honoured and never re-scaled. |
+| Offscreen pre-rasterisation spent raster time and memory on content the user had not reached. | `setOffscreenPreRaster(false)`. |
+| The renderer could be throttled whenever Android considered the app unfocused. | `setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT)` while visible, `RENDERER_PRIORITY_WAIVED` in `onPause()`, and `freeMemory()` on `onTrimMemory`. |
+| Rails used `content-visibility: auto` with a fixed `contain-intrinsic-size: auto 390px`. Un-skipping a row during a scroll costs a synchronous style+layout+paint of ~20 posters, and the 390 px estimate is not the real rail height (~378 px on a 412 dp phone), so the document height changed as rows came in. | Rails render without content-visibility skipping and reserve no estimate (`contain: layout style` keeps invalidation isolated). The one-off layout happens behind the native splash instead of under the finger. |
+| `html { scroll-behavior: smooth }` animated every programmatic scroll (the router's scroll-to-top on navigation) across a very tall document. | Document scrolling is immediate (`scroll-behavior: auto`) while rails keep their own smooth arrow scrolling. |
+| Endless decorative animations (the flowing button perimeter, skeleton shimmer, spinner) kept repainting while the page was moving. | `app-shell.js` marks the document with `data-cinemax-scrolling` during a gesture (one attribute write per gesture) and the stylesheet parks exactly those animations with `animation-play-state: paused`. One-shot entrance animations and the hero's own cross-fade are left alone, so nothing the user is looking at can snap. |
+| Rails were pinned to `touch-action: pan-x`, which pushes vertical pans that start on a poster through the main thread. | The rails contain their own horizontal overscroll, so both pan axes stay on the compositor. |
+| Every 9 s the featured slideshow mounts the next 1280 px backdrop, so a full-screen image decoded during whatever the user was doing. | During idle time the shell decodes the *next* slide's full-size source (read from the pagination thumbnail's `srcset`) and artwork within ~1.6 viewports, through the browser's own image cache; it never runs during a scroll and is skipped on data-saving connections. |
+| The insets were pushed into the page on every system-bar callback. | Unchanged inset values are never re-dispatched. |
+
+`SplashMotion.java` keeps the intro timeline (14 layers, delays, durations,
+easings) in pure arithmetic so the reveal can be checked frame by frame on the
+JVM; `CinemaxSplashView.java` draws it in a single pass with shaders and geometry
+built once in `onSizeChanged`.
 
 ## Digital Asset Links
 
@@ -160,22 +189,34 @@ itself when it is missing and npm is available). `CINEMAX_REQUIRE_JSDOM=1` turns
 a missing jsdom/node into a failure instead of a skip — CI sets it, so the DOM
 layer can never silently disappear from a build:
 
-1. **JVM unit checks (58)** – navigation policy (in-app vs external, including
-   localhost/emulator rejection and suffix-spoofing hosts) and injection
-   escaping (hostile CSS/JS cannot break out of the generated script).
+1. **JVM unit checks (135)** – navigation policy (in-app vs external, including
+   localhost/emulator rejection and suffix-spoofing hosts), injection escaping
+   (hostile CSS/JS cannot break out of the generated script), the splash
+   timeline (layer order, clamping, easing, curve endpoints, launch-only
+   gating, the emblem's two ribbons reusing the artwork verbatim) and the
+   scroll-performance contract on both the native settings and the injected
+   layer.
 2. **JavaScript syntax** – `node --check` on the generated injection script, the
    packaged shell runtime and the source shell.
-3. **DOM behaviour (40, jsdom)** – the real injected layer runs against a
+3. **DOM behaviour (64, jsdom)** – the real injected layer runs against a
    fixture of the Cinemax page: theme installed once, bridge signalled, insets
    published and clamped, viewport tuned, playback reported on play/pause,
    fullscreen reaches and leaves the native bridge, no full-subtree observer,
    no unscoped selectors, no inline-script dependency, hostile input inert.
-4. **APK structure (88)** – parsed binary manifest (package, SDK versions,
+   It also resolves the cascade against the site's real `globals.css` to prove
+   the app rules win on the scroll path, and drives the scroll engine: one
+   passive listener, one state change per gesture burst, no decode while
+   scrolling, idle decode of the next featured backdrop.
+4. **APK structure (99)** – parsed binary manifest (package, SDK versions,
    `singleTask`, `adjustResize`, `configChanges`, deep link, permissions),
-   adaptive + legacy icons, splash and theme resources, classes in `classes.dex`,
-   the production URL in the DEX, **no `localhost`/`127.0.0.1`/`10.0.2.2`/`:3000`
-   anywhere in the payload**, apksigner verification (v1 + v2 + v3) and
-   zipalign equivalence for `resources.arsc`.
+   adaptive + legacy icons, splash and theme resources (including the parsed
+   layout: one `CinemaxSplashView`, and none of the replaced static splash
+   layers), byte parity between the packaged presentation assets, the brand font
+   and their sources, classes in `classes.dex` (including the reveal view and
+   its timeline), the production URL in the DEX, **no
+   `localhost`/`127.0.0.1`/`10.0.2.2`/`:3000` anywhere in the payload**,
+   apksigner verification (v1 + v2 + v3) and zipalign equivalence for
+   `resources.arsc`.
 
    The same layer validates `classes.dex` the way the device does before it
    installs a package: dex magic and version (037, supported by API 24), the
@@ -194,20 +235,28 @@ These checks need a real device or emulator with the production site reachable �
 they are the final gate:
 
 1. `adb install -r android/dist/Cinemax-1.1.0.apk`, then launch Cinemax.
-2. Confirm the animated logo → home hand-off completes without a spinner or
-   “Starting Cinemax” label, and that the hero, rails and every poster load from
-   `cinemax-orpin.vercel.app` (no local content).
-3. On a mid-range phone, rapidly scroll several rails and a long collection;
-   repeat on a throttled/slow network and verify touch input stays responsive.
-4. Open a direct title and an adaptive HLS title. Verify the settings menu lists
+2. Watch the intro: ribbons, light sweep, rings, streaks and wordmark, then a
+   cross-fade onto the home page with no spinner, no “Starting Cinemax” label
+   and no black flash between the two. Confirm the hero, rails and every poster
+   load from `cinemax-orpin.vercel.app` (no local content).
+3. Press Home and reopen from recents — the intro must **not** replay. Rotate
+   during the reveal and confirm it is not cut short or restarted.
+4. On a mid-range phone, rapidly scroll several rails and a long collection up
+   and down, repeatedly, with a finger and with a fling; repeat on a throttled
+   network. Touch input must stay immediate, the page must not jump, and
+   `dumpsys gfxinfo com.cinemax.app framestats` should show no long frames
+   while scrolling. A trace from `chrome://inspect` (debug builds) should show
+   the scroll frames free of style/layout/paint work besides the tiles coming in.
+5. Open a direct title and an adaptive HLS title. Verify the settings menu lists
    only manifest-provided levels (including Auto for multiple levels), while a
    single rendition plainly explains that it cannot switch quality.
-5. Start playback, switch to fullscreen landscape and back, then press Android
+6. Start playback, switch to fullscreen landscape and back, then press Android
    Back once in fullscreen (it must restore portrait/system bars rather than
    close playback) and again to leave the player.
-6. Open `/gate-keeper`, log in with the studio credentials and confirm the
+7. Open `/gate-keeper`, log in with the studio credentials and confirm the
    dashboard loads and edits save. Toggle airplane mode and reopen the app to
-   see the native offline screen and *Try again*.
+   see the native offline screen; tap *Try again* and confirm the still lockup
+   (not the launch reveal) covers the reload.
 
 ## Remaining notes
 

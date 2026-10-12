@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
@@ -102,9 +103,18 @@ const fixture = `<!DOCTYPE html>
           <div class="hero-actions"><button class="cinematic-button" type="button"><span class="button-content">Watch Now</span></button></div>
         </div>
         <div class="hero-pagination"><div class="hero-dots"><button class="hero-dot" aria-current="true"><span></span></button></div>
+          <div class="hero-preview-track" aria-label="Featured titles">
+            <button class="hero-preview" type="button" aria-current="true"><img src="https://image.tmdb.org/t/p/w1280/slide-one.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-one.jpg 300w, https://image.tmdb.org/t/p/w780/slide-one.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-one.jpg 1280w" sizes="140px" alt=""><span>One</span></button>
+            <button class="hero-preview" type="button"><img src="https://image.tmdb.org/t/p/w1280/slide-two.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-two.jpg 300w, https://image.tmdb.org/t/p/w780/slide-two.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-two.jpg 1280w" sizes="140px" alt=""><span>Two</span></button>
+            <button class="hero-preview" type="button"><img src="https://image.tmdb.org/t/p/w1280/slide-three.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-three.jpg 300w, https://image.tmdb.org/t/p/w780/slide-three.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-three.jpg 1280w" sizes="140px" alt=""><span>Three</span></button>
+          </div>
           <div class="hero-controls"><button class="icon-button hero-arrow" type="button"></button></div>
         </div>
       </section>
+      <div class="hero-scenes" aria-hidden="true">
+        <div class="hero-scene" data-active="true"><img class="hero-image" src="https://image.tmdb.org/t/p/w1280/slide-one.jpg" alt=""></div>
+        <div class="hero-scene"><img class="hero-image" src="https://image.tmdb.org/t/p/w1280/slide-three.jpg" alt=""></div>
+      </div>
       <div class="home-content">
         <div class="browse-bar"><div class="filter-chips"><button class="filter-chip" aria-pressed="true">All</button><button class="filter-chip" aria-pressed="false">Action</button></div></div>
         <section class="movie-row" aria-label="Trending">
@@ -119,8 +129,19 @@ const fixture = `<!DOCTYPE html>
                 <span class="movie-progress"><span style="width:40%"></span></span></div>
               <div class="movie-card-copy"><h3 class="movie-card-title">Sample</h3><p class="movie-card-meta">2026 · Action</p></div>
             </a><button class="movie-save is-saved" type="button" aria-pressed="true"></button></article>
+            <article class="movie-card" role="listitem"><a class="movie-card-link" href="/movie/2">
+              <div class="movie-poster"><img class="movie-poster-image" loading="lazy" src="/poster-two.png" srcset="/poster-two.png 300w, /poster-two-large.png 780w" sizes="40vw" alt="poster">
+                <span class="movie-type-badge">Film</span></div>
+              <div class="movie-card-copy"><h3 class="movie-card-title">Second</h3><p class="movie-card-meta">2026 · Drama</p></div>
+            </a><button class="movie-save" type="button" aria-pressed="false"></button></article>
           </div>
         </section>
+        <section class="movie-row" aria-label="Library">
+          <div class="movie-row-head"><h2 class="movie-row-title">Library</h2></div>
+          <div class="shimmer shimmer-row-title"></div>
+          <div class="movie-track hide-scrollbar"><article class="movie-card"><div class="movie-poster"><img class="movie-poster-image" loading="lazy" src="/poster-three.png" alt="poster"></div></article></div>
+        </section>
+        <div class="cinematic-button"><span class="button-light"><svg viewBox="0 0 100 40"><rect class="light-body" x="0" y="0"></rect></svg></span><span class="button-content">Watch Now</span></div>
         <footer class="site-footer"><span>© 2026 Cinemax</span></footer>
       </div>
     </main>
@@ -259,6 +280,266 @@ check(!/(^|\})\s*#cinemax-app\s*\{/.test(themeText.replace(/html\[data-cinemax-a
   "no stacking context is created over the app root");
 check(/html\[data-cinemax-app="android"\]::before\s*\{[^}]*display:\s*none/.test(themeText), "the expensive fixed aurora layer is disabled");
 check(!shellScript.includes("MutationObserver"), "the shell does not observe the full React subtree");
+
+/* ------------------------------------------------------------------ cascade */
+
+/* Resolves which rule actually wins for one property on one element, walking the
+   site's real stylesheet first and the injected app theme second, exactly like
+   the cascade does in the WebView (specificity, then source order). */
+function specificityOf(selector) {
+  const ids = (selector.match(/#[\w-]+/g) || []).length;
+  const classes = (selector.match(/\.[\w-]+|\[[^\]]+\]|::?[\w-]+/g) || []).length;
+  const types = selector
+    .replace(/\[[^\]]+\]|::?[\w-]+/g, " ")
+    .split(/[\s>+~]+/)
+    .filter((part) => /^[a-zA-Z][\w-]*$/.test(part)).length;
+  return ids * 1000000 + classes * 1000 + types;
+}
+
+/* The conditions the app actually renders under: a 412 dp phone, no
+   "reduce motion" preference. Media groups are evaluated against that instead of
+   being treated as if every query applied. */
+const VIEWPORT = { width: 412, height: 915 };
+
+function mediaApplies(prelude) {
+  const conditions = prelude.replace(/^@media\s*/, "");
+  if (/prefers-reduced-motion/.test(conditions)) {
+    return false;
+  }
+  if (/prefers-color-scheme|prefers-contrast|orientation|hover:|pointer:/.test(conditions)) {
+    return false;
+  }
+  let applies = true;
+  for (const match of conditions.matchAll(/\((min|max)-width:\s*([\d.]+)(px|em|rem)\)/g)) {
+    const pixels = match[3] === "px" ? Number(match[2]) : Number(match[2]) * 16;
+    if (match[1] === "min" && VIEWPORT.width < pixels) applies = false;
+    if (match[1] === "max" && VIEWPORT.width > pixels) applies = false;
+  }
+  return applies;
+}
+
+function collectDeclarations(cssText, element, property) {
+  const found = [];
+  let order = 0;
+  // Comments sit between rules (and above each app rule): drop them so a
+  // selector is never glued to a comment body.
+  const walk = (source) => {
+    const text = source.replace(/\/\*[\s\S]*?\*\//g, " ");
+    let index = 0;
+    while (index < text.length) {
+      const open = text.indexOf("{", index);
+      if (open === -1) {
+        return;
+      }
+      const prelude = text.slice(index, open).trim();
+      let depth = 1;
+      let cursor = open + 1;
+      while (cursor < text.length && depth > 0) {
+        if (text[cursor] === "{") depth += 1;
+        else if (text[cursor] === "}") depth -= 1;
+        cursor += 1;
+      }
+      const block = text.slice(open + 1, cursor - 1);
+      if (prelude.startsWith("@")) {
+        const group = /^@(media|supports|layer|container|document)[\s(]/i.test(prelude);
+        if (group && (!/^@media/i.test(prelude) || mediaApplies(prelude))) {
+          walk(block);
+        }
+      } else if (prelude) {
+        // Declarations may start the block or follow a ';' - possibly on their
+        // own line, which is how the hand-written app theme is formatted.
+        const declaration = new RegExp("(?:^|;|\\n)\\s*" + property + "\\s*:([^;}]*)", "i").exec(block);
+        if (declaration) {
+          for (const candidate of prelude.split(",")) {
+            const selector = candidate.trim();
+            if (!selector || selector.includes(":")) {
+              continue;
+            }
+            try {
+              if (element.matches(selector)) {
+                found.push({
+                  selector,
+                  value: declaration[1].trim(),
+                  rank: specificityOf(selector) * 1000 + order++,
+                });
+              }
+            } catch (error) {
+              /* A selector jsdom cannot evaluate is simply not a candidate. */
+            }
+          }
+        }
+      }
+      index = cursor;
+    }
+  };
+  walk(cssText);
+  return found;
+}
+
+function winningValue(sheets, element, property) {
+  let winner = null;
+  let sheetOrder = 0;
+  for (const sheet of sheets) {
+    const declarations = collectDeclarations(sheet, element, property);
+    for (const declaration of declarations) {
+      const rank = declaration.rank + sheetOrder;
+      if (!winner || rank > winner.rank) {
+        winner = { ...declaration, rank };
+      }
+    }
+    sheetOrder += 1000000000;
+  }
+  return winner;
+}
+
+const siteCss = readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "app", "globals.css"),
+  "utf8"
+);
+const sheets = [siteCss, themeText];
+
+console.log("\n== the app layer wins the cascade on the scroll path");
+const heroScene = document.querySelector('.hero-scene[data-active="true"]');
+const rows = document.querySelectorAll(".movie-row");
+const row = rows[rows.length - 1];
+const track = document.querySelector(".movie-track");
+const rect = document.querySelector(".button-light rect");
+
+// The site rules these overrides exist for are still there (a guard against the
+// website changing underneath the app layer).
+check(/\.movie-row\s*\{[^}]*content-visibility:\s*auto/.test(siteCss), "the site still skips offscreen rails");
+check(/html\s*\{[^}]*scroll-behavior:\s*smooth/.test(siteCss), "the site still animates document scrolling");
+check(/\.button-light rect\s*\{[^}]*animation:/.test(siteCss), "the site still runs the flowing button light");
+
+const rowVisibility = winningValue(sheets, row, "content-visibility");
+check(rowVisibility && rowVisibility.value === "visible", `rails render without content-visibility skipping (${rowVisibility && rowVisibility.value})`);
+const rowIntrinsic = winningValue(sheets, row, "contain-intrinsic-size");
+check(rowIntrinsic && rowIntrinsic.value.includes("none"), `the 390px rail estimate is dropped (${rowIntrinsic && rowIntrinsic.value})`);
+const rowContain = winningValue(sheets, row, "contain");
+check(rowContain && rowContain.value.includes("layout"), `rails isolate their own layout work (${rowContain && rowContain.value})`);
+const scrollBehaviour = winningValue(sheets, document.documentElement, "scroll-behavior");
+check(scrollBehaviour && scrollBehaviour.value === "auto", `document scrolling is immediate in the app (${scrollBehaviour && scrollBehaviour.value})`);
+const trackTouch = winningValue(sheets, track, "touch-action");
+check(trackTouch && trackTouch.value === "auto", `rails leave both pan axes to the compositor (${trackTouch && trackTouch.value})`);
+
+document.documentElement.setAttribute("data-cinemax-scrolling", "true");
+const lightState = winningValue(sheets, rect, "animation-play-state");
+check(
+  lightState && lightState.value === "paused" && lightState.selector.includes("data-cinemax-scrolling"),
+  `decorative animations park while scrolling (${lightState && lightState.value})`
+);
+const sceneTransition = winningValue(sheets, heroScene, "transition");
+check(
+  sceneTransition && /opacity .65s ease/.test(sceneTransition.value),
+  `the hero keeps its own cross-fade, untouched by the scroll layer (${sceneTransition && sceneTransition.value})`
+);
+check(
+  !/data-cinemax-scrolling[^{]*\.hero-scene/.test(themeText),
+  "only endless animations are parked while scrolling (nothing the user looks at can snap)"
+);
+document.documentElement.removeAttribute("data-cinemax-scrolling");
+
+/* ------------------------------------------------------------- scroll engine */
+
+console.log("\n== scroll engine (one passive listener, idle decode ahead of the view)");
+
+const scrollDom = new JSDOM(fixture, {
+  runScripts: "outside-only",
+  pretendToBeVisual: true,
+  url: "https://cinemax-orpin.vercel.app/",
+});
+const sw = scrollDom.window;
+const sd = sw.document;
+
+const attributeWrites = { set: 0, remove: 0 };
+const decodedUrls = [];
+const listeners = [];
+
+const documentElement = sd.documentElement;
+const setAttribute = documentElement.setAttribute.bind(documentElement);
+const removeAttribute = documentElement.removeAttribute.bind(documentElement);
+documentElement.setAttribute = (name, value) => {
+  if (name === "data-cinemax-scrolling") attributeWrites.set += 1;
+  return setAttribute(name, value);
+};
+documentElement.removeAttribute = (name) => {
+  if (name === "data-cinemax-scrolling") attributeWrites.remove += 1;
+  return removeAttribute(name);
+};
+
+const originalAddEventListener = sw.EventTarget.prototype.addEventListener;
+sw.EventTarget.prototype.addEventListener = function (type, handler, options) {
+  listeners.push({
+    type,
+    passive: !!(options && options.passive),
+    target: this === sw ? "window" : this.tagName ? this.tagName.toLowerCase() : "node",
+    className: typeof this.className === "string" ? this.className : "",
+  });
+  return originalAddEventListener.call(this, type, handler, options);
+};
+sw.HTMLImageElement.prototype.decode = function () {
+  decodedUrls.push(this.currentSrc || this.src);
+  return Promise.resolve();
+};
+
+sw.CinemaxNative = {
+  themeApplied: () => {},
+  shellReady: () => {},
+  setMediaPlaying: () => {},
+};
+try {
+  sw.eval(injectionScript);
+  sw.eval(shellScript);
+} catch (error) {
+  console.error("  FAIL scroll-engine injection threw:", error && error.message);
+  failures += 1;
+}
+if (sd.readyState === "loading") {
+  sd.dispatchEvent(new sw.Event("DOMContentLoaded"));
+}
+
+const scrollListener = listeners.find((entry) => entry.type === "scroll");
+check(!!scrollListener, "the shell listens for scroll on the window");
+check(scrollListener && scrollListener.passive === true, "that scroll listener is passive (never blocks the compositor)");
+check(
+  listeners.every((entry) => entry.target === "window" || entry.target === "node"),
+  "no listeners are attached per card/rail (the React tree keeps its own)"
+);
+
+// Idle warm-up of what the user is about to reach: one decode per image, no
+// repeat work, and never while the page is scrolling.
+await new Promise((resolve) => setTimeout(resolve, 700));
+check(decodedUrls.length > 0, `nearby artwork is decoded during idle time (${decodedUrls.length} images)`);
+const firstPass = decodedUrls.length;
+await new Promise((resolve) => setTimeout(resolve, 700));
+check(
+  decodedUrls.length === firstPass,
+  "later idle passes decode nothing again (each element is warmed once)"
+);
+check(
+  [...sd.images].every((image) => !image.getAttribute("loading") || image.getAttribute("data-cinemax-warm") === "1"),
+  "every lazy image on screen is marked as warmed"
+);
+check(
+  decodedUrls.some((url) => url.includes("/w1280/slide-two.jpg")),
+  "the next featured slide's full-size backdrop is decoded before the rotation"
+);
+check(
+  !decodedUrls.some((url) => url.includes("/w300/")),
+  "only the size the full-size view will use is warmed"
+);
+
+const beforeScroll = decodedUrls.length;
+for (let burst = 0; burst < 8; burst += 1) {
+  sw.dispatchEvent(new sw.Event("scroll"));
+}
+check(attributeWrites.set === 1, `eight scroll events cost a single state change (${attributeWrites.set})`);
+check(documentElement.getAttribute("data-cinemax-scrolling") === "true", "the document is marked as scrolling");
+check(decodedUrls.length === beforeScroll, "no decode work is started while the finger is on the screen");
+
+await new Promise((resolve) => setTimeout(resolve, 700));
+check(documentElement.getAttribute("data-cinemax-scrolling") === null, "the scrolling state clears once the gesture stops");
+check(attributeWrites.remove >= 1, "clearing the state is also a single attribute write");
 
 if (hostilePath) {
   console.log("\n== hostile input cannot break out of the injected string");

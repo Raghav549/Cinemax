@@ -11,4 +11,5 @@
     <string name="error_reload_body">Cinemax had to restart the page. Tap Try again.</string>
     <string name="error_reload_hint">Page reloaded</string>
     <string name="splash_emblem_desc">Cinemax emblem</string>
+    <string name="splash_lockup_desc">Cinemax — movies, series and anime</string>
 </resources>
