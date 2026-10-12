@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cinemax_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/cinemax_ink">
+
+    <!-- The production Cinemax web app runs here. The container lets the shell
+         rebuild the WebView in place if a renderer process ever goes away. -->
+    <FrameLayout
+        android:id="@+id/cinemax_web_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- HTML5 video / provider embeds expand into this surface. -->
+    <FrameLayout
+        android:id="@+id/cinemax_fullscreen_host"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:visibility="gone" />
+
+    <!-- Native page-load indicator. -->
+    <ProgressBar
+        android:id="@+id/cinemax_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="top"
+        android:indeterminate="false"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/cinemax_page_progress"
+        android:visibility="invisible" />
+
+    <!-- Native splash: shown until the live page has the app theme applied. -->
+    <LinearLayout
+        android:id="@+id/cinemax_splash"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/cinemax_splash_background"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/cinemax_splash_lockup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/cinemax_splash_emblem"
+                android:layout_width="118dp"
+                android:layout_height="118dp"
+                android:contentDescription="@string/splash_emblem_desc"
+                android:src="@drawable/cinemax_emblem" />
+
+            <TextView
+                style="@style/CinemaxWordmark"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="@string/app_name" />
+
+            <TextView
+                style="@style/CinemaxTagline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/splash_tagline" />
+
+            <ProgressBar
+                android:id="@+id/cinemax_splash_spinner"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="30dp"
+                android:indeterminate="true" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/cinemax_splash_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:letterSpacing="0.08"
+            android:text="@string/splash_loading"
+            android:textColor="@color/cinemax_text_dim"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Native offline / error surface with a retry path. -->
+    <LinearLayout
+        android:id="@+id/cinemax_error"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/cinemax_splash_background"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingLeft="34dp"
+        android:paddingRight="34dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:contentDescription="@null"
+            android:src="@drawable/cinemax_ic_offline" />
+
+        <TextView
+            style="@style/CinemaxErrorTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="@string/error_offline_title" />
+
+        <TextView
+            android:id="@+id/cinemax_error_message"
+            style="@style/CinemaxErrorBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/error_offline_body" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/cinemax_retry"
+                style="@style/CinemaxActionButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/cinemax_button_primary"
+                android:text="@string/error_retry" />
+
+            <TextView
+                android:id="@+id/cinemax_open_browser"
+                style="@style/CinemaxActionButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/cinemax_button_ghost"
+                android:text="@string/error_open_browser" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

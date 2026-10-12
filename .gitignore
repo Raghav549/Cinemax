@@ -13,3 +13,11 @@ next-env.d.ts
 .arena/
 playwright-report/
 test-results/
+
+# Android build artefacts (toolchain cache and intermediates)
+android/.toolchain/
+android/build/
+
+# Python bytecode from the verification scripts
+__pycache__/
+*.pyc

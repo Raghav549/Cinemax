@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 28+: no divider scrim between content and the navigation bar. -->
+    <style name="CinemaxAppTheme.Base.V28" parent="@style/CinemaxAppTheme.Base.V27">
+        <item name="android:navigationBarDividerColor">@color/cinemax_transparent</item>
+    </style>
+
+    <style name="CinemaxAppTheme" parent="@style/CinemaxAppTheme.Base.V28" />
+</resources>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Cinemax App Theme.
+
+      The launch window paints the Cinemax gradient (never plain black) and the
+      activity draws edge to edge behind transparent system bars. Version
+      specific additions live in values-v27 / values-v28 / values-v31.
+    -->
+    <style name="CinemaxAppTheme.Base" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/cinemax_window_background</item>
+        <item name="android:colorBackground">@color/cinemax_ink</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/cinemax_transparent</item>
+        <item name="android:navigationBarColor">@color/cinemax_transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:colorAccent">@color/cinemax_violet</item>
+        <item name="android:colorPrimary">@color/cinemax_plum</item>
+        <item name="android:colorPrimaryDark">@color/cinemax_ink</item>
+        <item name="android:colorControlHighlight">#33A78BFA</item>
+        <item name="android:textColorPrimary">@color/cinemax_text</item>
+        <item name="android:textColorSecondary">@color/cinemax_text_soft</item>
+    </style>
+
+    <style name="CinemaxAppTheme" parent="@style/CinemaxAppTheme.Base" />
+
+    <style name="CinemaxWordmark">
+        <item name="android:textColor">@color/cinemax_text</item>
+        <item name="android:textSize">41sp</item>
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:letterSpacing">-0.045</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="CinemaxTagline">
+        <item name="android:textColor">@color/cinemax_text_soft</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.22</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="CinemaxActionButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingLeft">22dp</item>
+        <item name="android:paddingRight">22dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/cinemax_text</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="CinemaxErrorTitle">
+        <item name="android:textColor">@color/cinemax_text</item>
+        <item name="android:textSize">23sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="CinemaxErrorBody">
+        <item name="android:textColor">@color/cinemax_text_soft</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingMultiplier">1.45</item>
+        <item name="android:gravity">center</item>
+    </style>
+</resources>

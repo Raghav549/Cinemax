@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Instant branded launch window: same atmosphere, emblem already centred. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/cinemax_splash_background" />
+    <item
+        android:width="120dp"
+        android:height="120dp"
+        android:drawable="@drawable/cinemax_emblem"
+        android:gravity="center" />
+</layer-list>

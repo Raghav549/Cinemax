@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 27+: keep the navigation bar icons light over the Cinemax gradient. -->
+    <style name="CinemaxAppTheme.Base.V27" parent="@style/CinemaxAppTheme.Base">
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="CinemaxAppTheme" parent="@style/CinemaxAppTheme.Base.V27" />
+</resources>
