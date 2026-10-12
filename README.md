@@ -134,6 +134,8 @@ a single blue-to-pink band sweeps across it, and the glow settles. It plays only
 on a genuine cold launch, hands over as soon as the page has a themed first
 paint, and stops drawing frames as soon as it has settled.
 
+![The Cinemax splash, frame by frame](docs/android-splash/timeline.png)
+
 ```bash
 bash android/build.sh            # signed APK → android/dist/Cinemax-1.1.0.apk
 bash android/tests/run-tests.sh  # 158 JVM + 64 DOM + 100 APK checks
