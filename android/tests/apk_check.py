@@ -8,10 +8,13 @@ Usage: python3 android/tests/apk_check.py android/dist/Cinemax-1.0.0.apk <toolch
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from axml import parse as parse_axml  # noqa: E402
@@ -43,6 +46,63 @@ def read_entry(apk: str, name: str) -> bytes:
 def run(command: list[str]) -> str:
     completed = subprocess.run(command, capture_output=True, text=True)
     return completed.stdout + completed.stderr
+
+
+def dex_header(data: bytes) -> dict:
+    """Reads the dex header exactly as the Android runtime parses it.
+
+    A package manager refuses to install an APK whose classes.dex is not a
+    well-formed dex file, so the header fields (checksum, SHA-1 signature, sizes
+    and offsets) are validated here instead of trusting the dexer.
+    """
+    fields: dict[str, int | bytes] = {}
+    if len(data) < 112:
+        return {"error": "shorter than the 112-byte dex header"}
+    (
+        magic,
+        checksum,
+        signature,
+        file_size,
+        header_size,
+        endian_tag,
+        _link_size,
+        _link_off,
+        map_off,
+        string_ids_size,
+        string_ids_off,
+        _type_ids_size,
+        _type_ids_off,
+        _proto_ids_size,
+        _proto_ids_off,
+        _field_ids_size,
+        _field_ids_off,
+        _method_ids_size,
+        _method_ids_off,
+        class_defs_size,
+        class_defs_off,
+        data_size,
+        data_off,
+    ) = struct.unpack_from("<8sI20s20I", data, 0)
+    fields.update(
+        {
+            "magic": magic,
+            "checksum": checksum,
+            "signature": signature,
+            "file_size": file_size,
+            "header_size": header_size,
+            "endian_tag": endian_tag,
+            "map_off": map_off,
+            "string_ids_size": string_ids_size,
+            "string_ids_off": string_ids_off,
+            "class_defs_size": class_defs_size,
+            "class_defs_off": class_defs_off,
+            "data_size": data_size,
+            "data_off": data_off,
+            "adler32": zlib.adler32(data[12:]) & 0xFFFFFFFF,
+            "sha1": hashlib.sha1(data[32:]).digest(),
+        }
+    )
+    return fields
 
 
 def main() -> int:
@@ -168,6 +228,40 @@ def main() -> int:
     check(b"CinemaxNative" in dex, "the JavaScript bridge name is present")
     check(b"__cinemaxInsets" in dex, "the inset hand-off to the page is present")
 
+    section("dex integrity (what ART parses at install time)")
+    header = dex_header(dex)
+    if "error" in header:
+        check(False, f"classes.dex has a readable header ({header['error']})")
+    else:
+        # D8 emits 037 for `--min-api 24`; anything up to that is understood by
+        # Android 7.0, and every version here is a real dex file format.
+        magic = bytes(header["magic"])
+        dex_version = magic[4:7]
+        check(
+            magic[:4] == b"dex\n" and magic[7:8] == b"\x00" and dex_version.isdigit(),
+            f"classes.dex carries a dex magic (version {dex_version.decode(errors='replace')})",
+        )
+        check(
+            dex_version in (b"035", b"037", b"038", b"039", b"040", b"041"),
+            "the dex version is one the Android runtime knows",
+        )
+        check(
+            dex_version <= b"037",
+            "the dex version is supported by minSdkVersion 24 (Android 7.0)",
+        )
+        check(header["checksum"] == header["adler32"], "dex checksum matches its contents (adler32)")
+        check(header["signature"] == header["sha1"], "dex SHA-1 signature matches its contents")
+        check(header["file_size"] == len(dex), "dex header file_size matches the packaged size")
+        check(header["header_size"] == 112, "dex header_size is 112 bytes")
+        check(header["endian_tag"] == 0x12345678, "dex endian tag is little-endian 0x12345678")
+        check(header["string_ids_size"] > 0 and header["string_ids_off"] < len(dex), "dex string table is present")
+        check(0 < header["class_defs_size"] and header["class_defs_off"] < len(dex), "dex declares at least one class")
+        check(0 < header["map_off"] < len(dex), "dex map list offset points inside the file")
+        check(
+            header["data_off"] + header["data_size"] <= len(dex),
+            "dex data section fits inside the file",
+        )
+
     section("no development endpoints anywhere in the APK")
     haystack = dex + b"".join(
         read_entry(apk, name) for name in names if name.startswith("assets/")
@@ -176,10 +270,17 @@ def main() -> int:
         check(needle not in haystack, f"'{needle.decode()}' does not appear in the app payload")
 
     section("signature and alignment")
+    jar_signed = any(
+        name.startswith("META-INF/")
+        and (name.endswith(".SF") or name.endswith(".RSA") or name.endswith(".DSA") or name.endswith(".EC"))
+        for name in names
+    )
+    check(jar_signed, "v1 (JAR) signing files are packaged in META-INF")
     if os.path.isfile(apksigner):
         verify = run([java, "-jar", apksigner, "verify", "--verbose", "--print-certs", apk])
         check("Verifies" in verify, "apksigner verifies the APK")
         check("APK Signature Scheme v2" in verify, "v2 signature scheme is used")
+        check("APK Signature Scheme v3): true" in verify, "v3 signature scheme is used")
         check("signer #1 certificate DN: CN=Cinemax" in verify.lower() or "CN=Cinemax" in verify, "signed by the Cinemax release key")
     else:
         print("  skip apksigner (not found in the toolchain)")

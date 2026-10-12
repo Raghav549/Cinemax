@@ -51,7 +51,6 @@ fail() { printf '\n\033[1;31mBUILD FAILED: %s\033[0m\n' "$1" >&2; exit 1; }
 
 # --------------------------------------------------------------- toolchain
 if [ ! -f "$CACHE/.fetched" ]; then
-  with_timeout() { "$@"; }
   step "Fetching the pinned Android toolchain"
   bash "$PROJECT/tools/fetch-toolchain.sh"
 fi
@@ -201,6 +200,8 @@ PY
 fi
 
 step "Done"
-info "APK : $APK_OUT"
-info "size: $(wc -c <"$APK_OUT") bytes"
-info "copy: $DIST/$APP_NAME-latest.apk"
+info "APK    : $APK_OUT"
+info "size   : $(wc -c <"$APK_OUT") bytes"
+info "sha256 : $(sha256sum "$APK_OUT" | awk '{print $1}')"
+info "copy   : $DIST/$APP_NAME-latest.apk"
+info "install: adb install -r \"$APK_OUT\""

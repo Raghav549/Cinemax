@@ -285,7 +285,7 @@ public class MainActivity extends Activity {
     /**
      * API 30+ draws edge to edge: the live page receives the measured insets and
      * respects the status bar, gesture bar, cutouts and rounded corners itself.
-     * Older releases keep the platform's inset layout with tran`sparent bars, so
+     * Older releases keep the platform's inset layout with transparent bars, so
      * the page is simply told there is nothing to add.
      */
     private void installSystemBarHandling() {

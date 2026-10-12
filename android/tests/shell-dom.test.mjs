@@ -44,10 +44,17 @@ if (!scriptPath || !shellPath) {
 
 const jsdomModule = loadJsdom();
 if (!jsdomModule) {
-  console.log("SKIP  jsdom is not installed (run android/tests/install-test-deps.sh)");
-  process.exit(0);
+  // CI sets CINEMAX_REQUIRE_JSDOM=1 so a missing dependency can never turn this
+  // layer into a silent pass.
+  const required = process.env.CINEMAX_REQUIRE_JSDOM === "1";
+  console.log(
+    required
+      ? "FAIL  jsdom is required (CINEMAX_REQUIRE_JSDOM=1) but is not installed - run android/tests/install-test-deps.sh"
+      : "SKIP  jsdom is not installed (run android/tests/install-test-deps.sh)"
+  );
+  process.exit(required ? 1 : 0);
 }
-const { JSDOM } = jsdomModule;
+const { JSDOM, VirtualConsole } = jsdomModule;
 
 let checks = 0;
 let failures = 0;
@@ -252,6 +259,10 @@ if (hostilePath) {
     runScripts: "outside-only",
     pretendToBeVisual: true,
     url: "https://cinemax-orpin.vercel.app/",
+    // The hostile payload is *meant* to be rejected by the CSS parser, so the
+    // expected "Could not parse CSS stylesheet" report is silenced: it is not a
+    // failure, and its stack trace only makes the log look broken.
+    virtualConsole: new VirtualConsole(),
   });
   hostileDom.window.alert = () => { alerted++; };
   hostileDom.window.CinemaxNative = {

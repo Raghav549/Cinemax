@@ -1,26 +1,108 @@
 name: Android CI
 
+# Builds the signed, installable Cinemax APK on every push and pull request.
+#
+# The Android app in this repository is deliberately Gradle-free (see
+# android/README.md): there is no gradlew, no settings.gradle and no Android SDK
+# manager involved. The whole toolchain is pinned and checksum-verified by
+# android/tools/fetch-toolchain.sh, so the build runs the same command here as it
+# does on a developer machine:
+#
+#   bash android/build.sh              -> android/dist/Cinemax-1.0.0.apk
+#   bash android/tests/run-tests.sh    -> JVM + JS + DOM + APK checks
+#
+# The finished APK is uploaded as a downloadable artifact.
+
 on:
   push:
-    branches: [ "main" ]
+    branches: ["**"]
   pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The DOM layer must really run in CI: jsdom is installed below, and a missing
+  # jsdom is treated as a failure instead of a silent skip.
+  CINEMAX_REQUIRE_JSDOM: "1"
 
 jobs:
-  build:
-
+  apk:
+    name: Build and verify the signed APK
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Check out the repository
+        uses: actions/checkout@v7
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Build with Gradle
-      run: ./gradlew build
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Restore the pinned Android toolchain
+        uses: actions/cache@v6
+        with:
+          path: android/.toolchain
+          key: cinemax-toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('android/tools/fetch-toolchain.sh') }}
+          restore-keys: |
+            cinemax-toolchain-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Fetch the pinned Android toolchain (aapt2, d8, ecj, apksigner, JRE)
+        run: bash android/tools/fetch-toolchain.sh
+
+      - name: Install the test dependency used by the DOM layer (jsdom)
+        run: bash android/tests/install-test-deps.sh
+
+      - name: Build, sign and verify the APK
+        run: bash android/build.sh
+
+      - name: Run the Android test suite
+        run: |
+          mkdir -p android/build
+          bash android/tests/run-tests.sh --skip-build | tee android/build/test-suite.log
+
+      - name: Verify the test evidence
+        run: |
+          log=android/build/test-suite.log
+          grep -q "All Android checks passed." "$log" \
+            || { echo "::error::the Android test suite did not report success"; exit 1; }
+          if grep -qE "^[[:space:]]*(SKIP|FAIL)\b" "$log"; then
+            echo "::error::a layer was skipped or failed:"
+            grep -E "^[[:space:]]*(SKIP|FAIL)\b" "$log"
+            exit 1
+          fi
+          layers="$(grep -c "checks: " "$log")"
+          if [ "$layers" -ne 3 ]; then
+            echo "::error::expected a JVM, a DOM and an APK check summary - found $layers"
+            exit 1
+          fi
+          {
+            echo "### Android checks"
+            grep -E "checks: " "$log" | sed 's/^/ - /'
+            echo " - APK: $(wc -c <android/dist/Cinemax-1.0.0.apk) bytes"
+          } >>"$GITHUB_STEP_SUMMARY"
+          grep -E "checks: " "$log"
+
+      - name: Report the artefact
+        run: |
+          cd android/dist
+          sha256sum Cinemax-1.0.0.apk | tee Cinemax-1.0.0.apk.sha256
+          ls -l Cinemax-1.0.0.apk
+
+      - name: Upload the installable APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: cinemax-android-apk
+          path: |
+            android/dist/Cinemax-1.0.0.apk
+            android/dist/Cinemax-latest.apk
+            android/dist/Cinemax-1.0.0.apk.sha256
+            android/build/test-suite.log
+          if-no-files-found: error
+          retention-days: 90
