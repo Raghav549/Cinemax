@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { expectNoOverflow, preparePage, readCatalogue, readSlides } from "./helpers";
+import { createMovieWithTrailer, deleteMovie, expectNoOverflow, preparePage, readCatalogue, readSlides, servePlaybackFixtures } from "./helpers";
 
 test.beforeEach(async ({ page }, info) => { await preparePage(page, info.title.startsWith("intro:")); });
 
@@ -9,7 +9,7 @@ test("home uses the real library, essential hero actions and continuous button l
   const slides = await readSlides(request);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const hero = page.locator(".hero-card");
-  const expectedTitle = slides[0]?.title || catalogue.find((movie) => movie.featured)?.title || catalogue[0].title;
+  const expectedTitle = slides[0]?.title || "Your library is ready";
   await expect(hero.getByRole("heading", { level: 1 })).toHaveText(expectedTitle);
   await expect(page.getByText("Your front row starts here")).toHaveCount(0);
   await expect(page.getByText("Big stories. Beautifully at home.")).toHaveCount(0);
@@ -46,37 +46,39 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
       expect(box!.width / box!.height).toBeCloseTo(2 / 3, 2);
     }
     if (info.project.name !== "desktop") {
-      await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-      const pills = page.locator(".nav-pill-link");
-      await expect(pills).toHaveCount(3);
-      await expect(pills).toHaveText(["Web", "Movies", "Dramas"]);
-      const hit = await pills.first().boundingBox();
-      expect(hit!.height).toBeGreaterThanOrEqual(40);
-      await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
-      // The bottom row below the curved line: Home (Cinemax logo asset), Search, Categories.
+      // The old top navigation pill (Web | Movies | Dramas | chevron) is gone.
+      await expect(page.locator(".nav-pill")).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Primary navigation" })).toHaveCount(0);
+      // The bottom row below the curved line: Home (Cinemax logo asset), Search, More.
       const menu = page.getByRole("navigation", { name: "App sections" });
       await expect(menu).toBeVisible();
       await expect(menu.getByRole("link", { name: /Home/ })).toBeVisible();
       await expect(menu.locator("img.nav-menu-logo")).toHaveAttribute("src", "/brand/cinemax-symbol.svg");
       await expect(menu.getByRole("link", { name: /Search/ })).toBeVisible();
-      await expect(menu.getByRole("link", { name: /Categories/ })).toBeVisible();
+      await expect(menu.getByRole("link", { name: /Categories/ })).toHaveCount(0);
+      const moreButton = menu.getByRole("button", { name: "Open More panel" });
+      await expect(moreButton).toBeVisible();
+      expect((await moreButton.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+      // The animated More icon is inline SVG (never a static grid/profile icon).
+      await expect(moreButton.locator("svg.more-icon")).toHaveCount(1);
     }
   }
   if (info.project.name !== "desktop") {
-    const nav = page.getByRole("navigation", { name: "Primary navigation" });
-    const persistent = await nav.evaluate((element) => { element.setAttribute("data-persistent-test", "yes"); return true; });
+    const menu = page.getByRole("navigation", { name: "App sections" });
+    const persistent = await menu.evaluate((element) => { element.setAttribute("data-persistent-test", "yes"); return true; });
     expect(persistent).toBeTruthy();
-    // A category shortcut navigates and the dock instance survives the change.
-    await nav.getByRole("link", { name: "Movies", exact: true }).click();
+    // The dock instance survives a route change.
+    await menu.getByRole("link", { name: /Search/ }).click();
     await expect(page.locator("main h1")).toBeVisible();
-    await expect(page.locator(".nav-pill")).toHaveAttribute("data-persistent-test", "yes");
-    // Clicking the chevron opens the Category Browser bottom sheet with all 5 sections.
-    const chevron = page.locator(".nav-pill-chevron");
-    await expect(chevron).toHaveAccessibleName("Expand navigation");
-    await chevron.click();
-    await expect(chevron).toHaveAttribute("aria-expanded", "true");
-    await expect(chevron).toHaveAccessibleName("Collapse navigation");
-    const sheet = page.getByRole("dialog", { name: "Browse categories" });
+    await expect(page.locator(".nav-menu")).toHaveAttribute("data-persistent-test", "yes");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // Clicking More opens the discovery panel immediately; the idle icon
+    // animation never blocks the tap.
+    const moreButton = page.locator(".nav-menu-more");
+    await moreButton.click();
+    await expect(moreButton).toHaveAttribute("aria-expanded", "true");
+    await expect(moreButton).toHaveAccessibleName("Close More panel");
+    const sheet = page.getByRole("dialog", { name: "More" });
     await expect(sheet).toBeVisible();
     await expect(sheet.getByRole("heading", { name: "Browse", exact: true })).toBeVisible();
     await expect(sheet.getByRole("heading", { name: "Discover by Content Type", exact: true })).toBeVisible();
@@ -87,11 +89,11 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
     const sheetText = await sheet.innerText();
     expect(sheetText).not.toMatch(/\b(Sports|Live TV|TV Channels|Broadcasting|Gaming)\b/i);
     // Close button closes the sheet cleanly.
-    await sheet.getByRole("button", { name: "Close category browser" }).click();
+    await sheet.getByRole("button", { name: "Close More panel" }).click();
     await expect(sheet).toHaveCount(0);
     // Re-open and navigate to Watchlist from the quickbar.
-    await chevron.click();
-    await page.getByRole("dialog", { name: "Browse categories" }).getByRole("link", { name: "Watchlist" }).click();
+    await moreButton.click();
+    await page.getByRole("dialog", { name: "More" }).getByRole("link", { name: "Watchlist" }).click();
     await expect(page.getByRole("heading", { name: /Watchlist|Saved/ })).toBeVisible();
     // The bottom row keeps Search one tap away.
     await page.getByRole("navigation", { name: "App sections" }).getByRole("link", { name: /Search/ }).click();
@@ -222,5 +224,41 @@ test("public screens satisfy automated WCAG AA checks", async ({ page, request }
     await expect(page.locator("[aria-busy=true]")).toHaveCount(0);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).exclude("nextjs-portal").analyze();
     expect(results.violations, `${route}: ${JSON.stringify(results.violations.map((item) => ({ id: item.id, nodes: item.nodes.map((node) => node.target) })))}`).toEqual([]);
+  }
+});
+
+test("trailer preview plays inside the card, stops cleanly, and invalid trailers keep the poster", async ({ page, request }) => {
+  await servePlaybackFixtures(page);
+  const withTrailer = await createMovieWithTrailer(request, "/__e2e__/prism-test.webm");
+  const brokenTrailer = await createMovieWithTrailer(request, "https://example.invalid/definitely-not-a-trailer.mp4");
+  try {
+    await page.goto("/search", { waitUntil: "domcontentloaded" });
+    const search = page.getByRole("searchbox", { name: "Search the catalogue" });
+
+    await search.fill(withTrailer.title);
+    const card = page.locator(".movie-card", { hasText: withTrailer.title });
+    await expect(card).toBeVisible();
+    // No preview until the user asks for it.
+    await expect(card.locator("video.movie-trailer-video")).toHaveCount(0);
+    await card.getByRole("button", { name: `Play trailer preview for ${withTrailer.title}` }).click();
+    const video = card.locator("video.movie-trailer-video");
+    await expect(video).toBeVisible();
+    await expect.poll(() => video.evaluate((el) => !(el as HTMLVideoElement).paused && (el as HTMLVideoElement).currentTime > 0)).toBeTruthy();
+    expect(await video.evaluate((el) => (el as HTMLVideoElement).muted)).toBeTruthy();
+    // The full-movie source is untouched by the preview.
+    await card.getByRole("button", { name: `Stop trailer preview for ${withTrailer.title}` }).click();
+    await expect(card.locator("video.movie-trailer-video")).toHaveCount(0);
+    await expect(card.locator(".movie-poster-image, .artwork-placeholder").first()).toBeVisible();
+
+    await search.fill(brokenTrailer.title);
+    const brokenCard = page.locator(".movie-card", { hasText: brokenTrailer.title });
+    await expect(brokenCard).toBeVisible();
+    await brokenCard.getByRole("button", { name: `Play trailer preview for ${brokenTrailer.title}` }).click();
+    // An unplayable trailer falls back to the poster — no broken player, no stuck spinner.
+    await expect.poll(async () => brokenCard.locator("video.movie-trailer-video").count()).toBe(0);
+    await expect(brokenCard.locator(".movie-poster-image, .artwork-placeholder").first()).toBeVisible();
+  } finally {
+    await deleteMovie(request, withTrailer.id);
+    await deleteMovie(request, brokenTrailer.id);
   }
 });

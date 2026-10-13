@@ -145,27 +145,9 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
    functional destination is lost by the redesign.
    ========================================================================== */
 .bottom-nav-wrap { position: fixed; z-index: 100; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 12px calc(6px + var(--safe-bottom)); pointer-events: none; background: linear-gradient(transparent, rgba(5, 5, 7, .74) 42%, rgba(5, 5, 7, .96)); }
-.home-shell { min-height: 100vh; padding-bottom: calc(138px + var(--safe-bottom)); }
-.secondary-page { padding-bottom: calc(138px + var(--safe-bottom)); }
-.movie-detail-page { min-height: 100svh; padding-bottom: calc(138px + var(--safe-bottom)); }
-
-.nav-dock { position: relative; width: min(100%, 340px); pointer-events: auto; }
-.nav-dock-row { display: flex; align-items: center; justify-content: center; }
-
-/* The pill: one continuous deep blue -> royal -> violet -> purple -> magenta
-   surface, dark enough that white labels stay comfortably above AA. */
-.nav-pill { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; border: 1px solid rgba(203, 183, 255, .2); border-radius: 999px; background-color: #1f2b70; background-image: linear-gradient(100deg, #12245C 0%, #1B3A8C 26%, #3B2E8F 52%, #5B2A82 76%, #7C2560 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -1px 0 rgba(0, 0, 0, .28), 0 10px 28px -14px rgba(0, 0, 0, .75); }
-.nav-pill-items { display: flex; align-items: center; flex: 1; min-width: 0; padding: 0 3px; }
-.nav-pill-cell { display: flex; align-items: center; flex: 1; min-width: 0; }
-.nav-pill-link { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 44px; padding: 0 8px; border-radius: 999px; color: #f4f3ff; font-size: 12px; font-weight: 700; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s, background .2s, box-shadow .2s; }
-.nav-pill-link:active { color: #fff; }
-.nav-pill-link[aria-current="page"] { color: #fff; background: rgba(255, 255, 255, .15); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22); }
-.nav-pill-sep { flex-shrink: 0; width: 1px; height: 14px; margin: 0 1px; border-radius: 1px; background: rgba(232, 226, 255, .26); }
-.nav-pill-chevron { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: #f4f3ff; transition: background .2s; }
-.nav-pill-chevron:active { background: rgba(255, 255, 255, .1); }
-.nav-pill-chevron svg { width: 16px; height: 16px; transition: transform .26s var(--ease); }
-.nav-pill-chevron[aria-expanded="true"] svg { transform: rotate(180deg); }
-.nav-pill-lightline { position: absolute; left: 14px; right: 14px; bottom: -5px; width: calc(100% - 28px); height: 7px; pointer-events: none; }
+.home-shell { min-height: 100vh; padding-bottom: calc(96px + var(--safe-bottom)); }
+.secondary-page { padding-bottom: calc(96px + var(--safe-bottom)); }
+.movie-detail-page { min-height: 100svh; padding-bottom: calc(96px + var(--safe-bottom)); }
 
 /* Restrained curved blue/cyan light line above the 3-tab footer. */
 .magic-line { display: block; width: min(100%, 420px); height: 12px; margin-top: 2px; pointer-events: none; }
@@ -289,6 +271,15 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
 .movie-hover-play { position: absolute; z-index: 2; top: 50%; left: 50%; display: grid; width: 47px; height: 47px; place-items: center; border: 1px solid rgba(234, 222, 255, .45); border-radius: 50%; background: rgba(13, 10, 28, .75); color: #f7eaff; opacity: 0; transform: translate(-50%, -42%); transition: transform .25s var(--ease), opacity .25s; }
 .movie-hover-play svg { width: 18px; height: 18px; margin-left: 2px; }
 .movie-card:hover .movie-hover-play, .movie-card:focus-within .movie-hover-play { opacity: 1; transform: translate(-50%, -50%); }
+/* Inline trailer preview: covers the poster only while actually previewing. */
+.movie-trailer-preview { position: absolute; inset: 0; z-index: 1; display: block; background: #000; }
+.movie-trailer-video, .movie-trailer-frame { display: block; width: 100%; height: 100%; border: 0; object-fit: cover; pointer-events: none; }
+.movie-trailer-badge { position: absolute; left: 10px; bottom: 10px; padding: 4px 8px; border-radius: 6px; background: rgba(10, 8, 22, .78); color: #f1edf8; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; pointer-events: none; }
+.movie-trailer-button { position: absolute; z-index: 3; right: 10px; bottom: 52px; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid rgba(221, 210, 242, .22); border-radius: 999px; background: rgba(10, 9, 25, .85); color: #f4f1ff; font-size: 10px; font-weight: 750; opacity: 0; transform: translateY(3px); transition: opacity .2s, transform .2s, background .2s; }
+.movie-trailer-button svg { width: 11px; height: 11px; }
+.movie-card:hover .movie-trailer-button, .movie-card:focus-within .movie-trailer-button, .movie-card[data-previewing] .movie-trailer-button { opacity: 1; transform: translateY(0); }
+.movie-trailer-button:hover { background: #392754; }
+@media (hover: none) { .movie-trailer-button { opacity: 1; transform: none; } }
 .movie-card-copy { padding: 11px 1px 0; }
 .movie-card-title { overflow: hidden; color: #e4e0ef; font-size: 13px; font-weight: 650; line-height: 1.5; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
 .movie-card-meta { overflow: hidden; margin-top: 4px; color: #9690ac; font-size: 10px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
@@ -382,7 +373,7 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
 .app-toast svg { width: 16px; height: 16px; color: #b5a1f5; }
 
 /* Title details — all existing metadata, save/share and playback retained. */
-.movie-detail-page { min-height: 100svh; padding-bottom: calc(138px + var(--safe-bottom)); }
+.movie-detail-page { min-height: 100svh; padding-bottom: calc(96px + var(--safe-bottom)); }
 .detail-backdrop { position: relative; isolation: isolate; height: clamp(610px, 75svh, 850px); margin-top: calc(-88px - var(--safe-top)); overflow: hidden; background: #08080c; }
 .detail-backdrop-image { position: absolute; z-index: -3; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
 .detail-backdrop-fade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, rgba(5, 5, 7, .92), rgba(5, 5, 7, .65) 32%, rgba(5, 5, 7, .12) 75%), linear-gradient(0deg, var(--bg), rgba(5, 5, 7, .6) 15%, transparent 50%, rgba(5, 5, 7, .08)); }
@@ -550,8 +541,8 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
   .hero-dot span { width: 5px; height: 5px; border-radius: 999px; background: #756784; transition: width .3s var(--ease), background .3s; }
   .hero-dot[aria-current="true"] { width: 34px; }
   .hero-dot[aria-current="true"] span { width: 22px; background: linear-gradient(90deg, #8292ff, #ce94ff); box-shadow: 0 0 8px rgba(146, 95, 250, .2); }
-  .home-shell, .movie-detail-page { padding-bottom: calc(138px + var(--safe-bottom)); }
-  .secondary-page { min-height: calc(100svh - 76px); padding-bottom: calc(138px + var(--safe-bottom)); }
+  .home-shell, .movie-detail-page { padding-bottom: calc(96px + var(--safe-bottom)); }
+  .secondary-page { min-height: calc(100svh - 76px); padding-bottom: calc(96px + var(--safe-bottom)); }
   .bottom-nav-wrap { padding: 6px 12px calc(6px + var(--safe-bottom)); }
   .app-toast { bottom: calc(114px + var(--safe-bottom)); }
   .detail-topbar { top: calc(90px + var(--safe-top)); }
@@ -752,6 +743,104 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
 .nav-menu-logo { display: block; width: 20px; height: 20px; object-fit: contain; }
 .nav-menu-label { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-menu-link:active .nav-menu-icon { transform: scale(.92); }
+.category-browser-empty { color: var(--text-soft); font-size: 13px; line-height: 1.6; padding: 12px 2px; }
+.nav-menu-more .nav-menu-icon { width: 28px; height: 28px; }
+button.nav-menu-link { border: 0; background: transparent; font: inherit; cursor: pointer; }
+button.nav-menu-link[aria-expanded="true"] { color: #f7f5ff; }
+
+/* --- "More" animated icon ---------------------------------------------------
+   One seamless 3.8s loop using only transform/opacity (GPU-friendly, no blur
+   filters). Phases: rest → cracks + vibration → burst → dots roll left →
+   light streak → converge and reform. */
+.more-icon { display: block; width: 26px; height: 26px; overflow: visible; }
+.more-icon .more-ring, .more-icon .more-cracks, .more-icon .more-frag, .more-icon .more-dot, .more-icon .more-streak, .more-icon .more-glow { transform-box: fill-box; transform-origin: center; }
+.more-icon .more-ring { animation: more-ring-cycle 3.8s cubic-bezier(.45, .05, .25, 1) infinite; }
+.more-icon .more-cracks { opacity: 0; animation: more-cracks-cycle 3.8s linear infinite; }
+.more-icon .more-glow { opacity: .35; animation: more-glow-cycle 3.8s ease-in-out infinite; }
+.more-icon .more-frag { opacity: 0; animation: more-frag-cycle 3.8s cubic-bezier(.22, .68, .26, 1) infinite; }
+.more-icon .more-streak { opacity: 0; animation: more-streak-cycle 3.8s cubic-bezier(.55, .06, .35, 1) infinite; }
+.more-icon .more-dot-1 { animation: more-dot1-cycle 3.8s cubic-bezier(.45, .05, .25, 1) infinite; }
+.more-icon .more-dot-2 { animation: more-dot2-cycle 3.8s cubic-bezier(.45, .05, .25, 1) infinite; }
+.more-icon .more-dot-3 { animation: more-dot3-cycle 3.8s cubic-bezier(.45, .05, .25, 1) infinite; }
+.more-icon.is-open .more-ring, .more-icon.is-open .more-cracks, .more-icon.is-open .more-frag, .more-icon.is-open .more-dot, .more-icon.is-open .more-streak, .more-icon.is-open .more-glow { animation: none; }
+.more-icon.is-open .more-cracks, .more-icon.is-open .more-frag, .more-icon.is-open .more-streak { opacity: 0; }
+@keyframes more-ring-cycle {
+  0%, 14% { opacity: 1; transform: rotate(0deg) scale(1); }
+  19% { transform: rotate(-1.6deg) scale(1.015); }
+  24% { transform: rotate(1.4deg) scale(.995); }
+  29% { opacity: 1; transform: rotate(0deg) scale(1.03); }
+  34%, 68% { opacity: 0; transform: rotate(24deg) scale(1.38); }
+  76% { opacity: 0; transform: rotate(-8deg) scale(.72); }
+  86%, 100% { opacity: 1; transform: rotate(0deg) scale(1); }
+}
+@keyframes more-cracks-cycle {
+  0%, 13% { opacity: 0; }
+  20%, 29% { opacity: 1; }
+  36%, 100% { opacity: 0; }
+}
+@keyframes more-glow-cycle {
+  0%, 14% { opacity: .3; transform: scale(.92); }
+  32% { opacity: .85; transform: scale(1.12); }
+  58% { opacity: .45; transform: scale(1); }
+  70% { opacity: .95; transform: scale(1.18); }
+  88%, 100% { opacity: .3; transform: scale(.92); }
+}
+@keyframes more-frag-cycle {
+  0%, 28% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(.5); }
+  33% { opacity: 1; }
+  44% { opacity: 1; transform: translate(var(--fx), var(--fy)) rotate(var(--fr)) scale(1); }
+  62% { opacity: .55; transform: translate(calc(var(--fx) * .82), calc(var(--fy) * .82)) rotate(calc(var(--fr) * .8)) scale(.85); }
+  78%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(.5); }
+}
+@keyframes more-streak-cycle {
+  0%, 57% { opacity: 0; transform: translateX(-16px); }
+  63% { opacity: 1; }
+  72% { opacity: 1; transform: translateX(38px); }
+  78%, 100% { opacity: 0; transform: translateX(48px); }
+}
+/* Dot 1 (top): vibrates, bursts up, rolls left spinning, then reforms. */
+@keyframes more-dot1-cycle {
+  0%, 14% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(.7px, -.5px) rotate(4deg); }
+  22% { transform: translate(-.7px, .4px) rotate(-4deg); }
+  26% { transform: translate(.6px, .5px) rotate(3deg); }
+  33% { transform: translate(.5px, -3.4px) rotate(10deg); }
+  46% { transform: translate(-1px, -.6px) rotate(-30deg); }
+  60% { transform: translate(-11.5px, .8px) rotate(-190deg); }
+  68% { transform: translate(-12.5px, 0) rotate(-235deg); }
+  84% { transform: translate(-1.6px, -.4px) rotate(-330deg); }
+  92%, 100% { transform: translate(0, 0) rotate(-360deg); }
+}
+/* Dot 2 (bottom-left): leads the roll. */
+@keyframes more-dot2-cycle {
+  0%, 14% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(-.6px, .6px) rotate(-4deg); }
+  22% { transform: translate(.7px, -.5px) rotate(4deg); }
+  26% { transform: translate(-.5px, -.6px) rotate(-3deg); }
+  33% { transform: translate(-3.2px, 2.2px) rotate(-12deg); }
+  46% { transform: translate(-4.5px, .4px) rotate(-70deg); }
+  60% { transform: translate(-13.5px, -1px) rotate(-215deg); }
+  68% { transform: translate(-14.2px, -.4px) rotate(-255deg); }
+  84% { transform: translate(-2px, .3px) rotate(-335deg); }
+  92%, 100% { transform: translate(0, 0) rotate(-360deg); }
+}
+/* Dot 3 (bottom-right): trails the roll with a slight bounce. */
+@keyframes more-dot3-cycle {
+  0%, 14% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(.6px, .6px) rotate(4deg); }
+  22% { transform: translate(-.6px, -.4px) rotate(-4deg); }
+  26% { transform: translate(.5px, -.5px) rotate(3deg); }
+  33% { transform: translate(3.2px, 2.4px) rotate(12deg); }
+  48% { transform: translate(-2.5px, -1.2px) rotate(-55deg); }
+  62% { transform: translate(-12.8px, .6px) rotate(-205deg); }
+  70% { transform: translate(-13.6px, -.2px) rotate(-250deg); }
+  86% { transform: translate(-1.8px, .4px) rotate(-338deg); }
+  93%, 100% { transform: translate(0, 0) rotate(-360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .more-icon .more-ring, .more-icon .more-cracks, .more-icon .more-frag, .more-icon .more-dot, .more-icon .more-streak, .more-icon .more-glow { animation: none; }
+  .more-icon .more-cracks, .more-icon .more-frag, .more-icon .more-streak { opacity: 0; }
+}
 
 /* --- Category Browser bottom sheet ---------------------------------------- */
 html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
@@ -824,8 +913,5 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
 .detail-read-more { margin-top: 8px; padding: 0; border: 0; background: none; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; }
 
 @media (max-width: 400px) {
-  .nav-dock { width: min(100%, 300px); }
-  .nav-pill-link { padding: 0 5px; font-size: 11.5px; }
-  .nav-pill-chevron { width: 40px; }
   .category-browser-header, .category-browser-quickbar, .category-browser-body { padding-inline: 14px; }
 }

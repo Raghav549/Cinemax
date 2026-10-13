@@ -4,42 +4,12 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Icon from "./Icon";
+import MoreIcon from "./MoreIcon";
 import { useCatalogue } from "./CatalogueProvider";
 import { matchesCollection } from "@/lib/catalogue";
-import {
-  BOTTOM_NAV_ITEMS,
-  CATEGORY_BROWSER_SECTIONS,
-  PRIMARY_PILL_ITEMS,
-  activeBottomNavIndex,
-  activePillId,
-} from "@/lib/navigation";
+import { BOTTOM_NAV_ITEMS, CATEGORY_BROWSER_SECTIONS, activeBottomNavIndex } from "@/lib/navigation";
 
 const HIDDEN_PREFIXES = ["/gate-keeper"];
-
-function PillLightLine() {
-  const uid = useId().replace(/:/g, "");
-  const gradId = `cinemax-pill-line-${uid}`;
-  return (
-    <svg className="nav-pill-lightline" viewBox="0 0 280 10" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0" />
-          <stop offset="20%" stopColor="#38bdf8" stopOpacity="0.82" />
-          <stop offset="50%" stopColor="#a855f7" stopOpacity="0.95" />
-          <stop offset="80%" stopColor="#ec4899" stopOpacity="0.82" />
-          <stop offset="100%" stopColor="#ec4899" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M 10 8 Q 140 1.5 270 8"
-        fill="none"
-        stroke={`url(#${gradId})`}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 const MAGIC_LINE_PATH = "M 0 12 Q 600 2 1200 12";
 
@@ -80,7 +50,7 @@ function MagicLine({ activeIndex }: { activeIndex: number }) {
 
 export default function BottomNav() {
   const pathname = usePathname() || "/";
-  const { movies } = useCatalogue();
+  const { movies, categories } = useCatalogue();
   const [browserOpen, setBrowserOpen] = useState(false);
   const savedScrollYRef = useRef<number>(0);
   const historyPushedRef = useRef<boolean>(false);
@@ -171,22 +141,41 @@ export default function BottomNav() {
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    if (movies.length === 0) return counts;
-    for (const section of CATEGORY_BROWSER_SECTIONS) {
-      for (const item of section.items) {
-        if (!counts.has(item.slug)) {
-          const matched = movies.filter((m) => matchesCollection(m, item.slug)).length;
-          counts.set(item.slug, matched);
-        }
-      }
+    const slugs = new Set<string>();
+    for (const section of CATEGORY_BROWSER_SECTIONS) for (const item of section.items) slugs.add(item.slug);
+    for (const category of categories) slugs.add(category.slug);
+    for (const slug of slugs) {
+      counts.set(slug, movies.filter((m) => matchesCollection(m, slug)).length);
     }
     return counts;
-  }, [movies]);
+  }, [movies, categories]);
+
+  // What the More panel may offer: a destination is shown only when the
+  // database actually backs it — an admin-managed category exists, or at
+  // least one catalogued title matches it. Nothing is invented for an empty
+  // library, and empty sections disappear entirely.
+  const browserSections = useMemo(() => {
+    const knownSlugs = new Set<string>();
+    const sections = CATEGORY_BROWSER_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if ((categoryCounts.get(item.slug) ?? 0) > 0 || categories.some((c) => c.slug === item.slug)) {
+          knownSlugs.add(item.slug);
+          return true;
+        }
+        return false;
+      }),
+    })).filter((section) => section.items.length > 0);
+    const extra = categories
+      .filter((category) => !knownSlugs.has(category.slug))
+      .map((category) => ({ slug: category.slug, label: category.name, href: `/category/${category.slug}` }));
+    if (extra.length) sections.push({ id: "your-categories", title: "Your Categories", items: extra });
+    return sections;
+  }, [categories, categoryCounts]);
 
   if (HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null;
 
-  const activeIndex = activeBottomNavIndex(pathname);
-  const currentPill = activePillId(pathname);
+  const activeIndex = browserOpen ? 2 : activeBottomNavIndex(pathname);
 
   return (
     <>
@@ -195,7 +184,7 @@ export default function BottomNav() {
           className="category-browser-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Browse categories"
+          aria-label="More"
           data-testid="category-browser-sheet"
         >
           <div className="category-browser-backdrop" onClick={() => closeBrowser()} aria-hidden="true" />
@@ -206,12 +195,12 @@ export default function BottomNav() {
             <div className="category-browser-header">
               <div>
                 <p className="category-browser-eyebrow">Cinemax Catalog</p>
-                <h2 className="category-browser-title">Browse Categories</h2>
+                <h2 className="category-browser-title">More</h2>
               </div>
               <button
                 type="button"
                 className="category-browser-close"
-                aria-label="Close category browser"
+                aria-label="Close More panel"
                 onClick={() => closeBrowser()}
               >
                 <Icon name="close" />
@@ -236,24 +225,26 @@ export default function BottomNav() {
                 <Icon name="bookmark" />
                 <span>Watchlist</span>
               </Link>
-              <Link
-                href="/category/coming-soon"
-                className="category-browser-quicklink is-upcoming"
-                onClick={() => closeBrowser({ navigating: true })}
-              >
-                <Icon name="sparkles" />
-                <span>Coming Soon</span>
-              </Link>
+              {(categoryCounts.get("coming-soon") ?? 0) > 0 && (
+                <Link
+                  href="/category/coming-soon"
+                  className="category-browser-quicklink is-upcoming"
+                  onClick={() => closeBrowser({ navigating: true })}
+                >
+                  <Icon name="sparkles" />
+                  <span>Coming Soon</span>
+                </Link>
+              )}
             </div>
 
             <div className="category-browser-body">
-              {CATEGORY_BROWSER_SECTIONS.map((section) => {
-                const visibleItems =
-                  movies.length === 0
-                    ? section.items
-                    : section.items.filter((item) => (categoryCounts.get(item.slug) ?? 0) > 0);
-                if (visibleItems.length === 0) return null;
-
+              {browserSections.length === 0 && (
+                <p className="category-browser-empty">
+                  Nothing to browse yet. Titles and categories added in the studio will appear here.
+                </p>
+              )}
+              {browserSections.map((section) => {
+                const visibleItems = section.items;
                 return (
                   <section key={section.id} className="category-browser-section" aria-label={section.title}>
                     <h3 className="category-browser-section-title">{section.title}</h3>
@@ -285,44 +276,27 @@ export default function BottomNav() {
       )}
 
       <div className="bottom-nav-wrap">
-        <div className="nav-dock">
-          <div className="nav-dock-row">
-            <nav className="nav-pill" aria-label="Primary navigation">
-              <div className="nav-pill-items">
-                {PRIMARY_PILL_ITEMS.map((item, index) => {
-                  const active = currentPill === item.id;
-                  return (
-                    <span key={item.id} className="nav-pill-cell">
-                      {index > 0 && <span className="nav-pill-sep" aria-hidden="true" />}
-                      <Link
-                        href={item.href}
-                        className="nav-pill-link"
-                        aria-current={active ? "page" : undefined}
-                      >
-                        {item.label}
-                      </Link>
-                    </span>
-                  );
-                })}
-                <span className="nav-pill-sep" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="nav-pill-chevron"
-                  aria-expanded={browserOpen}
-                  aria-controls="cinemax-category-browser"
-                  aria-label={browserOpen ? "Collapse navigation" : "Expand navigation"}
-                  onClick={toggleBrowser}
-                >
-                  <Icon name="chevron-down" />
-                </button>
-              </div>
-              <PillLightLine />
-            </nav>
-          </div>
-        </div>
         <MagicLine activeIndex={activeIndex} />
         <nav className="nav-menu" aria-label="App sections">
           {BOTTOM_NAV_ITEMS.map((item, index) => {
+            if (item.id === "more") {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="nav-menu-link nav-menu-more"
+                  aria-expanded={browserOpen}
+                  aria-controls="cinemax-category-browser"
+                  aria-label={browserOpen ? "Close More panel" : "Open More panel"}
+                  onClick={toggleBrowser}
+                >
+                  <span className="nav-menu-icon" aria-hidden="true">
+                    <MoreIcon open={browserOpen} />
+                  </span>
+                  <span className="nav-menu-label">{item.label}</span>
+                </button>
+              );
+            }
             const current = item.href === "/" ? pathname === "/" : index === activeIndex;
             return (
               <Link
@@ -342,10 +316,8 @@ export default function BottomNav() {
                       className="nav-menu-logo"
                       decoding="async"
                     />
-                  ) : item.id === "search" ? (
-                    <Icon name="search" />
                   ) : (
-                    <Icon name="categories" />
+                    <Icon name="search" />
                   )}
                 </span>
                 <span className="nav-menu-label">{item.label}</span>

@@ -1,0 +1,526 @@
+{
+ "movies": [
+  {
+   "title": "Achhut Kanya",
+   "year": 1936,
+   "videoUrl": "/api/media/hls/achhut-kanya-1936/master.m3u8",
+   "posterUrl": "https://archive.org/services/img/achhut-kanya-1936"
+  },
+  {
+   "title": "Sant Tukaram",
+   "year": 1936,
+   "videoUrl": "/api/media/stream/sant-tukaram-1936.webm",
+   "posterUrl": "https://archive.org/services/img/sant-tukaram-1936"
+  },
+  {
+   "title": "Raja Harishchandra",
+   "year": 1913,
+   "videoUrl": "/api/media/embed/raja-harishchandra-1913",
+   "posterUrl": "https://archive.org/services/img/raja-harishchandra-1913"
+  },
+  {
+   "title": "Kaliya Mardan",
+   "year": 1919,
+   "videoUrl": "/api/media/stream/kaliya-mardan-1919.webm",
+   "posterUrl": "https://archive.org/services/img/kaliya-mardan-1919"
+  },
+  {
+   "title": "Prem Sanyas (The Light of Asia)",
+   "year": 1925,
+   "videoUrl": "/api/media/stream/prem-sanyas-light-of-asia-1925.webm",
+   "posterUrl": "https://archive.org/services/img/light-of-asia-1925"
+  },
+  {
+   "title": "Shiraz: A Romance of India",
+   "year": 1928,
+   "videoUrl": "/api/media/stream/shiraz-1928.webm",
+   "posterUrl": "https://archive.org/services/img/shiraz-1928"
+  },
+  {
+   "title": "A Throw of Dice (Prapancha Pash)",
+   "year": 1929,
+   "videoUrl": "/api/media/stream/prapancha-pash-throw-of-dice-1929.webm",
+   "posterUrl": "https://archive.org/services/img/a-throw-of-dice-1929"
+  },
+  {
+   "title": "Devdas",
+   "year": 1935,
+   "videoUrl": "/api/media/stream/devdas-1935.webm",
+   "posterUrl": "https://archive.org/services/img/devdas-1935"
+  },
+  {
+   "title": "Neecha Nagar",
+   "year": 1946,
+   "videoUrl": "/api/media/hls/neecha-nagar-1946/master.m3u8",
+   "posterUrl": "https://archive.org/services/img/neecha-nagar-1946"
+  },
+  {
+   "title": "Thyagabhoomi",
+   "year": 1939,
+   "videoUrl": "/api/media/stream/thyagabhoomi-1939.webm",
+   "posterUrl": "https://archive.org/services/img/thyagabhoomi-1939"
+  },
+  {
+   "title": "Chandralekha",
+   "year": 1948,
+   "videoUrl": "/api/media/stream/chandralekha-1948.webm",
+   "posterUrl": "https://archive.org/services/img/chandralekha-1948"
+  },
+  {
+   "title": "Malliswari",
+   "year": 1951,
+   "videoUrl": "/api/media/stream/malliswari-1951.webm",
+   "posterUrl": "https://archive.org/services/img/malliswari-1951"
+  },
+  {
+   "title": "Vande Mataram",
+   "year": 1939,
+   "videoUrl": "/api/media/stream/vande-mataram-1939.webm",
+   "posterUrl": "https://archive.org/services/img/vande-mataram-1939"
+  },
+  {
+   "title": "Balan",
+   "year": 1938,
+   "videoUrl": "/api/media/stream/balan-1938.webm",
+   "posterUrl": "https://archive.org/services/img/balan-1938"
+  },
+  {
+   "title": "Vigathakumaran (The Lost Child)",
+   "year": 1928,
+   "videoUrl": "/api/media/stream/vigathakumaran-1928.webm",
+   "posterUrl": "https://archive.org/services/img/vigathakumaran-1928"
+  },
+  {
+   "title": "Sintel",
+   "year": 2010,
+   "videoUrl": "/api/media/hls/sintel-2010/master.m3u8",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/4BMG9hk9NvSBeQvC82sVmVRK140.jpg"
+  },
+  {
+   "title": "Tears of Steel",
+   "year": 2012,
+   "videoUrl": "/api/media/hls/tears-of-steel-2012/master.m3u8",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/d9p1nB3i5gS83k15A1k3oE5H8fH.jpg"
+  },
+  {
+   "title": "Big Buck Bunny",
+   "year": 2008,
+   "videoUrl": "/api/media/stream/big-buck-bunny-2008.webm",
+   "posterUrl": "https://archive.org/services/img/BigBuckBunny_124"
+  },
+  {
+   "title": "Elephants Dream",
+   "year": 2006,
+   "videoUrl": "/api/media/stream/elephants-dream-2006.webm",
+   "posterUrl": "https://archive.org/services/img/ElephantsDream"
+  },
+  {
+   "title": "Cosmos Laundromat: First Cycle",
+   "year": 2015,
+   "videoUrl": "/api/media/hls/cosmos-laundromat-2015/master.m3u8",
+   "posterUrl": "https://archive.org/services/img/cosmos-laundromat"
+  },
+  {
+   "title": "Spring",
+   "year": 2019,
+   "videoUrl": "/api/media/stream/spring-2019.webm",
+   "posterUrl": "https://archive.org/services/img/spring-blender-open-movie"
+  },
+  {
+   "title": "Charge",
+   "year": 2022,
+   "videoUrl": "/api/media/stream/charge-2022.webm",
+   "posterUrl": "https://archive.org/services/img/charge-blender-studio"
+  },
+  {
+   "title": "Wing It!",
+   "year": 2023,
+   "videoUrl": "/api/media/stream/wing-it-2023.webm",
+   "posterUrl": "https://archive.org/services/img/wing-it-blender-studio"
+  },
+  {
+   "title": "Caminandes: Llamigos",
+   "year": 2016,
+   "videoUrl": "/api/media/stream/caminandes-llamigos-2016.webm",
+   "posterUrl": "https://archive.org/services/img/caminandes-llamigos"
+  },
+  {
+   "title": "Agent 327: Operation Barbershop",
+   "year": 2017,
+   "videoUrl": "/api/media/stream/agent-327-operation-barbershop-2017.webm",
+   "posterUrl": "https://archive.org/services/img/agent-327-operation-barbershop"
+  },
+  {
+   "title": "Charade",
+   "year": 1963,
+   "videoUrl": "/api/media/hls/charade-1963/master.m3u8",
+   "posterUrl": "https://archive.org/services/img/Charade1963"
+  },
+  {
+   "title": "Night of the Living Dead",
+   "year": 1968,
+   "videoUrl": "/api/media/stream/night-of-the-living-dead-1968.webm",
+   "posterUrl": "https://archive.org/services/img/night_of_the_living_dead"
+  },
+  {
+   "title": "His Girl Friday",
+   "year": 1940,
+   "videoUrl": "/api/media/stream/his-girl-friday-1940.webm",
+   "posterUrl": "https://archive.org/services/img/his_girl_friday"
+  },
+  {
+   "title": "Metropolis",
+   "year": 1927,
+   "videoUrl": "/api/media/hls/metropolis-1927/master.m3u8",
+   "posterUrl": "https://archive.org/services/img/Metropolis1927"
+  },
+  {
+   "title": "Nosferatu: A Symphony of Horror",
+   "year": 1922,
+   "videoUrl": "/api/media/stream/nosferatu-1922.webm",
+   "posterUrl": "https://archive.org/services/img/nosferatu_1922"
+  },
+  {
+   "title": "M",
+   "year": 1931,
+   "videoUrl": "/api/media/stream/m-1931.webm",
+   "posterUrl": "https://archive.org/services/img/M1931FritzLang"
+  },
+  {
+   "title": "The Cabinet of Dr. Caligari",
+   "year": 1920,
+   "videoUrl": "/api/media/stream/cabinet-of-dr-caligari-1920.webm",
+   "posterUrl": "https://archive.org/services/img/the-cabinet-of-dr.-caligari-1920"
+  },
+  {
+   "title": "The General",
+   "year": 1926,
+   "videoUrl": "/api/media/stream/the-general-1926.webm",
+   "posterUrl": "https://archive.org/services/img/TheGeneral1926"
+  },
+  {
+   "title": "Sherlock Jr.",
+   "year": 1924,
+   "videoUrl": "/api/media/stream/sherlock-jr-1924.webm",
+   "posterUrl": "https://archive.org/services/img/SherlockJr1924"
+  },
+  {
+   "title": "City Lights",
+   "year": 1931,
+   "videoUrl": "/api/media/stream/city-lights-1931.webm",
+   "posterUrl": "https://archive.org/services/img/CityLights1931"
+  },
+  {
+   "title": "The Kid",
+   "year": 1921,
+   "videoUrl": "/api/media/stream/the-kid-1921.webm",
+   "posterUrl": "https://archive.org/services/img/TheKid1921"
+  },
+  {
+   "title": "The Gold Rush",
+   "year": 1925,
+   "videoUrl": "/api/media/stream/the-gold-rush-1925.webm",
+   "posterUrl": "https://archive.org/services/img/TheGoldRush1925"
+  },
+  {
+   "title": "Battleship Potemkin",
+   "year": 1925,
+   "videoUrl": "/api/media/stream/battleship-potemkin-1925.webm",
+   "posterUrl": "https://archive.org/services/img/BattleshipPotemkin1925"
+  },
+  {
+   "title": "Man with a Movie Camera",
+   "year": 1929,
+   "videoUrl": "/api/media/stream/man-with-a-movie-camera-1929.webm",
+   "posterUrl": "https://archive.org/services/img/ManWithAMovieCamera"
+  },
+  {
+   "title": "A Trip to the Moon (Le Voyage dans la Lune)",
+   "year": 1902,
+   "videoUrl": "/api/media/stream/a-trip-to-the-moon-1902.webm",
+   "posterUrl": "https://archive.org/services/img/LeVoyageDansLaLune"
+  },
+  {
+   "title": "Detour",
+   "year": 1945,
+   "videoUrl": "/api/media/stream/detour-1945.webm",
+   "posterUrl": "https://archive.org/services/img/Detour1945"
+  },
+  {
+   "title": "The Stranger",
+   "year": 1946,
+   "videoUrl": "/api/media/stream/the-stranger-1946.webm",
+   "posterUrl": "https://archive.org/services/img/TheStranger_0"
+  },
+  {
+   "title": "Scarlet Street",
+   "year": 1945,
+   "videoUrl": "/api/media/stream/scarlet-street-1945.webm",
+   "posterUrl": "https://archive.org/services/img/ScarletStreet"
+  },
+  {
+   "title": "D.O.A.",
+   "year": 1949,
+   "videoUrl": "/api/media/stream/doa-1949.webm",
+   "posterUrl": "https://archive.org/services/img/doa_1949"
+  },
+  {
+   "title": "Carnival of Souls",
+   "year": 1962,
+   "videoUrl": "/api/media/stream/carnival-of-souls-1962.webm",
+   "posterUrl": "https://archive.org/services/img/CarnivalofSouls"
+  },
+  {
+   "title": "House on Haunted Hill",
+   "year": 1959,
+   "videoUrl": "/api/media/stream/house-on-haunted-hill-1959.webm",
+   "posterUrl": "https://archive.org/services/img/house_on_haunted_hill_ipod"
+  },
+  {
+   "title": "My Man Godfrey",
+   "year": 1936,
+   "videoUrl": "/api/media/stream/my-man-godfrey-1936.webm",
+   "posterUrl": "https://archive.org/services/img/MyManGodfrey"
+  },
+  {
+   "title": "Meet John Doe",
+   "year": 1941,
+   "videoUrl": "/api/media/stream/meet-john-doe-1941.webm",
+   "posterUrl": "https://archive.org/services/img/meet_john_doe"
+  },
+  {
+   "title": "Gulliver's Travels",
+   "year": 1939,
+   "videoUrl": "/api/media/stream/gullivers-travels-1939.webm",
+   "posterUrl": "https://archive.org/services/img/gullivers_travels1939"
+  },
+  {
+   "title": "The Tale of the White Serpent (Hakujaden)",
+   "year": 1958,
+   "videoUrl": "/api/media/stream/hakujaden-white-serpent-1958.webm",
+   "posterUrl": "https://archive.org/services/img/hakujaden-1958"
+  },
+  {
+   "title": "Momotaro, Sacred Sailors",
+   "year": 1945,
+   "videoUrl": "/api/media/stream/momotaro-sacred-sailors-1945.webm",
+   "posterUrl": "https://archive.org/services/img/momotaro-sacred-sailors-1945"
+  },
+  {
+   "title": "The Housemaid (Hanyo)",
+   "year": 1960,
+   "videoUrl": "/api/media/stream/the-housemaid-hanyo-1960.webm",
+   "posterUrl": "https://archive.org/services/img/the-housemaid-1960"
+  },
+  {
+   "title": "Aimless Bullet (Obaltan)",
+   "year": 1961,
+   "videoUrl": "/api/media/stream/aimless-bullet-obaltan-1961.webm",
+   "posterUrl": "https://archive.org/services/img/aimless-bullet-1961"
+  },
+  {
+   "title": "Apollo 11: Footprints on the Moon",
+   "year": 1969,
+   "videoUrl": "/api/media/stream/apollo-11-first-steps-1969.webm",
+   "posterUrl": "https://archive.org/services/img/Apollo11_16mm"
+  },
+  {
+   "title": "Nanook of the North",
+   "year": 1922,
+   "videoUrl": "/api/media/stream/nanook-of-the-north-1922.webm",
+   "posterUrl": "https://archive.org/services/img/NanookOfTheNorth1922"
+  },
+  {
+   "title": "Sherlock Holmes (1954 Archival Series)",
+   "year": 1954,
+   "videoUrl": "/api/media/stream/sherlock-holmes-series-1954.webm",
+   "posterUrl": "https://archive.org/services/img/SherlockHolmes1954"
+  },
+  {
+   "title": "One Step Beyond",
+   "year": 1959,
+   "videoUrl": "/api/media/stream/one-step-beyond-1959.webm",
+   "posterUrl": "https://archive.org/services/img/OneStepBeyond"
+  },
+  {
+   "title": "Flash Gordon Conquers the Universe",
+   "year": 1940,
+   "videoUrl": "/api/media/stream/flash-gordon-conquers-the-universe-1940.webm",
+   "posterUrl": "https://archive.org/services/img/flash_gordon_conquers_the_universe"
+  },
+  {
+   "title": "Chinnamul (The Uprooted)",
+   "year": 1950,
+   "videoUrl": "/api/media/stream/chinnamul-the-uprooted-1950.webm",
+   "posterUrl": "https://archive.org/services/img/chinnamul-1950"
+  },
+  {
+   "title": "The Little Shop of Horrors",
+   "year": 1960,
+   "videoUrl": "/api/media/stream/little-shop-of-horrors-1960.webm",
+   "posterUrl": "https://archive.org/services/img/TheLittleShopOfHorrors1960"
+  },
+  {
+   "title": "Royal Wedding",
+   "year": 1951,
+   "videoUrl": "/api/media/stream/royal-wedding-1951.webm",
+   "posterUrl": "https://archive.org/services/img/royal_wedding_1951"
+  },
+  {
+   "title": "The Last Man on Earth",
+   "year": 1964,
+   "videoUrl": "/api/media/stream/the-last-man-on-earth-1964.webm",
+   "posterUrl": "https://archive.org/services/img/TheLastManOnEarth_1964"
+  },
+  {
+   "title": "Suddenly",
+   "year": 1954,
+   "videoUrl": "/api/media/stream/suddenly-1954.webm",
+   "posterUrl": "https://archive.org/services/img/Suddenly1954"
+  },
+  {
+   "title": "Coffee Run",
+   "year": 2020,
+   "videoUrl": "/api/media/stream/coffee-run-2020.webm",
+   "posterUrl": "https://archive.org/services/img/coffee-run-blender-studio"
+  },
+  {
+   "title": "RRR",
+   "year": 2022,
+   "videoUrl": "https://www.netflix.com/title/81476453",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/nEufeZlyAOLqO2brrs0yeF1lgXO.jpg"
+  },
+  {
+   "title": "Stranger Things",
+   "year": 2016,
+   "videoUrl": "https://www.netflix.com/title/80057281",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg"
+  },
+  {
+   "title": "Ramayana: Part One",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/ramayana-part-one-2026"
+  },
+  {
+   "title": "Dune: Part Three",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg"
+  },
+  {
+   "title": "Avengers: Doomsday",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/avengers-doomsday-2026"
+  },
+  {
+   "title": "Love & War",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/love-and-war-2026"
+  },
+  {
+   "title": "King",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/king-2026-srk"
+  },
+  {
+   "title": "Spider-Man: Beyond the Spider-Verse",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg"
+  },
+  {
+   "title": "The Batman Part II",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/the-batman-part-ii-2027"
+  },
+  {
+   "title": "SSMB29",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/ssmb29-2027"
+  },
+  {
+   "title": "Spirit",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/spirit-2027"
+  },
+  {
+   "title": "Avengers: Secret Wars",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/avengers-secret-wars-2027"
+  },
+  {
+   "title": "Shrek 5",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/shrek-5-2027"
+  },
+  {
+   "title": "Frozen III",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/frozen-iii-2027"
+  },
+  {
+   "title": "Blade Runner 2099",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/blade-runner-2099"
+  },
+  {
+   "title": "The Ghost in the Shell",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/ghost-in-the-shell-2026"
+  },
+  {
+   "title": "The Odyssey",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/the-odyssey-nolan-2026"
+  },
+  {
+   "title": "Kantara: A Legend \u2014 Chapter 2",
+   "year": 2027,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/kantara-chapter-2-2027"
+  },
+  {
+   "title": "Jana Nayagan",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/jana-nayagan-2026"
+  },
+  {
+   "title": "Toy Story 5",
+   "year": 2026,
+   "videoUrl": "",
+   "posterUrl": "https://archive.org/services/img/toy-story-5-2026"
+  }
+ ],
+ "slides": [
+  {
+   "title": "Charade",
+   "imageUrl": "https://archive.org/services/img/Charade1963"
+  },
+  {
+   "title": "Sintel",
+   "imageUrl": "https://image.tmdb.org/t/p/w1280/s9Bn7Mx4U9cWOR1WdFZjU1DTAkh.jpg"
+  },
+  {
+   "title": "Achhut Kanya",
+   "imageUrl": "https://archive.org/services/img/achhut-kanya-1936"
+  },
+  {
+   "title": "Metropolis",
+   "imageUrl": "https://archive.org/services/img/Metropolis1927"
+  }
+ ]
+}

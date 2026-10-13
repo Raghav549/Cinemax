@@ -71,7 +71,6 @@ html[data-cinemax-app="android"] .splash-screen {
 html[data-cinemax-app="android"] img,
 html[data-cinemax-app="android"] svg,
 html[data-cinemax-app="android"] .movie-card,
-html[data-cinemax-app="android"] .nav-pill,
 html[data-cinemax-app="android"] .nav-orb,
 html[data-cinemax-app="android"] .site-header-wrap,
 html[data-cinemax-app="android"] .filter-chip,
@@ -83,7 +82,6 @@ html[data-cinemax-app="android"] img {
   -webkit-user-drag: none;
 }
 
-html[data-cinemax-app="android"] .nav-pill,
 html[data-cinemax-app="android"] .nav-orb,
 html[data-cinemax-app="android"] .site-header-wrap,
 html[data-cinemax-app="android"] .hero-card,
@@ -168,25 +166,17 @@ html[data-cinemax-app="android"] .bottom-nav-wrap {
 html[data-cinemax-app="android"] .home-shell,
 html[data-cinemax-app="android"] .secondary-page,
 html[data-cinemax-app="android"] .movie-detail-page {
-  padding-bottom: calc(138px + var(--safe-bottom));
+  padding-bottom: calc(96px + var(--safe-bottom));
 }
 
-/* Native feel: no tap flash on the pill, footer tabs, or category sheet controls. */
-html[data-cinemax-app="android"] .nav-pill-link,
-html[data-cinemax-app="android"] .nav-pill-chevron,
+/* Native feel: no tap flash on the footer tabs or category sheet controls. */
 html[data-cinemax-app="android"] .nav-menu-link,
 html[data-cinemax-app="android"] .category-browser-chip,
 html[data-cinemax-app="android"] .category-browser-close {
   -webkit-tap-highlight-color: transparent;
 }
 
-html[data-cinemax-app="android"] .nav-pill-link:active {
-  background: rgba(255, 255, 255, 0.12);
-}
 
-html[data-cinemax-app="android"] .nav-pill-link[aria-current="page"] {
-  color: #fff;
-}
 
 html[data-cinemax-app="android"] .category-browser-sheet {
   padding-bottom: var(--safe-bottom);

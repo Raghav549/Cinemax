@@ -3,6 +3,7 @@ import { movies } from "@/db/schema";
 import { describeDbError, withDb } from "@/db/with-db";
 import { movieInput, normalizeMovie, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, readJson, unauthorized } from "@/lib/api";
+import { publicMovie } from "@/lib/movies";
 import { and, desc, eq, ilike, notInArray, or, sql, SQL } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -85,7 +86,12 @@ export async function GET(req: NextRequest) {
         .limit(limit);
     });
 
-    return NextResponse.json(result.map((row) => normalizeMovie(row as Record<string, unknown>)));
+    // Same sanitised shape as GET /api/movies/[id]: magnet URIs and unplayable
+    // sources never reach the public catalogue, and no HTTP cache may keep a
+    // deleted title alive.
+    return NextResponse.json(result.map((row) => publicMovie(row as Record<string, unknown>)), {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e) {
     console.error("[api/movies] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -108,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withDb((db) => db.insert(movies).values(values).returning());
-    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>), { status: 201 });
+    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>), { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/movies] POST failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });

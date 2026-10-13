@@ -1,16 +1,8 @@
 export type NavDestination = {
-  id: "home" | "search" | "categories";
+  id: "home" | "search" | "more";
   label: string;
   href: string;
   match: (pathname: string) => boolean;
-};
-
-export type PillSegment = {
-  id: "web" | "movies" | "dramas";
-  label: string;
-  href: string;
-  slugs?: readonly string[];
-  match?: (pathname: string) => boolean;
 };
 
 export type CategoryBrowserItem = {
@@ -26,27 +18,6 @@ export type CategoryBrowserSection = {
   subtitle?: string;
   items: readonly CategoryBrowserItem[];
 };
-
-export const PRIMARY_PILL_ITEMS: readonly PillSegment[] = [
-  {
-    id: "web",
-    label: "Web",
-    href: "/",
-    match: (pathname) => pathname === "/",
-  },
-  {
-    id: "movies",
-    label: "Movies",
-    href: "/category/movies",
-    slugs: ["movies", "new-releases", "trending", "popular", "top-rated", "new-hot", "award-winners", "hidden-gems"],
-  },
-  {
-    id: "dramas",
-    label: "Dramas",
-    href: "/category/dramas",
-    slugs: ["dramas", "drama", "series"],
-  },
-];
 
 export const BROWSE_ITEMS: readonly CategoryBrowserItem[] = [
   { slug: "movies", label: "All Movies", href: "/category/movies" },
@@ -151,8 +122,10 @@ export const BOTTOM_NAV_ITEMS: readonly NavDestination[] = [
     match: (pathname) => pathname.startsWith("/search"),
   },
   {
-    id: "categories",
-    label: "Categories",
+    // "More" is not a route: it opens the discovery panel (the category
+    // browser) in place. `href` is retained only as a descriptive fallback.
+    id: "more",
+    label: "More",
     href: "/categories",
     match: (pathname) => pathname.startsWith("/categories") || pathname.startsWith("/category/"),
   },
@@ -161,14 +134,4 @@ export const BOTTOM_NAV_ITEMS: readonly NavDestination[] = [
 export function activeBottomNavIndex(pathname: string): number {
   const index = BOTTOM_NAV_ITEMS.findIndex((item) => item.match(pathname));
   return index === -1 ? 0 : index;
-}
-
-export function activePillId(pathname: string): PillSegment["id"] | null {
-  if (pathname === "/") return "web";
-  const slug = pathname.startsWith("/category/") ? pathname.slice("/category/".length).toLowerCase() : "";
-  for (const item of PRIMARY_PILL_ITEMS) {
-    if (item.match?.(pathname)) return item.id;
-    if (slug && item.slugs?.includes(slug)) return item.id;
-  }
-  return null;
 }

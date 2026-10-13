@@ -10,7 +10,7 @@ cp .env.example .env.local   # then fill in the values
 npm run dev
 ```
 
-Open http://localhost:3000. On first visit the app creates the database tables and seeds demo data automatically.
+Open http://localhost:3000. On first visit the app creates the database tables if they are missing. Nothing is seeded: movies, slides and categories are managed exclusively from the studio (`/gate-keeper`), and the admin panel is the single source of truth for the public catalogue.
 
 ## Deploy to Vercel
 
@@ -27,8 +27,7 @@ Open http://localhost:3000. On first visit the app creates the database tables a
 
    If you used Vercel's Neon integration, `POSTGRES_URL` / `DATABASE_URL` is added for you. Both names work.
 4. **Redeploy** (Deployments → ⋯ → Redeploy) so the new variables take effect.
-5. Open the site. The tables are created and demo data is seeded on first visit.
-   You can also trigger it manually: `curl -X POST https://YOUR-APP.vercel.app/api/seed`.
+5. Open the site and sign in to the studio (`/gate-keeper`) to add your movies and homepage slides. The tables are created on first visit; no demo data is ever inserted automatically. (`POST /api/seed` only checks the schema — it never writes catalogue rows.)
 6. Check the database connection at `https://YOUR-APP.vercel.app/api/health`. It should return `{"ok":true}`.
 
 ### Optional: manage the schema with Drizzle
@@ -69,6 +68,37 @@ When `ok` is `false`, `stage` says which step failed (`connect`, `schema` or
 `read`) and `error` carries the Postgres message — e.g.
 `column "poster_url" of relation "movies" does not exist`. The admin panel shows
 the same message in a banner rather than rendering an empty library.
+
+## Catalogue ownership and demo-catalog cleanup
+
+The studio (`/gate-keeper`) is the only writer of movies, slides and
+categories. There is no automatic catalogue seeding or synchronisation anywhere
+in the app: nothing re-inserts deleted titles, overwrites admin edits, or
+substitutes a hardcoded catalog when the database is empty — the public app
+shows an explicit empty state instead.
+
+Deployments that still contain rows from the old hardcoded demo catalog can
+remove exactly those rows with the guarded cleanup script. It identifies a
+record as demo content only when its title/year **and** its stored video or
+poster URL match `scripts/demo-catalog-manifest.json`, writes a full JSON
+backup of the movies/slides/categories tables before deleting anything, and
+changes nothing in its default dry-run mode:
+
+```bash
+# 1. See what would be removed (changes nothing)
+DATABASE_URL="postgresql://..." node scripts/cleanup-demo-catalog.mjs
+
+# 2. Back up (./backups/cinemax-backup-<timestamp>.json) and delete only those rows
+DATABASE_URL="postgresql://..." node scripts/cleanup-demo-catalog.mjs --apply
+```
+
+Admin-created records are preserved even when they share a title with a demo
+entry, as long as their own source/poster differs. Note that the original
+pre-demo production data is **not** stored in this repository (no database
+backup is committed), so rows the old sync already destroyed in a live
+database can only be restored from that database provider's own backups
+(e.g. Neon/Supabase point-in-time recovery); the cleanup script never invents
+replacement content.
 
 ## Playback and authorized magnet sources
 

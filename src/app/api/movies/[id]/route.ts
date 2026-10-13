@@ -22,7 +22,7 @@ export async function GET(
     if (!result.length) return notFound("Movie not found");
 
     const row = result[0] as Record<string, unknown>;
-    return NextResponse.json(publicMovie(row));
+    return NextResponse.json(publicMovie(row), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/movies/:id] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -56,7 +56,7 @@ export async function PUT(
     );
     if (!result.length) return notFound("Movie not found");
 
-    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>));
+    return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/movies/:id] PUT failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -77,7 +77,7 @@ export async function DELETE(
     const removed = await withDb((db) => db.delete(movies).where(eq(movies.id, id)).returning({ id: movies.id }));
     if (!removed.length) return notFound("Movie not found");
 
-    return NextResponse.json({ success: true, id });
+    return NextResponse.json({ success: true, id }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/movies/:id] DELETE failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
