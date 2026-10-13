@@ -11,6 +11,8 @@ next-env.d.ts
 .vercel
 
 .arena/
+# Database backups written by scripts/cleanup-demo-catalog.mjs
+backups/
 playwright-report/
 test-results/
 

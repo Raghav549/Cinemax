@@ -402,18 +402,10 @@ export function featuredFeature(movies: Movie[], slides: Slide[]) {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  if (slideItems.length > 0) return slideItems;
-
-  const picked = playableMovies.filter((movie) => movie.featured);
-  const pool = picked.length > 0 ? picked : playableMovies.slice(0, 5);
-  return pool.slice(0, 5).map((movie) => ({
-    key: `movie-${movie.id}`,
-    title: movie.title,
-    subtitle: movie.description,
-    imageUrl: movie.backdropUrl || movie.posterUrl,
-    movieId: movie.id,
-    movie,
-  }));
+  // Slides only: never synthesise hero slides from movies. A slide the admin
+  // deleted must stay deleted, and an empty slides collection means an empty
+  // hero — not an invented one.
+  return slideItems;
 }
 
 export type PlaybackSource =

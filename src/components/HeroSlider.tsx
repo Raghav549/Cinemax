@@ -7,7 +7,7 @@ import Icon from "./Icon";
 import CinematicButton, { CinematicLink } from "./CinematicButton";
 import Logo from "./Logo";
 import useReducedMotion from "@/hooks/useReducedMotion";
-import { isOfficialExternal, isUpcomingMovie, isVerifiedPlayable, type CatalogueMovie } from "@/lib/catalogue";
+import { isOfficialExternal, isUpcomingMovie, type CatalogueMovie } from "@/lib/catalogue";
 
 interface Feature {
   id: string;
@@ -27,13 +27,15 @@ export default function HeroSlider() {
   const touch = useRef<{ x: number; y: number } | null>(null);
   const reducedMotion = useReducedMotion();
 
-  const playableMovies = useMemo(() => movies.filter((movie) => isVerifiedPlayable(movie) || isOfficialExternal(movie)), [movies]);
   const moviesById = useMemo(() => new Map(movies.map((movie) => [movie.id, movie])), [movies]);
   const moviesByTitle = useMemo(
     () => new Map(movies.map((movie) => [movie.title.toLowerCase(), movie])),
     [movies]
   );
 
+  // Homepage slides come only from the admin-managed slides collection.
+  // There is deliberately no fallback that synthesises slides from featured
+  // movies: that is how a slide the admin deleted used to reappear in the hero.
   const features = useMemo<Feature[]>(() => {
     if (slides.length) {
       return slides.map((slide) => {
@@ -58,22 +60,8 @@ export default function HeroSlider() {
         };
       });
     }
-    const featured = playableMovies.filter((movie) => movie.featured);
-    return (featured.length ? featured : playableMovies).slice(0, 5).map((movie) => ({
-      id: `movie-${movie.id}`,
-      title: movie.title,
-      imageUrl: movie.backdropUrl || movie.posterUrl,
-      movieId: movie.id,
-      movie,
-      metadata: [
-        movie.year ? String(movie.year) : "",
-        ...(movie.genre ?? "")
-          .split(",")
-          .map((item) => item.trim())
-          .slice(0, 3),
-      ].filter(Boolean),
-    }));
-  }, [slides, playableMovies, moviesById, moviesByTitle]);
+    return [];
+  }, [slides, moviesById, moviesByTitle]);
 
   const current = Math.max(0, Math.min(selection.current, features.length - 1));
   const feature = features[current];

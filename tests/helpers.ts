@@ -82,3 +82,17 @@ export async function servePlaybackFixtures(page: Page) {
     return route.fulfill({ status: 200, contentType, headers: { "Accept-Ranges": "bytes" }, body });
   });
 }
+
+export async function createMovieWithTrailer(request: APIRequestContext, trailerUrl: string) {
+  const login = await request.post("/api/admin/login", { data: { email: process.env.ADMIN_EMAIL || "admin@cinemax.com", password: process.env.ADMIN_PASSWORD || "Admin@123" } });
+  expect(login.ok(), "Configure test-studio credentials").toBeTruthy();
+  const response = await request.post("/api/movies", { data: { title: `Prism playback verification trailer ${Date.now()}-${Math.floor(Math.random() * 1e6)}`, description: "Temporary automated trailer-preview record. Removed after the test.", year: 2024, rating: "8.0", duration: "1m 30s", genre: "Sci-Fi", type: "Movie", category: "trending", posterUrl: "", backdropUrl: "", videoUrl: "/__e2e__/prism-test.webm", trailerUrl } });
+  expect(response.status()).toBe(201);
+  return response.json() as Promise<CatalogueMovie>;
+}
+
+export async function deleteMovie(request: APIRequestContext, id: number) {
+  await request.post("/api/admin/login", { data: { email: process.env.ADMIN_EMAIL || "admin@cinemax.com", password: process.env.ADMIN_PASSWORD || "Admin@123" } });
+  const response = await request.delete(`/api/movies/${id}`);
+  expect(response.ok()).toBeTruthy();
+}

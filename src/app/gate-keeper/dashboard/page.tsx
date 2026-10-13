@@ -106,6 +106,14 @@ export default function AdminDashboard() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) return { ok: false, error: data?.error || `Request failed (HTTP ${res.status})` };
+      // The database has confirmed the write. Drop any catalogue copy an older
+      // build left in sessionStorage so a deleted/edited record can never be
+      // resurrected from it on the public side, and tell any mounted public
+      // catalogue to refetch from the API.
+      if (method !== "GET") {
+        try { window.sessionStorage.removeItem("cinemax:catalogue:v1"); } catch { /* Private browsing. */ }
+        window.dispatchEvent(new Event("cinemax:catalogue-refresh"));
+      }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Network error" };

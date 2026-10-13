@@ -19,7 +19,7 @@ export async function GET(
     const result = await withDb((db) => db.select().from(slides).where(eq(slides.id, id)));
     if (!result.length) return notFound("Slide not found");
 
-    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>));
+    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/slides/:id] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -53,7 +53,7 @@ export async function PUT(
     );
     if (!result.length) return notFound("Slide not found");
 
-    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>));
+    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/slides/:id] PUT failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -74,7 +74,7 @@ export async function DELETE(
     const removed = await withDb((db) => db.delete(slides).where(eq(slides.id, id)).returning({ id: slides.id }));
     if (!removed.length) return notFound("Slide not found");
 
-    return NextResponse.json({ success: true, id });
+    return NextResponse.json({ success: true, id }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/slides/:id] DELETE failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });

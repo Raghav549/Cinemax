@@ -12,7 +12,9 @@ export async function GET() {
     const result = await withDb((db) =>
       db.select().from(categories).orderBy(asc(categories.name))
     );
-    return NextResponse.json(result.map((row) => normalizeCategory(row as Record<string, unknown>)));
+    return NextResponse.json(result.map((row) => normalizeCategory(row as Record<string, unknown>)), {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e) {
     console.error("[api/categories] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });

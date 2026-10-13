@@ -19,11 +19,11 @@ test("arbitrary share-link paste/watch UI is removed from Search, navigation, an
   await expect(page.locator(".watch-link-strip, .share-link-form")).toHaveCount(0);
 
   // Open the Category Browser and confirm no 'Watch a link' or arbitrary link option exists.
-  await page.locator(".nav-pill-chevron").click();
-  const sheet = page.getByRole("dialog", { name: "Browse categories" });
+  await page.getByRole("button", { name: "Open More panel" }).click();
+  const sheet = page.getByRole("dialog", { name: "More" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText(/Watch a link|Paste a link/i)).toHaveCount(0);
-  await sheet.getByRole("button", { name: "Close category browser" }).click();
+  await sheet.getByRole("button", { name: "Close More panel" }).click();
 
   // The old /watch arbitrary link route and /api/providers/resolve endpoint are removed.
   const watchRes = await page.request.get("/watch?url=https://www.netflix.com/title/80057281");

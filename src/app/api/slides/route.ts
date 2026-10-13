@@ -18,7 +18,9 @@ export async function GET() {
         .where(or(eq(slides.active, true), isNull(slides.active)))
         .orderBy(asc(slides.sortOrder))
     );
-    return NextResponse.json(result.map((row) => normalizeSlide(row as Record<string, unknown>)));
+    return NextResponse.json(result.map((row) => normalizeSlide(row as Record<string, unknown>)), {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e) {
     console.error("[api/slides] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withDb((db) => db.insert(slides).values(values).returning());
-    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>), { status: 201 });
+    return NextResponse.json(normalizeSlide(result[0] as Record<string, unknown>), { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[api/slides] POST failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
