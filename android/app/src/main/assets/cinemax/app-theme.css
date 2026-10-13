@@ -163,6 +163,10 @@ html[data-cinemax-app="android"] .bottom-nav-wrap {
   background: linear-gradient(transparent, rgba(5, 5, 7, 0.74) 44%, rgba(5, 5, 7, 0.96));
 }
 
+html[data-cinemax-app="android"] .magic-line {
+  display: none;
+}
+
 html[data-cinemax-app="android"] .home-shell,
 html[data-cinemax-app="android"] .secondary-page,
 html[data-cinemax-app="android"] .movie-detail-page {

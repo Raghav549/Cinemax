@@ -7,6 +7,7 @@ import { useCatalogue } from "@/components/CatalogueProvider";
 import { useWatchlist } from "@/components/WatchlistProvider";
 import MovieRow from "@/components/MovieRow";
 import Artwork from "@/components/Artwork";
+import DetailTrailerBackdrop from "@/components/DetailTrailerBackdrop";
 import PlaybackOverlay, { resolvePlaybackSource } from "@/components/PlaybackOverlay";
 import CinematicButton, { CinematicLink } from "@/components/CinematicButton";
 import EmptyState from "@/components/EmptyState";
@@ -65,6 +66,7 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   const [relatedRead, setRelatedRead] = useState<{ id: string; movies: CatalogueMovie[] }>({ id: "", movies: [] });
   const [playingFor, setPlayingFor] = useState<number | null>(null);
   const [playingTrailerFor, setPlayingTrailerFor] = useState<number | null>(null);
+  const [trailerMuted, setTrailerMuted] = useState(true);
   const [notice, setNotice] = useState<{ id: string; text: string }>({ id: "", text: "" });
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -248,8 +250,13 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
         />
       )}
       <section className="detail-backdrop" aria-label={`${movie.title} details`}>
-        <Artwork className="detail-backdrop-image" src={movie.backdropUrl || movie.posterUrl} kind="backdrop" priority />
-        <div className="detail-backdrop-fade" />
+        <DetailTrailerBackdrop
+          key={`${movie.id}:${movie.trailerUrl ?? ""}`}
+          movie={movie}
+          active={playingFor === null && playingTrailerFor === null}
+          muted={trailerMuted}
+          onToggleMute={() => setTrailerMuted((prev) => !prev)}
+        />
         <div className="detail-topbar">
           <Link className="page-back" href="/">
             <Icon name="arrow-left" />
@@ -331,6 +338,17 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
             >
               {inWatchlist ? "Saved" : "Watchlist"}
             </CinematicButton>
+            {movie.trailerUrl && (
+              <button
+                className="icon-button detail-trailer-mute"
+                type="button"
+                aria-label={trailerMuted ? "Unmute trailer" : "Mute trailer"}
+                title={trailerMuted ? "Unmute trailer" : "Mute trailer"}
+                onClick={() => setTrailerMuted((prev) => !prev)}
+              >
+                <Icon name={trailerMuted ? "volume-x" : "volume-2"} />
+              </button>
+            )}
             <button className="icon-button detail-share" type="button" aria-label="Share this title" onClick={() => void shareMovie()}>
               <Icon name="share" />
             </button>

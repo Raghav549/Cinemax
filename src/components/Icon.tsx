@@ -1,6 +1,6 @@
 import type { SVGProps, ReactNode } from "react";
 
-export type IconName = "home" | "search" | "explore" | "discover" | "categories" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "chevron-down" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort" | "link" | "external";
+export type IconName = "home" | "search" | "explore" | "discover" | "categories" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "chevron-down" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort" | "link" | "external" | "volume-2" | "volume-x";
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" /><path d="M9 21v-7h6v7" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.8" /><path d="m15.6 15.6 4.7 4.7" /></>,
@@ -38,6 +38,8 @@ const paths: Record<IconName, ReactNode> = {
   categories: <><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></>,
   link: <><path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l2.7-2.7a4.5 4.5 0 1 0-6.4-6.3l-1.5 1.5" /><path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-2.7 2.7a4.5 4.5 0 1 0 6.4 6.3l1.5-1.5" /></>,
   external: <><path d="M14 4h6v6" /><path d="m20 4-8.5 8.5" /><path d="M19 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" /></>,
+  "volume-2": <><path d="M11 5 6 9H3v6h3l5 4V5Z" /><path d="M15 9a5 5 0 0 1 0 6m3-9a9 9 0 0 1 0 12" /></>,
+  "volume-x": <><path d="M11 5 6 9H3v6h3l5 4V5Z" /><path d="m16 9 6 6m0-6-6 6" /></>,
 };
 
 export default function Icon({ name, filled = false, ...props }: SVGProps<SVGSVGElement> & { name: IconName; filled?: boolean }) {
