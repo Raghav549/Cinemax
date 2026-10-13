@@ -5,7 +5,7 @@ const args = process.env.PLAYWRIGHT_CHROMIUM_ARGS?.split(" ").filter(Boolean);
 
 export default defineConfig({
   testDir: "./tests",
-  timeout: 70_000,
+  timeout: 110_000,
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,

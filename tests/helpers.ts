@@ -32,6 +32,41 @@ export async function createPlaybackMovie(request: APIRequestContext, source: st
   expect(response.status()).toBe(201);
   return response.json() as Promise<CatalogueMovie>;
 }
+/**
+ * Closes the player whatever the immersive state: Escape unwinds fullscreen
+ * first (the app's back contract), then the player itself.
+ */
+export async function dismissPlayer(page: Page) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await page.locator(".playback-layer").count() === 0) return;
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+  }
+}
+/** Leaves fullscreen (if open) so control labels are the windowed ones. */
+// The player chrome fades (visibility: hidden) ~1s after inactivity while a
+// video is playing. Reveal it before touching its buttons so tests never race
+// the fade.
+export async function revealPlayerControls(page: Page) {
+  const shell = page.locator(".video-player-shell");
+  if (!(await shell.count())) return;
+  const box = await shell.boundingBox();
+  if (box) await page.mouse.move(box.x + box.width / 2, box.y + 24);
+  await expect(page.locator(".player-control-dock")).not.toHaveClass(/hidden/);
+}
+
+export async function ensureWindowedPlayer(page: Page) {
+  await revealPlayerControls(page);
+  const exit = page.getByRole("button", { name: "Exit fullscreen", exact: true });
+  if (await exit.count()) {
+    await exit.first().click({ force: true });
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
+  }
+  // Watch Now auto-requests landscape/fullscreen on portrait handsets, and the
+  // toggle's label flips while that settles. Wait for the windowed label so the
+  // test never races the transition.
+  await expect(page.getByRole("button", { name: "Enter fullscreen", exact: true })).toBeVisible();
+}
 export async function servePlaybackFixtures(page: Page) {
   await page.route("**/__e2e__/**", async (route) => {
     const file = new URL(route.request().url()).pathname.split("/").pop()!;

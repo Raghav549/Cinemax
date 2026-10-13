@@ -1,15 +1,15 @@
 import type { IconName } from "@/components/Icon";
 
-export const NAVIGATION: { href: string; label: string; icon: IconName }[] = [
-  { href: "/", label: "Home", icon: "home" },
+/** Bottom row below the curved light line: Home · Search · Categories. */
+export const NAVIGATION: { href: string; label: string; icon: IconName | "logo" }[] = [
+  { href: "/", label: "Home", icon: "logo" },
   { href: "/search", label: "Search", icon: "search" },
-  { href: "/categories", label: "Explore", icon: "explore" },
-  { href: "/watchlist", label: "Watchlist", icon: "bookmark" },
+  { href: "/categories", label: "Categories", icon: "categories" },
 ];
+
 export function activeNavigationIndex(pathname: string) {
   if (pathname === "/categories" || pathname.startsWith("/category/")) return 2;
-  if (pathname.startsWith("/search")) return 1;
-  if (pathname.startsWith("/watchlist")) return 3;
+  if (pathname.startsWith("/search") || pathname === "/watch") return 1;
   return 0;
 }
 
@@ -27,6 +27,13 @@ export const CATEGORY_NAVIGATION: { href: string; label: string; slug: string }[
   { href: "/category/movies", label: "Movies", slug: "movies" },
   { href: "/category/drama", label: "Dramas", slug: "drama" },
 ];
+
 export function activeCategoryIndex(pathname: string) {
   return CATEGORY_NAVIGATION.findIndex((item) => pathname === item.href);
 }
+
+/** Extra destinations revealed by the pill's chevron - all real catalogue routes. */
+export const MORE_NAVIGATION: { href: string; label: string; icon: IconName }[] = [
+  { href: "/watchlist", label: "Watchlist", icon: "bookmark" },
+  { href: "/watch", label: "Watch a link", icon: "link" },
+];

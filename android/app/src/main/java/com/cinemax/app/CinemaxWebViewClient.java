@@ -30,6 +30,11 @@ public class CinemaxWebViewClient extends WebViewClient {
         Uri uri = request.getUrl();
         NavigationPolicy.Decision decision =
                 NavigationPolicy.decide(uri.getScheme(), uri.getHost());
+        if (decision == NavigationPolicy.Decision.BLOCK) {
+            // Dangerous schemes are cancelled outright: no in-app load, no
+            // external hand-off that could pass the URL to another handler.
+            return true;
+        }
         if (decision == NavigationPolicy.Decision.OPEN_EXTERNALLY) {
             activity.openExternal(uri.toString());
             return true;

@@ -29,6 +29,7 @@ public final class CinemaxAppTest {
 
     private static final Decision STAY = Decision.STAY_IN_APP;
     private static final Decision LEAVE = Decision.OPEN_EXTERNALLY;
+    private static final Decision BLOCK = Decision.BLOCK;
     private static final String HOST = NavigationPolicy.PRODUCTION_HOST;
 
     private static int checks;
@@ -65,9 +66,12 @@ public final class CinemaxAppTest {
         decide("https", "cinemax-orpin-git-main-raghav549.vercel.app", STAY, "Vercel preview alias stays in the app");
         decide(null, null, STAY, "relative same-origin navigation stays in the app");
         decide("about", null, STAY, "about:blank stays in the app");
-        decide("blob", HOST, STAY, "blob media URLs stay in the app");
-        decide("data", null, STAY, "data URLs stay in the app");
-        decide("javascript", null, STAY, "javascript scheme stays in the app");
+        decide("blob", HOST, STAY, "blob documents stay in the app");
+        decide("data", null, BLOCK, "data URLs are blocked outright");
+        decide("javascript", null, BLOCK, "javascript: URLs are blocked outright");
+        decide("file", null, BLOCK, "file: URLs are blocked outright");
+        decide("vbscript", null, BLOCK, "vbscript: URLs are blocked outright");
+        decide("content", null, BLOCK, "content: URLs are blocked outright");
 
         decide("https", "www.pwabuilder.com", LEAVE, "third-party https leaves the app");
         decide("https", "notvercel.app", LEAVE, "a lookalike host leaves the app");
