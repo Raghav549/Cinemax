@@ -3,7 +3,6 @@ import { movies } from "@/db/schema";
 import { describeDbError, withDb } from "@/db/with-db";
 import { movieInput, normalizeMovie, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, readJson, unauthorized } from "@/lib/api";
-import { ensureCatalogSynced } from "@/app/api/seed/route";
 import { and, desc, eq, ilike, notInArray, or, sql, SQL } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +18,6 @@ function matchesCategory(value: string) {
 
 export async function GET(req: NextRequest) {
   try {
-    await ensureCatalogSynced();
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category")?.trim();
     const search = searchParams.get("search")?.trim();

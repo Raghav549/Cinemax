@@ -4,13 +4,11 @@ import { describeDbError, withDb } from "@/db/with-db";
 import { categoryInput, normalizeCategory, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, parseId, readJson, unauthorized } from "@/lib/api";
 import { asc, eq } from "drizzle-orm";
-import { ensureCatalogSynced } from "@/app/api/seed/route";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await ensureCatalogSynced();
     const result = await withDb((db) =>
       db.select().from(categories).orderBy(asc(categories.name))
     );
