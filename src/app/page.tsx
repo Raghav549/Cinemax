@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import HeroSlider from "@/components/HeroSlider";
-import AutoSeed from "@/components/AutoSeed";
 import MovieCard from "@/components/MovieCard";
 import MovieRow from "@/components/MovieRow";
 import ContinueWatchingRow from "@/components/ContinueWatchingRow";
@@ -57,7 +56,6 @@ export default function HomePage() {
 
   return (
     <main className="home-shell" id="main-content" tabIndex={-1}>
-      <AutoSeed />
       <HeroSlider />
       <div className="home-content">
         {(movies.length > 0 || loading) && (

@@ -1,36 +1,37 @@
 import { NextResponse } from "next/server";
 import { ensureSchema } from "@/db/ensure-schema";
-import { auditAndSyncCatalog, type CatalogAuditReport } from "@/lib/catalog-audit";
 
-let initialSyncPromise: Promise<CatalogAuditReport> | null = null;
+export const dynamic = "force-dynamic";
 
-export function ensureCatalogSynced(force = false): Promise<CatalogAuditReport> {
-  if (!initialSyncPromise || force) {
-    initialSyncPromise = (async () => {
-      await ensureSchema();
-      return auditAndSyncCatalog();
-    })().catch((err) => {
-      initialSyncPromise = null;
-      throw err;
-    });
-  }
-  return initialSyncPromise;
-}
-
-export async function POST() {
+/**
+ * Schema check only. This endpoint never inserts, updates or deletes catalogue
+ * rows: movies, slides and categories are managed exclusively from the studio
+ * (/gate-keeper).
+ *
+ * It used to run a hardcoded "catalog sync" on every request (and was called
+ * automatically by every new browser), which re-inserted demo titles, restored
+ * slides an admin had deleted, overwrote admin edits and removed admin uploads.
+ */
+async function report() {
   try {
-    const report = await ensureCatalogSynced(true);
+    const schema = await ensureSchema();
     return NextResponse.json({
-      message: "Catalog audited, verified, and synchronized successfully",
-      report,
+      message: "Automatic catalogue seeding is disabled. Manage titles and slides in the studio.",
+      schemaOk: schema.ok,
+      schemaError: schema.ok ? null : schema.error,
     });
-  } catch (error: unknown) {
-    console.error("Seed / catalog audit error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: "Catalog sync failed", details: message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Schema check failed" },
+      { status: 500 }
+    );
   }
 }
 
 export async function GET() {
-  return POST();
+  return report();
+}
+
+export async function POST() {
+  return report();
 }
