@@ -3,78 +3,91 @@ import { movies } from "@/db/schema";
 import { describeDbError, withDb } from "@/db/with-db";
 import { movieInput, normalizeMovie, ValidationError } from "@/db/rows";
 import { badRequest, isAdmin, readJson, unauthorized } from "@/lib/api";
-import { publicMovie } from "@/lib/movies";
-import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { ensureCatalogSynced } from "@/app/api/seed/route";
+import { and, desc, eq, ilike, notInArray, or, sql, SQL } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
-/**
- * A movie belongs to a category when the stored value is that category, or when
- * it appears as one of several comma-separated categories ("Action, Drama").
- * The previous `ilike(category, '%slug%')` also matched unrelated slugs — the
- * "movies" category picked up anything containing the word.
- */
-function matchesCategory(slug: string) {
-  return or(
-    sql`lower(${movies.category}) = lower(${slug})`,
-    sql`lower(${slug}) = any (select lower(btrim(token)) from unnest(string_to_array(${movies.category}, ',')) as token)`
-  );
+function matchesCategory(value: string) {
+  const token = value.trim().toLowerCase();
+  return sql`exists (
+    select 1
+    from unnest(string_to_array(lower(coalesce(${movies.category}, '')), ',')) as item
+    where btrim(item) = ${token}
+  )`;
 }
 
 export async function GET(req: NextRequest) {
   try {
+    await ensureCatalogSynced();
     const { searchParams } = new URL(req.url);
-    const category = searchParams.get("category");
-    const search = searchParams.get("search");
+    const category = searchParams.get("category")?.trim();
+    const search = searchParams.get("search")?.trim();
+    const type = searchParams.get("type")?.trim();
     const featured = searchParams.get("featured");
-    const parsedLimit = parseInt(searchParams.get("limit") || "50", 10);
-    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 50;
+    const status = searchParams.get("status")?.trim();
+    const language = searchParams.get("language")?.trim();
+    const genre = searchParams.get("genre")?.trim();
+    const includeUnavailable = searchParams.get("includeUnavailable") === "true";
+    const rawLimit = Number.parseInt(searchParams.get("limit") || "250", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 1000) : 250;
+
+    const conditions: SQL[] = [];
+
+    if (!includeUnavailable && !status) {
+      conditions.push(notInArray(movies.catalogStatus, ["verification_failed", "temporarily_unavailable"]));
+    }
+
+    if (status) {
+      conditions.push(eq(movies.catalogStatus, status));
+    }
+
+    if (category && category !== "all") {
+      conditions.push(matchesCategory(category));
+    }
+
+    if (type && type !== "all") {
+      conditions.push(eq(movies.type, type));
+    }
+
+    if (language && language !== "all") {
+      conditions.push(ilike(movies.language, `%${language}%`));
+    }
+
+    if (genre && genre !== "all") {
+      conditions.push(ilike(movies.genre, `%${genre}%`));
+    }
+
+    if (featured === "true") {
+      conditions.push(eq(movies.featured, true));
+    }
+
+    if (search) {
+      const term = `%${search}%`;
+      const clause = or(
+        ilike(movies.title, term),
+        ilike(movies.genre, term),
+        ilike(movies.director, term),
+        ilike(movies.cast, term),
+        ilike(movies.language, term),
+        ilike(movies.description, term),
+      );
+      if (clause) conditions.push(clause);
+    }
 
     const result = await withDb((db) => {
-      if (search) {
-        return db
-          .select()
-          .from(movies)
-          .where(
-            or(
-              ilike(movies.title, `%${search}%`),
-              ilike(movies.genre, `%${search}%`),
-              ilike(movies.description, `%${search}%`),
-              ilike(movies.cast, `%${search}%`),
-              ilike(movies.director, `%${search}%`)
-            )
-          )
-          .orderBy(desc(movies.createdAt))
-          .limit(limit);
-      }
-
-      // `featured` is its own boolean column; it used to be filtered through
-      // `category ilike 'featured'`, which matched nothing at all.
-      if (featured === "true") {
-        return db
-          .select()
-          .from(movies)
-          .where(eq(movies.featured, true))
-          .orderBy(desc(movies.createdAt))
-          .limit(limit);
-      }
-
-      if (category) {
-        return db
-          .select()
-          .from(movies)
-          .where(matchesCategory(category))
-          .orderBy(desc(movies.createdAt))
-          .limit(limit);
-      }
-
-      return db.select().from(movies).orderBy(desc(movies.createdAt)).limit(limit);
+      const base = db.select().from(movies);
+      const filtered = conditions.length > 0 ? base.where(and(...conditions)) : base;
+      return filtered
+        .orderBy(
+          sql`CASE WHEN ${movies.catalogStatus} = 'verified_playable' THEN 0 WHEN ${movies.catalogStatus} = 'official_external_playback' THEN 1 ELSE 2 END`,
+          desc(movies.featured),
+          desc(movies.id)
+        )
+        .limit(limit);
     });
 
-    const admin = await isAdmin(req);
-    return NextResponse.json(result.map((row) => admin
-      ? normalizeMovie(row as Record<string, unknown>)
-      : publicMovie(row as Record<string, unknown>)));
+    return NextResponse.json(result.map((row) => normalizeMovie(row as Record<string, unknown>)));
   } catch (e) {
     console.error("[api/movies] GET failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500 });
@@ -97,7 +110,6 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withDb((db) => db.insert(movies).values(values).returning());
-
     return NextResponse.json(normalizeMovie(result[0] as Record<string, unknown>), { status: 201 });
   } catch (e) {
     console.error("[api/movies] POST failed:", e);

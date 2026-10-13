@@ -1,146 +1,125 @@
 import { test, expect } from "@playwright/test";
-import { createPlaybackMovie, dismissPlayer, preparePage, servePlaybackFixtures } from "./helpers";
+import { createPlaybackMovie, dismissPlayer, preparePage, readCatalogue, servePlaybackFixtures } from "./helpers";
 
 /**
- * Universal share-link & embed playback system.
- *
- * These checks pin the honest behaviour: permitted embeds play inside Cinemax,
- * DRM/subscription services show the in-app provider page with an official
- * "Play on …" action (never a fake embed), and unsafe/unknown links are
- * rejected or handed over without loading anything privileged.
+ * Verified catalog playback, official external handoff, Coming Soon separation,
+ * and removal of arbitrary link-to-watch UI.
  */
 test.beforeEach(async ({ page }) => {
   await preparePage(page);
   await servePlaybackFixtures(page);
 });
 
-test("Netflix share links open the official-service page, never a fake embed", async ({ page }) => {
-  await page.goto("/watch?url=https%3A%2F%2Fwww.netflix.com%2Ftitle%2F80057281", { waitUntil: "domcontentloaded" });
-  const provider = page.getByRole("dialog", { name: /Netflix/ });
-  await expect(provider).toBeVisible();
-  await expect(provider.getByRole("heading", { name: /Netflix/ })).toBeVisible();
-  await expect(provider.getByRole("button", { name: "Play on Netflix", exact: true })).toBeVisible();
-  // The restriction is explained honestly and the original URL is preserved.
-  await expect(provider.getByText(/DRM/i).first()).toBeVisible();
-  await expect(provider.locator(".provider-url-full")).toHaveText("https://www.netflix.com/title/80057281");
-  // No embedded player is pretended for DRM content.
+test("arbitrary share-link paste/watch UI is removed from Search, navigation, and routes", async ({ page }) => {
+  await page.goto("/search", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search the catalogue" })).toBeVisible();
+  // No arbitrary share-link submission strip or form exists in Search.
+  await expect(page.getByRole("region", { name: "Play a share link" })).toHaveCount(0);
+  await expect(page.locator(".watch-link-strip, .share-link-form")).toHaveCount(0);
+
+  // Open the Category Browser and confirm no 'Watch a link' or arbitrary link option exists.
+  await page.locator(".nav-pill-chevron").click();
+  const sheet = page.getByRole("dialog", { name: "Browse categories" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText(/Watch a link|Paste a link/i)).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Close category browser" }).click();
+
+  // The old /watch arbitrary link route and /api/providers/resolve endpoint are removed.
+  const watchRes = await page.request.get("/watch?url=https://www.netflix.com/title/80057281");
+  expect(watchRes.status()).toBe(404);
+  const resolveRes = await page.request.get("/api/providers/resolve?url=https://www.netflix.com/title/80057281");
+  expect(resolveRes.status()).toBe(404);
+});
+
+test("verified playable catalog streams support HTTP byte-range (206), HLS manifests, and subtitles", async ({ page }) => {
+  const headRes = await page.request.head("/api/media/stream/sita-sings-the-blues-2008.webm");
+  expect(headRes.status()).toBe(200);
+  expect(headRes.headers()["content-type"]).toContain("video/webm");
+  expect(headRes.headers()["accept-ranges"]).toBe("bytes");
+
+  const rangeRes = await page.request.get("/api/media/stream/sita-sings-the-blues-2008.webm", {
+    headers: { Range: "bytes=0-1023" },
+  });
+  expect(rangeRes.status()).toBe(206);
+  expect(rangeRes.headers()["content-range"]).toMatch(/^bytes 0-1023\/\d+$/);
+
+  const hlsRes = await page.request.get("/api/media/hls/tears-of-steel-2012/master.m3u8");
+  expect(hlsRes.status()).toBe(200);
+  expect(await hlsRes.text()).toContain("#EXTM3U");
+
+  const vttRes = await page.request.get("/api/media/subtitles/sita-sings-the-blues-2008.vtt");
+  expect(vttRes.status()).toBe(200);
+  expect(await vttRes.text()).toContain("WEBVTT");
+});
+
+test("official_external_playback catalog entries show Watch on Official Service and open honest handoff dialog", async ({ page, request }) => {
+  const catalogue = await readCatalogue(request);
+  const externalMovie = catalogue.find((m) => m.catalogStatus === "official_external_playback");
+  expect(externalMovie, "Catalog must include official_external_playback entries").toBeDefined();
+
+  await page.goto(`/movie/${externalMovie!.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: externalMovie!.title, exact: true })).toBeVisible();
+  await expect(page.locator(".detail-status-badge.is-external")).toHaveText(/Official External Service/i);
+  await expect(page.getByRole("button", { name: "Watch Now", exact: true })).toHaveCount(0);
+
+  const watchExternal = page.getByRole("button", { name: "Watch on Official Service", exact: true });
+  await expect(watchExternal).toBeVisible();
+  await watchExternal.click();
+
+  const providerDialog = page.locator(".provider-page");
+  await expect(providerDialog).toBeVisible();
+  await expect(providerDialog.getByRole("button", { name: /Play on/i })).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(0);
   await expect(page.locator("video")).toHaveCount(0);
-  await provider.getByRole("button", { name: "Back to title", exact: true }).last().click();
-  await expect(page.getByRole("heading", { name: "Watch from a link", exact: true })).toBeVisible();
-});
-
-test("Prime Video and Hotstar links resolve to their provider pages with official CTAs", async ({ page }) => {
-  await page.goto("/watch?url=https%3A%2F%2Fwww.primevideo.com%2Fdetail%2F0EXAMPLE", { waitUntil: "domcontentloaded" });
-  let provider = page.getByRole("dialog", { name: /Prime Video/ });
-  await expect(provider).toBeVisible();
-  await expect(provider.getByRole("button", { name: "Play on Prime Video", exact: true })).toBeVisible();
-  await expect(page.locator("iframe")).toHaveCount(0);
   await dismissPlayer(page);
-
-  await page.goto("/watch?url=https%3A%2F%2Fwww.hotstar.com%2Fin%2F1260000123", { waitUntil: "domcontentloaded" });
-  provider = page.getByRole("dialog", { name: /Hotstar/ });
-  await expect(provider).toBeVisible();
-  await expect(provider.getByRole("button", { name: "Play on Disney+ Hotstar", exact: true })).toBeVisible();
-  await expect(provider.getByText(/subscription|membership/i).first()).toBeVisible();
-  await expect(page.locator("iframe")).toHaveCount(0);
 });
 
-test("permitted YouTube links play inside Cinemax through the official embed", async ({ page }) => {
-  await page.route("https://www.youtube-nocookie.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<html><body style='background:black;color:white'>YouTube embed</body></html>" }));
-  await page.goto("/watch?url=https%3A%2F%2Fyoutu.be%2FabcDEF_1234", { waitUntil: "domcontentloaded" });
-  const player = page.getByRole("dialog", { name: /Now playing|YouTube/ });
-  await expect(player).toBeVisible();
-  const frame = page.locator("iframe.embedded-video");
-  await expect(frame).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/abcDEF_1234\?autoplay=1/);
-  // Provider controls are preserved: no Cinemax control dock over the embed.
-  await expect(player.locator(".player-control-dock")).toHaveCount(0);
-  await dismissPlayer(page);
-  await expect(frame).toHaveCount(0);
-});
+test("Coming Soon collection separates upcoming movies with Coming Soon badge, release date, and no Watch Now button", async ({ page, request }) => {
+  const catalogue = await readCatalogue(request);
+  const upcomingMovies = catalogue.filter((m) => m.catalogStatus === "upcoming");
+  expect(upcomingMovies.length).toBeGreaterThanOrEqual(15);
 
-test("direct media links open the Cinemax player and pick the right engine", async ({ page }) => {
-  // Library-relative sources (the authorized /api/stream route) resolve to
-  // direct playback with the original path preserved.
-  const relative = await page.request.get("/api/providers/resolve?url=" + encodeURIComponent("/api/stream/5"));
-  expect(relative.ok()).toBeTruthy();
-  const relativeBody = await relative.json();
-  expect(relativeBody.resolution.playback.strategy).toBe("direct");
-  expect(relativeBody.resolution.playback.src).toBe("/api/stream/5");
+  await page.goto("/category/coming-soon", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Coming Soon", exact: true })).toBeVisible();
+  await expect(page.locator(".movie-card .movie-badge-upcoming").first()).toHaveText("Coming Soon");
 
-  // An absolute direct file opens the integrated viewing experience and plays
-  // in the Cinemax player (the fixture server stands in for a media host).
-  await page.goto("/watch?url=" + encodeURIComponent("http://localhost:3000/__e2e__/prism-test.webm"), { waitUntil: "domcontentloaded" });
-  const player = page.getByRole("dialog", { name: /Now playing/ });
-  await expect(player).toBeVisible();
-  await expect(page.locator("video")).toHaveCount(1);
-  await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).readyState)).toBeGreaterThan(2);
-  await dismissPlayer(page);
-
-  // Engine selection: progressive files, HLS and DASH.
-  const hls = await page.request.get("/api/providers/resolve?url=" + encodeURIComponent("https://media.example.com/stream/master.m3u8"));
-  expect(hls.ok()).toBeTruthy();
-  const hlsBody = await hls.json();
-  expect(hlsBody.resolution.playback.strategy).toBe("direct");
-  expect(hlsBody.resolution.playback.engine).toBe("hls");
-  const dash = await page.request.get("/api/providers/resolve?url=" + encodeURIComponent("https://media.example.com/stream/manifest.mpd"));
-  expect((await dash.json()).resolution.playback.engine).toBe("dash");
-});
-
-test("invalid and unsafe links are rejected before anything loads", async ({ page }) => {
-  await page.goto("/watch?url=javascript%3Aalert(1)", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /allowed|read|Paste a link/ }).first()).toBeVisible();
-  await expect(page.getByText(/JavaScript links, local files and app schemes are blocked/)).toBeVisible();
-  await expect(page.locator("iframe, video")).toHaveCount(0);
-
-  await page.goto("/watch?url=not-a-url", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /read|Paste a link/ }).first()).toBeVisible();
-
-  const blocked = await page.request.get("/api/providers/resolve?url=" + encodeURIComponent("file:///etc/passwd"));
-  expect(blocked.status()).toBe(422);
-  const missing = await page.request.get("/api/providers/resolve?url=");
-  expect(missing.status()).toBe(400);
-});
-
-test("unsupported sites keep the original link and never load unknown pages", async ({ page }) => {
-  await page.goto("/watch?url=" + encodeURIComponent("https://unknown-video-site.example/watch/42"), { waitUntil: "domcontentloaded" });
-  const provider = page.getByRole("dialog", { name: /This website/ });
-  await expect(provider).toBeVisible();
-  await expect(provider.getByRole("button", { name: "Open original link", exact: true })).toBeVisible();
-  await expect(provider.locator(".provider-url-full")).toHaveText("https://unknown-video-site.example/watch/42");
-  await expect(page.locator("iframe, video")).toHaveCount(0);
-});
-
-test("the resolve API only contacts official oEmbed hosts and never leaks secrets", async ({ page, request }) => {
-  // SSRF guard: internal addresses and spoofed oEmbed hosts never trigger a
-  // metadata fetch - they resolve honestly without any outbound request.
-  for (const target of [
-    "https://www.youtube.com.oembed.internal/resolve",
-    "http://127.0.0.1/watch?v=abc",
-    "https://192.168.0.1/title/1",
-  ]) {
-    const response = await request.get("/api/providers/resolve?url=" + encodeURIComponent(target));
-    expect(response.status(), target).toBe(200);
-    const body = await response.json();
-    // No official-oEmbed metadata is ever returned for un-allowlisted hosts.
-    expect(body.metadata?.title === undefined, target).toBeTruthy();
-    const text = JSON.stringify(body);
-    expect(text).not.toMatch(/TOKEN|SECRET|PASSWORD|DATABASE_URL/i);
+  const target = upcomingMovies[0];
+  await page.goto(`/movie/${target.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: target.title, exact: true })).toBeVisible();
+  await expect(page.locator(".detail-status-badge.is-upcoming")).toContainText("Coming Soon");
+  // Upcoming movies must never offer a Watch Now button.
+  await expect(page.getByRole("button", { name: "Watch Now", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Coming Soon/i })).toBeDisabled();
+  if (target.trailerUrl) {
+    await expect(page.getByRole("button", { name: "Watch Official Trailer", exact: true })).toBeVisible();
   }
-  // Dangerous schemes are rejected outright by the API as well.
-  for (const target of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,x"]) {
-    const response = await request.get("/api/providers/resolve?url=" + encodeURIComponent(target));
-    expect(response.status(), target).toBeGreaterThanOrEqual(400);
-  }
-  const ok = await request.get("/api/providers/resolve?url=" + encodeURIComponent("https://www.youtube.com/watch?v=aqz-KE-bpKQ"));
-  expect(ok.ok()).toBeTruthy();
-  const body = await ok.json();
-  expect(body.resolution.provider.id).toBe("youtube");
-  expect(body.resolution.playback.strategy).toBe("embed");
-  // Metadata may be empty (offline sandbox) but the shape is stable.
-  expect(body.metadata === null || typeof body.metadata === "object").toBeTruthy();
-  await page.goto("/watch", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Watch from a link", exact: true })).toBeVisible();
+});
+
+test("admin source verification service validates real streams and rejects dead URLs", async ({ request }) => {
+  const login = await request.post("/api/admin/login", {
+    data: {
+      email: process.env.ADMIN_EMAIL || "admin@cinemax.com",
+      password: process.env.ADMIN_PASSWORD || "Admin@123",
+    },
+  });
+  expect(login.ok()).toBeTruthy();
+
+  const validStream = await request.post("/api/admin/verify-sources", {
+    data: { videoUrl: "/api/media/stream/big-buck-bunny-2008.webm", sourceType: "open_license" },
+  });
+  expect(validStream.ok()).toBeTruthy();
+  const validBody = await validStream.json();
+  expect(validBody.verification.ok).toBe(true);
+  expect(validBody.verification.catalogStatus).toBe("verified_playable");
+
+  const deadStream = await request.post("/api/admin/verify-sources", {
+    data: { videoUrl: "/api/media/stream/missing-nonexistent-file.webm", sourceType: "direct" },
+  });
+  expect(deadStream.ok()).toBeTruthy();
+  const deadBody = await deadStream.json();
+  expect(deadBody.verification.ok).toBe(false);
+  expect(deadBody.verification.catalogStatus).toBe("verification_failed");
 });
 
 test("player controls fade out ~1s after interaction while playing and stay while paused", async ({ page, request }) => {
@@ -151,13 +130,9 @@ test("player controls fade out ~1s after interaction while playing and stay whil
     const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
     await expect(player).toBeVisible();
     await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
-    // Any interaction reveals the controls (a pointer move is enough - and
-    // does not toggle playback)...
     await page.mouse.move(120, 120);
     await expect(player.locator(".player-control-dock")).not.toHaveClass(/hidden/);
-    // ...and they fade away about a second after the interaction ends.
     await expect(player.locator(".player-control-dock")).toHaveClass(/hidden/, { timeout: 3000 });
-    // While the seek bar is being dragged the controls stay visible.
     await page.mouse.move(160, 160);
     await expect(player.locator(".player-control-dock")).not.toHaveClass(/hidden/);
     const rail = player.locator(".player-progress");
@@ -167,8 +142,10 @@ test("player controls fade out ~1s after interaction while playing and stay whil
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await expect(player.locator(".player-control-dock")).not.toHaveClass(/hidden/);
     await page.mouse.up();
-    // Paused playback keeps the controls on screen.
-    await page.locator("video").evaluate((element) => { (element as HTMLVideoElement).pause(); element.dispatchEvent(new Event("pause")); });
+    await page.locator("video").evaluate((element) => {
+      (element as HTMLVideoElement).pause();
+      element.dispatchEvent(new Event("pause"));
+    });
     await page.waitForTimeout(1400);
     await expect(player.locator(".player-control-dock")).not.toHaveClass(/hidden/);
     await dismissPlayer(page);
@@ -180,8 +157,6 @@ test("player controls fade out ~1s after interaction while playing and stay whil
 test("Watch Now requests landscape/immersive playback through the native shell", async ({ page, request }) => {
   const movie = await createPlaybackMovie(request, "/__e2e__/prism-test.webm");
   try {
-    // Stub the Android bridge: the player must ask for landscape/immersive as
-    // playback opens, and restore portrait when the session ends.
     await page.addInitScript(() => {
       const calls: string[] = [];
       (window as unknown as { __nativeCalls: string[] }).__nativeCalls = calls;
@@ -197,22 +172,10 @@ test("Watch Now requests landscape/immersive playback through the native shell",
     await page.goto(`/movie/${movie.id}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Watch Now", exact: true }).click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { __nativeCalls: string[] }).__nativeCalls)).toContain("enter");
-    // Back/close exits immersive and returns to the portrait details page
-    // without closing the movie experience.
     await dismissPlayer(page);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __nativeCalls: string[] }).__nativeCalls)).toContain("exit");
     await expect(page.getByRole("heading", { name: movie.title, exact: true })).toBeVisible();
   } finally {
     await request.delete(`/api/movies/${movie.id}`);
   }
-});
-
-test("Search offers the share-link entry and it lands on the viewing experience", async ({ page }) => {
-  await page.goto("/search", { waitUntil: "domcontentloaded" });
-  const strip = page.getByRole("region", { name: "Play a share link" });
-  await expect(strip).toBeVisible();
-  await strip.getByRole("textbox", { name: "Movie or share link", exact: true }).fill("https://www.netflix.com/title/80057281");
-  await strip.getByRole("button", { name: "Watch", exact: true }).click();
-  await expect(page).toHaveURL(/\/watch\?url=/);
-  await expect(page.getByRole("dialog", { name: /Netflix/ })).toBeVisible();
 });

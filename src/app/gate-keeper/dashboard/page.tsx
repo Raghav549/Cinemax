@@ -5,7 +5,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import Artwork from "@/components/Artwork";
 
-interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; subtitleUrl: string | null; subtitleLanguage: string | null; rightsConfirmed: boolean | null; category: string | null; featured: boolean | null; }
+interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; subtitleUrl: string | null; subtitleLanguage: string | null; rightsConfirmed: boolean | null; catalogStatus?: string | null; sourceType?: string | null; licenseInfo?: string | null; sourceAttribution?: string | null; releaseDate?: string | null; trailerUrl?: string | null; lastVerifiedAt?: string | null; category: string | null; featured: boolean | null; }
 interface Slide { id: number; title: string; subtitle: string | null; imageUrl: string | null; movieId: number | null; sortOrder: number | null; active: boolean | null; }
 interface Category { id: number; name: string; slug: string; sortOrder: number | null; }
 interface WatchlistEntry { id: number; movieId: number; sessionId: string; createdAt: string | null; movie: Movie | null; }
@@ -33,7 +33,7 @@ export default function AdminDashboard() {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mSubtitle, setMSubtitle] = useState(""); const [mSubtitleLanguage, setMSubtitleLanguage] = useState("en"); const [mRightsConfirmed, setMRightsConfirmed] = useState(false); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
+  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mSubtitle, setMSubtitle] = useState(""); const [mSubtitleLanguage, setMSubtitleLanguage] = useState("en"); const [mRightsConfirmed, setMRightsConfirmed] = useState(false); const [mCatalogStatus, setMCatalogStatus] = useState("verified_playable"); const [mSourceType, setMSourceType] = useState("public_domain"); const [mLicenseInfo, setMLicenseInfo] = useState(""); const [mSourceAttribution, setMSourceAttribution] = useState(""); const [mReleaseDate, setMReleaseDate] = useState(""); const [mTrailerUrl, setMTrailerUrl] = useState(""); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
 
   const [sTitle, setSTitle] = useState(""); const [sSubtitle, setSSubtitle] = useState(""); const [sImage, setSImage] = useState(""); const [sMovieId, setSMovieId] = useState<number | null>(null); const [sOrder, setSOrder] = useState(0); const [sActive, setSActive] = useState(true);
 
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
 
     const [s, m, sl, c, wl] = await Promise.all([
       load("/api/admin/stats", "stats"),
-      load("/api/movies?limit=500", "movies"),
+      load("/api/movies?limit=500&includeUnavailable=true", "movies"),
       load("/api/admin/slides", "slides"),
       load("/api/categories", "categories"),
       load("/api/admin/watchlist", "saved lists"),
@@ -112,18 +112,18 @@ export default function AdminDashboard() {
     }
   };
 
-  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMSubtitle(""); setMSubtitleLanguage("en"); setMRightsConfirmed(false); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
+  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMSubtitle(""); setMSubtitleLanguage("en"); setMRightsConfirmed(false); setMCatalogStatus("verified_playable"); setMSourceType("public_domain"); setMLicenseInfo(""); setMSourceAttribution(""); setMReleaseDate(""); setMTrailerUrl(""); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
   const resetSlide = () => { setSTitle(""); setSSubtitle(""); setSImage(""); setSMovieId(null); setSOrder(0); setSActive(true); setEditingSlide(null); };
   const resetCat = () => { setCName(""); setCSlug(""); setEditingCat(null); };
 
-  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMSubtitle(m.subtitleUrl||""); setMSubtitleLanguage(m.subtitleLanguage||"en"); setMRightsConfirmed(m.rightsConfirmed||false); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
+  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMSubtitle(m.subtitleUrl||""); setMSubtitleLanguage(m.subtitleLanguage||"en"); setMRightsConfirmed(m.rightsConfirmed||false); setMCatalogStatus(m.catalogStatus||"verified_playable"); setMSourceType(m.sourceType||"public_domain"); setMLicenseInfo(m.licenseInfo||""); setMSourceAttribution(m.sourceAttribution||""); setMReleaseDate(m.releaseDate||""); setMTrailerUrl(m.trailerUrl||""); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
   const editSlide = (s: Slide) => { setEditingSlide(s); setSTitle(s.title); setSSubtitle(s.subtitle||""); setSImage(s.imageUrl||""); setSMovieId(s.movieId); setSOrder(s.sortOrder||0); setSActive(s.active!==false); setShowSlideForm(true); };
   const editCat = (c: Category) => { setEditingCat(c); setCName(c.name); setCSlug(c.slug); setShowCatForm(true); };
 
   const saveMovie = async () => {
     if (!mTitle.trim()) { flash("Title is required", "error"); return; }
     if (mVideo.trim().toLowerCase().startsWith("magnet:") && !mRightsConfirmed) { flash("Confirm public distribution rights before saving a magnet stream", "error"); return; }
-    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,subtitleUrl:mSubtitle,subtitleLanguage:mSubtitleLanguage,rightsConfirmed:mRightsConfirmed,category:mCategory,featured:mFeatured };
+    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,subtitleUrl:mSubtitle,subtitleLanguage:mSubtitleLanguage,rightsConfirmed:mRightsConfirmed,catalogStatus:mCatalogStatus,sourceType:mSourceType,licenseInfo:mLicenseInfo,sourceAttribution:mSourceAttribution,releaseDate:mReleaseDate,trailerUrl:mTrailerUrl,category:mCategory,featured:mFeatured };
     const url = editingMovie ? `/api/movies/${editingMovie.id}` : "/api/movies";
     setBusy(true);
     const result = await mutate(url, editingMovie ? "PUT" : "POST", body);
@@ -235,9 +235,26 @@ export default function AdminDashboard() {
         {/* === MOVIES === */}
         {tab === "movies" && (
           <div style={{ marginTop: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 10 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Library ({movies.length})</h2>
-              <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    setBusy(true);
+                    const res = await fetch("/api/admin/verify-sources", { method: "POST" });
+                    const data = await res.json().catch(() => null);
+                    setBusy(false);
+                    if (!res.ok) { flash(data?.error || "Verification failed", "error"); return; }
+                    flash(`Verified ${data?.verifiedPlayable ?? 0} playable, ${data?.upcoming ?? 0} upcoming`);
+                    loadData();
+                  }}
+                  disabled={busy}
+                  style={{ padding: "10px 16px", borderRadius: 12, background: "rgba(56, 189, 248, 0.14)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#7dd3fc", fontWeight: 800, fontSize: 11, cursor: "pointer" }}
+                >
+                  Verify Sources
+                </button>
+                <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              </div>
             </div>
 
             {showMovieForm && (
@@ -269,6 +286,39 @@ export default function AdminDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
                     <div><label style={labelStyle}>Subtitle / captions URL (WebVTT)</label><input className="glass-input" value={mSubtitle} onChange={e=>setMSubtitle(e.target.value)} placeholder="https://…/captions.vtt" /></div>
                     <div><label style={labelStyle}>Subtitle language code</label><input className="glass-input" value={mSubtitleLanguage} onChange={e=>setMSubtitleLanguage(e.target.value)} placeholder="en" /></div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Catalog Status</label>
+                      <select className="glass-input" value={mCatalogStatus} onChange={e=>setMCatalogStatus(e.target.value)}>
+                        <option value="verified_playable">verified_playable</option>
+                        <option value="official_external_playback">official_external_playback</option>
+                        <option value="upcoming">upcoming</option>
+                        <option value="temporarily_unavailable">temporarily_unavailable</option>
+                        <option value="verification_failed">verification_failed</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Source Type</label>
+                      <select className="glass-input" value={mSourceType} onChange={e=>setMSourceType(e.target.value)}>
+                        <option value="public_domain">public_domain</option>
+                        <option value="open_license">open_license</option>
+                        <option value="independent">independent</option>
+                        <option value="official_embed">official_embed</option>
+                        <option value="direct">direct</option>
+                        <option value="official_external">official_external</option>
+                        <option value="upcoming">upcoming</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Confirmed Release Date</label>
+                      <input className="glass-input" value={mReleaseDate} onChange={e=>setMReleaseDate(e.target.value)} placeholder="YYYY-MM-DD" />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                    <div><label style={labelStyle}>License / Rights Info</label><input className="glass-input" value={mLicenseInfo} onChange={e=>setMLicenseInfo(e.target.value)} placeholder="Public Domain / CC BY 4.0" /></div>
+                    <div><label style={labelStyle}>Source Attribution</label><input className="glass-input" value={mSourceAttribution} onChange={e=>setMSourceAttribution(e.target.value)} placeholder="Archive / Studio" /></div>
+                    <div><label style={labelStyle}>Official Trailer URL</label><input className="glass-input" value={mTrailerUrl} onChange={e=>setMTrailerUrl(e.target.value)} placeholder="Optional trailer embed/stream" /></div>
                   </div>
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer", padding: "12px 13px", border: "1px solid rgba(165,243,208,0.16)", borderRadius: 12, background: "rgba(165,243,208,0.035)" }}>
                     <input type="checkbox" checked={mRightsConfirmed} onChange={e=>setMRightsConfirmed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "var(--accent)" }} />

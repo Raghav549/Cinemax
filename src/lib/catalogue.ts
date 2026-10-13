@@ -1,4 +1,14 @@
 import type { MovieCardData } from "@/components/MovieCard";
+import {
+  COLLECTION_SPECS,
+  matchesCollection as matchesMovieCollection,
+  tokens as movieTokens,
+  isVerifiedPlayable,
+  isOfficialExternal,
+  isUpcomingMovie,
+  isPlayableMovie,
+  buildAllCategoryCollections,
+} from "@/lib/movies";
 
 export interface CatalogueMovie extends MovieCardData {
   description: string | null;
@@ -12,9 +22,21 @@ export interface CatalogueMovie extends MovieCardData {
   category: string | null;
   featured: boolean | null;
   rightsConfirmed: boolean;
+  catalogStatus?: string | null;
+  sourceType?: string | null;
+  licenseInfo?: string | null;
+  sourceAttribution?: string | null;
+  releaseDate?: string | null;
+  trailerUrl?: string | null;
+  lastVerifiedAt?: string | null;
 }
 
-export interface Category { id: number; name: string; slug: string; }
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface FeaturedSlide {
   id: number;
   title: string;
@@ -27,24 +49,29 @@ export const FILTERS = [
   { label: "For you", value: "all" },
   { label: "Movies", value: "movies" },
   { label: "Series", value: "series" },
+  { label: "Dramas", value: "drama" },
   { label: "Anime", value: "anime" },
   { label: "Action", value: "action" },
   { label: "Sci-Fi", value: "sci-fi" },
   { label: "Thriller", value: "thriller" },
   { label: "Comedy", value: "comedy" },
-  { label: "Drama", value: "drama" },
+  { label: "Coming Soon", value: "coming-soon" },
 ];
 
 export function tokens(value: string | null | undefined): string[] {
-  return (value ?? "").split(",").map((token) => token.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
+  return movieTokens(value);
 }
 
 /** Shared by Home, Explore and collection pages so the same filter means the same thing. */
 export function matchesCollection(movie: CatalogueMovie, slug: string): boolean {
-  const key = slug.toLowerCase();
-  if (key === "all") return true;
-  if (tokens(movie.category).includes(key)) return true;
-  if (key === "movies") return movie.type?.toLowerCase() === "movie";
-  if (["series", "anime", "documentary"].includes(key) && movie.type?.toLowerCase() === key) return true;
-  return tokens(movie.genre).includes(key);
+  return matchesMovieCollection(movie, slug);
 }
+
+export {
+  COLLECTION_SPECS,
+  isVerifiedPlayable,
+  isOfficialExternal,
+  isUpcomingMovie,
+  isPlayableMovie,
+  buildAllCategoryCollections,
+};

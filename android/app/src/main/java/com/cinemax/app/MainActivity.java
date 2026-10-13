@@ -302,12 +302,8 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- URLs
 
     /**
-     * Production URL for a Cinemax deep link. Any other http(s) share link
-     * (YouTube, Hotstar, Netflix, a direct MP4, ...) opens the in-app share-link
-     * experience instead of dumping the user on the home page: /watch validates
-     * the URL, identifies the provider and either plays it in the integrated
-     * player or shows the official-service page. Non-web schemes never reach
-     * the WebView.
+     * Production URL for a Cinemax deep link. Non-Cinemax URLs and non-web
+     * schemes fall back to the Cinemax home surface.
      */
     private String initialUrl(Intent intent) {
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
@@ -315,12 +311,6 @@ public class MainActivity extends Activity {
             String scheme = data.getScheme();
             if (NavigationPolicy.isProductionUrl(scheme, data.getHost())) {
                 return data.toString();
-            }
-            if ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)) {
-                String host = data.getHost();
-                if (host != null && host.length() > 0) {
-                    return HOME_URL + "watch?url=" + Uri.encode(data.toString());
-                }
             }
         }
         return HOME_URL;

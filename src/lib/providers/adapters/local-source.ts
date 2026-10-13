@@ -2,9 +2,8 @@ import type { DirectEngine, ProviderAdapter } from "../types";
 
 /**
  * Same-origin media sources stored by the studio: `/api/stream/5` (the
- * authorized magnet-stream endpoint) and local fixture/library paths. These
- * are not share links - they never come from user input - but they flow
- * through the same playback pipeline, so the registry understands them.
+ * authorized magnet-stream endpoint), `/api/media/...` (verified archival/open
+ * streams and embeds), and local fixture/library paths.
  *
  * Only root-relative paths are accepted (never `//host`, never schemes), so a
  * local source can never smuggle an external or dangerous URL in.
@@ -45,6 +44,19 @@ export const localSourceAdapter: ProviderAdapter = {
   },
   parse(url) {
     const path = url.pathname + url.search;
+    if (url.pathname.startsWith("/api/media/embed/")) {
+      const slug = url.pathname.slice("/api/media/embed/".length) || null;
+      return {
+        kind: "video",
+        contentId: slug,
+        canonicalUrl: path,
+        playback: {
+          strategy: "embed",
+          src: path,
+          embedTitle: "Cinemax Archival Embed Player",
+        },
+      };
+    }
     return {
       kind: "stream",
       contentId: null,
