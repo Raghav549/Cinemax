@@ -23,6 +23,18 @@ mapping, authorization rule, or seed movie record was replaced.
   mobile navigation with a single translating light indicator, consistent
   original icons, active-state lighting, comfortable hit targets and safe-area
   spacing. Navigation and library state stay mounted across App Router changes.
+  Above the dock sits the Cinemax **light arc**: one shallow Bézier (a single
+  smooth rise of ~11px over its full length, never wavy and never closed) in a
+  thin SVG anchored to the navigation bar itself — `bottom: calc(100% + 1px)`
+  and `width: 107%` of the bar — so it follows the real dock on every screen
+  size, density and safe-area inset and can only ever paint in the dark space
+  above it, never across a heading, a poster or a control. Six scaled strokes
+  over that one path (bloom → halo → band → core → travelling reflection) carry
+  emerald → cyan → blue → violet → magenta → pink, each gradient's opacity
+  ramping from 0 up to a single illuminated section and back to 0 so both ends
+  dissolve into the background. The only motion is a slow 8.4s reflection that
+  pauses with the app's other decorative animation while the Android shell
+  reports a scroll, and is disabled entirely under `prefers-reduced-motion`.
 - **Cinema-first home:** full-width actual slide/movie artwork, readable
   gradients, title/year/genres, Watch Now and More Details. Introductory slogans
   were removed. Features crossfade, support horizontal gestures and scoped
