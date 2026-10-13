@@ -63,7 +63,8 @@ export async function PUT(
       }
       if (body.sortOrder !== undefined) {
         const order = Number(body.sortOrder);
-        patch.sortOrder = Number.isFinite(order) ? Math.trunc(order) : (current.sortOrder ?? 0);
+        const existingOrder = (current as Record<string, unknown>).sortOrder;
+        patch.sortOrder = Number.isFinite(order) ? Math.trunc(order) : Number(existingOrder ?? 0);
       }
       if (Object.keys(patch).length === 0) throw new ValidationError("No fields to update");
     } catch (error) {

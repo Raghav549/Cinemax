@@ -1,192 +1,257 @@
-import { getPool } from "@/db";
-import { isTextType, legacyAliasesFor, quoteIdent, TABLES, type ColumnSpec, type TableSpec } from "@/db/table-map";
+import { sql } from "drizzle-orm";
+import { getDb } from "./index";
 
-/**
- * Brings an existing database in line with ./schema.ts **without ever dropping
- * data**.
- *
- * The admin panel used to show an empty library on databases that were created
- * before the current Drizzle mapping: the rows were there (`select count(*)`
- * proved it) but every `SELECT`/`INSERT` referenced columns such as
- * `poster_url` that did not exist in that database, so each request failed with
- * Postgres error 42703 (`column "poster_url" of relation "movies" does not
- * exist`) and the route swallowed it into a generic 500. The UI then rendered
- * zero movies with no explanation.
- *
- * For every table we now:
- *   1. create it when it is missing;
- *   2. add the columns the mapping expects but the table does not have;
- *   3. rename a known legacy column onto the expected name (keeps the data);
- *   4. copy legacy values across when both the old and the new column exist.
- *
- * Everything is idempotent, so it is safe to run on every cold start.
- */
+type ColumnSpec = {
+  column: string;
+  sqlType: string;
+  legacy?: readonly string[];
+};
 
-export interface TableReport {
-  exists: boolean;
-  created: boolean;
-  added: string[];
-  renamed: { from: string; to: string }[];
-  backfilled: string[];
-  skipped: string[];
-}
+const TABLES: Record<string, { createSql: string; columns: readonly ColumnSpec[] }> = {
+  movies: {
+    createSql: `
+      CREATE TABLE IF NOT EXISTS "movies" (
+        "id" serial PRIMARY KEY,
+        "title" varchar(500) NOT NULL DEFAULT '',
+        "description" text DEFAULT '',
+        "year" integer DEFAULT 2024,
+        "rating" varchar(10) DEFAULT '8.0',
+        "duration" varchar(50) DEFAULT '2h 0m',
+        "genre" varchar(500) DEFAULT '',
+        "language" varchar(200) DEFAULT 'English',
+        "type" varchar(50) DEFAULT 'Movie',
+        "director" varchar(200) DEFAULT '',
+        "cast" text DEFAULT '',
+        "poster_url" text DEFAULT '',
+        "backdrop_url" text DEFAULT '',
+        "video_url" text DEFAULT '',
+        "subtitle_url" text DEFAULT '',
+        "subtitle_language" varchar(100) DEFAULT '',
+        "rights_confirmed" boolean DEFAULT false,
+        "catalog_status" varchar(64) DEFAULT 'verified_playable',
+        "source_type" varchar(64) DEFAULT 'direct',
+        "license_info" varchar(300) DEFAULT '',
+        "source_attribution" varchar(500) DEFAULT '',
+        "rating_source" varchar(100) DEFAULT '',
+        "release_date" varchar(64) DEFAULT '',
+        "trailer_url" text DEFAULT '',
+        "verification_result" text DEFAULT '',
+        "last_verified_at" timestamp,
+        "category" varchar(500) DEFAULT 'trending',
+        "featured" boolean DEFAULT false,
+        "created_at" timestamp DEFAULT now()
+      );
+    `,
+    columns: [
+      { column: "title", sqlType: "varchar(500) NOT NULL DEFAULT ''" },
+      { column: "description", sqlType: "text DEFAULT ''" },
+      { column: "year", sqlType: "integer DEFAULT 2024" },
+      { column: "rating", sqlType: "varchar(10) DEFAULT '8.0'" },
+      { column: "duration", sqlType: "varchar(50) DEFAULT '2h 0m'" },
+      { column: "genre", sqlType: "varchar(500) DEFAULT ''" },
+      { column: "language", sqlType: "varchar(200) DEFAULT 'English'" },
+      { column: "type", sqlType: "varchar(50) DEFAULT 'Movie'" },
+      { column: "director", sqlType: "varchar(200) DEFAULT ''" },
+      { column: "cast", sqlType: "text DEFAULT ''" },
+      { column: "poster_url", sqlType: "text DEFAULT ''", legacy: ["posterUrl", "poster"] },
+      { column: "backdrop_url", sqlType: "text DEFAULT ''", legacy: ["backdropUrl", "backdrop"] },
+      { column: "video_url", sqlType: "text DEFAULT ''", legacy: ["videoUrl", "video"] },
+      { column: "subtitle_url", sqlType: "text DEFAULT ''", legacy: ["subtitleUrl", "subtitles"] },
+      { column: "subtitle_language", sqlType: "varchar(100) DEFAULT ''", legacy: ["subtitleLanguage"] },
+      { column: "rights_confirmed", sqlType: "boolean DEFAULT false", legacy: ["rightsConfirmed"] },
+      { column: "catalog_status", sqlType: "varchar(64) DEFAULT 'verified_playable'", legacy: ["catalogStatus", "status"] },
+      { column: "source_type", sqlType: "varchar(64) DEFAULT 'direct'", legacy: ["sourceType"] },
+      { column: "license_info", sqlType: "varchar(300) DEFAULT ''", legacy: ["licenseInfo", "license"] },
+      { column: "source_attribution", sqlType: "varchar(500) DEFAULT ''", legacy: ["sourceAttribution", "attribution"] },
+      { column: "rating_source", sqlType: "varchar(100) DEFAULT ''", legacy: ["ratingSource"] },
+      { column: "release_date", sqlType: "varchar(64) DEFAULT ''", legacy: ["releaseDate"] },
+      { column: "trailer_url", sqlType: "text DEFAULT ''", legacy: ["trailerUrl", "trailer"] },
+      { column: "verification_result", sqlType: "text DEFAULT ''", legacy: ["verificationResult"] },
+      { column: "last_verified_at", sqlType: "timestamp", legacy: ["lastVerifiedAt"] },
+      { column: "category", sqlType: "varchar(500) DEFAULT 'trending'" },
+      { column: "featured", sqlType: "boolean DEFAULT false" },
+      { column: "created_at", sqlType: "timestamp DEFAULT now()", legacy: ["createdAt"] },
+    ],
+  },
+  slides: {
+    createSql: `
+      CREATE TABLE IF NOT EXISTS "slides" (
+        "id" serial PRIMARY KEY,
+        "title" varchar(500) NOT NULL DEFAULT '',
+        "subtitle" text DEFAULT '',
+        "image_url" text DEFAULT '',
+        "movie_id" integer REFERENCES "movies"("id") ON DELETE SET NULL,
+        "sort_order" integer DEFAULT 0,
+        "active" boolean DEFAULT true,
+        "created_at" timestamp DEFAULT now()
+      );
+    `,
+    columns: [
+      { column: "title", sqlType: "varchar(500) NOT NULL DEFAULT ''" },
+      { column: "subtitle", sqlType: "text DEFAULT ''" },
+      { column: "image_url", sqlType: "text DEFAULT ''", legacy: ["imageUrl", "image"] },
+      { column: "movie_id", sqlType: "integer", legacy: ["movieId"] },
+      { column: "sort_order", sqlType: "integer DEFAULT 0", legacy: ["sortOrder", "order"] },
+      { column: "active", sqlType: "boolean DEFAULT true" },
+      { column: "created_at", sqlType: "timestamp DEFAULT now()", legacy: ["createdAt"] },
+    ],
+  },
+  categories: {
+    createSql: `
+      CREATE TABLE IF NOT EXISTS "categories" (
+        "id" serial PRIMARY KEY,
+        "name" varchar(100) NOT NULL DEFAULT '',
+        "slug" varchar(100) NOT NULL UNIQUE
+      );
+    `,
+    columns: [
+      { column: "name", sqlType: "varchar(100) NOT NULL DEFAULT ''" },
+      { column: "slug", sqlType: "varchar(100) NOT NULL" },
+    ],
+  },
+  watchlist: {
+    createSql: `
+      CREATE TABLE IF NOT EXISTS "watchlist" (
+        "id" serial PRIMARY KEY,
+        "session_id" varchar(200) NOT NULL,
+        "movie_id" integer REFERENCES "movies"("id") ON DELETE CASCADE,
+        "created_at" timestamp DEFAULT now()
+      );
+    `,
+    columns: [
+      { column: "session_id", sqlType: "varchar(200) NOT NULL DEFAULT ''", legacy: ["sessionId"] },
+      { column: "movie_id", sqlType: "integer", legacy: ["movieId"] },
+      { column: "created_at", sqlType: "timestamp DEFAULT now()", legacy: ["createdAt"] },
+    ],
+  },
+  admins: {
+    createSql: `
+      CREATE TABLE IF NOT EXISTS "admins" (
+        "id" serial PRIMARY KEY,
+        "email" varchar(200) NOT NULL UNIQUE,
+        "password_hash" text NOT NULL DEFAULT ''
+      );
+    `,
+    columns: [
+      { column: "email", sqlType: "varchar(200) NOT NULL" },
+      { column: "password_hash", sqlType: "text NOT NULL DEFAULT ''", legacy: ["passwordHash", "password"] },
+    ],
+  },
+};
 
-export interface SchemaReport {
+export type SchemaReport = {
   ok: boolean;
-  /** true once reconciliation completed successfully in this process */
-  reconciled: boolean;
-  tables: Record<string, TableReport>;
-  error?: string;
+  error: string | null;
+  tables: Record<string, { created: boolean; added: string[]; renamed: string[]; backfilled: string[]; columns: string[] }>;
+};
+
+let ensuredPromise: Promise<SchemaReport> | null = null;
+let latestReport: SchemaReport | null = null;
+
+export function getSchemaReport(): SchemaReport | null {
+  return latestReport;
 }
 
-interface ColumnInfo {
-  name: string;
-  dataType: string;
+async function inspectColumns(table: string): Promise<Set<string>> {
+  const db = getDb();
+  const res = await db.execute(
+    sql`SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ${table}`
+  );
+  const rows = (res as unknown as { rows?: Array<{ column_name: string }> }).rows ?? [];
+  return new Set(rows.map((r) => r.column_name));
 }
 
-let inflight: Promise<SchemaReport> | null = null;
-let lastReport: SchemaReport | null = null;
+async function reconcileTable(
+  table: string,
+  spec: { createSql: string; columns: readonly ColumnSpec[] }
+): Promise<SchemaReport["tables"][string]> {
+  const db = getDb();
+  let existing = await inspectColumns(table);
+  const created = existing.size === 0;
 
-/** Reconcile the schema once per process. Never rejects — see `SchemaReport.ok`. */
-export function ensureSchema(): Promise<SchemaReport> {
-  if (!inflight) {
-    inflight = reconcile().then((report) => {
-      lastReport = report;
-      if (report.ok) return report;
-      inflight = null; // allow the next request to retry
+  if (created) {
+    await db.execute(sql.raw(spec.createSql));
+    existing = await inspectColumns(table);
+  }
+
+  const added: string[] = [];
+  const renamed: string[] = [];
+  const backfilled: string[] = [];
+
+  for (const col of spec.columns) {
+    const legacyPresent = (col.legacy ?? []).find((name) => existing.has(name));
+
+    if (!existing.has(col.column) && legacyPresent) {
+      await db.execute(sql.raw(`ALTER TABLE "${table}" RENAME COLUMN "${legacyPresent}" TO "${col.column}"`));
+      existing.delete(legacyPresent);
+      existing.add(col.column);
+      renamed.push(`${legacyPresent}->${col.column}`);
+    } else if (!existing.has(col.column)) {
+      await db.execute(sql.raw(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${col.column}" ${col.sqlType}`));
+      existing.add(col.column);
+      added.push(col.column);
+    } else if (legacyPresent) {
+      await db.execute(
+        sql.raw(
+          `UPDATE "${table}" SET "${col.column}" = "${legacyPresent}" WHERE "${col.column}" IS NULL AND "${legacyPresent}" IS NOT NULL`
+        )
+      );
+      backfilled.push(`${legacyPresent}->${col.column}`);
+    }
+  }
+
+  if (table === "movies") {
+    try {
+      await db.execute(sql.raw(`ALTER TABLE "movies" ALTER COLUMN "category" TYPE varchar(500)`));
+    } catch {
+      // Safe no-op if already widened or incompatible
+    }
+  }
+
+  return { created, added, renamed, backfilled, columns: [...existing].sort() };
+}
+
+async function ensureIndexes() {
+  const db = getDb();
+  const statements = [
+    `CREATE INDEX IF NOT EXISTS "idx_movies_catalog_status" ON "movies" ("catalog_status")`,
+    `CREATE INDEX IF NOT EXISTS "idx_movies_category" ON "movies" ("category")`,
+    `CREATE INDEX IF NOT EXISTS "idx_movies_featured" ON "movies" ("featured")`,
+    `CREATE INDEX IF NOT EXISTS "idx_movies_year" ON "movies" ("year")`,
+    `CREATE INDEX IF NOT EXISTS "idx_movies_type" ON "movies" ("type")`,
+    `CREATE INDEX IF NOT EXISTS "idx_movies_language" ON "movies" ("language")`,
+    `CREATE INDEX IF NOT EXISTS "idx_watchlist_session_movie" ON "watchlist" ("session_id", "movie_id")`,
+    `CREATE INDEX IF NOT EXISTS "idx_slides_active_sort" ON "slides" ("active", "sort_order")`,
+  ];
+  for (const stmt of statements) {
+    try {
+      await db.execute(sql.raw(stmt));
+    } catch {
+      // Index creation is non-fatal
+    }
+  }
+}
+
+export function ensureSchema(force = false): Promise<SchemaReport> {
+  if (!ensuredPromise || force) {
+    ensuredPromise = (async () => {
+      const tables: SchemaReport["tables"] = {};
+      for (const [name, spec] of Object.entries(TABLES)) {
+        tables[name] = await reconcileTable(name, spec);
+      }
+      await ensureIndexes();
+      const report: SchemaReport = { ok: true, error: null, tables };
+      latestReport = report;
       return report;
+    })().catch((error) => {
+      ensuredPromise = null;
+      latestReport = {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        tables: {},
+      };
+      throw error;
     });
   }
-  return inflight;
-}
-
-/** Last known reconciliation result, for /api/health diagnostics. */
-export function getSchemaReport(): SchemaReport | null {
-  return lastReport;
-}
-
-async function query<T extends { rows: unknown[] }>(text: string, params: unknown[] = []): Promise<T> {
-  const pool = getPool();
-  const result = await pool.query(text, params);
-  return result as unknown as T;
-}
-
-async function listColumns(table: string): Promise<Map<string, ColumnInfo> | null> {
-  const res = await query<{ rows: { column_name: string; data_type: string }[] }>(
-    `select column_name, data_type
-       from information_schema.columns
-      where table_name = $1
-        and table_schema = any (current_schemas(false))
-      order by ordinal_position`,
-    [table]
-  );
-  if (!res.rows.length) return null; // table does not exist in any schema on the search path
-  const map = new Map<string, ColumnInfo>();
-  for (const row of res.rows) map.set(row.column_name, { name: row.column_name, dataType: row.data_type });
-  return map;
-}
-
-function createTableSql(spec: TableSpec): string {
-  const defs = spec.columns.map((column) => {
-    const parts = [quoteIdent(column.name), column.sqlType];
-    if (column.primary) parts.push("PRIMARY KEY");
-    if (column.notNull) parts.push("NOT NULL");
-    if (column.defaultSql) parts.push(`DEFAULT ${column.defaultSql}`);
-    return `  ${parts.join(" ")}`;
-  });
-  return `CREATE TABLE IF NOT EXISTS ${quoteIdent(spec.name)} (\n${defs.join(",\n")}\n)`;
-}
-
-function addColumnSql(table: string, column: ColumnSpec): string {
-  const parts = [quoteIdent(column.name), column.sqlType];
-  // Deliberately no NOT NULL here: adding a NOT NULL column without a default to
-  // a table that already holds rows is rejected by Postgres, and the existing
-  // rows must survive.
-  if (column.defaultSql) parts.push(`DEFAULT ${column.defaultSql}`);
-  return `ALTER TABLE ${quoteIdent(table)} ADD COLUMN IF NOT EXISTS ${parts.join(" ")}`;
-}
-
-/** Types that Postgres will move across without an explicit cast. */
-function compatible(fromType: string, toType: string): boolean {
-  const text = (t: string) => /char|text|uuid/i.test(t);
-  const num = (t: string) => /int|numeric|decimal|real|double/i.test(t);
-  const bool = (t: string) => /bool/i.test(t);
-  return (text(fromType) && text(toType)) || (num(fromType) && num(toType)) || (bool(fromType) && bool(toType));
-}
-
-function backfillSql(table: string, column: ColumnSpec, from: string): string {
-  const target = quoteIdent(column.name);
-  const source = quoteIdent(from);
-  const emptyTarget = isTextType(column.sqlType) ? `(${target} is null or ${target} = '')` : `${target} is null`;
-  return `UPDATE ${quoteIdent(table)} SET ${target} = ${source} WHERE ${emptyTarget} and ${source} is not null`;
-}
-
-async function reconcileTable(spec: TableSpec): Promise<TableReport> {
-  const report: TableReport = { exists: false, created: false, added: [], renamed: [], backfilled: [], skipped: [] };
-  let existing = await listColumns(spec.name);
-
-  if (!existing) {
-    await query(createTableSql(spec));
-    report.exists = true;
-    report.created = true;
-    report.added = spec.columns.map((c) => c.name);
-    return report;
-  }
-  report.exists = true;
-
-  // 1. Give every expected column a home, reusing legacy columns where possible.
-  for (const column of spec.columns) {
-    if (existing.has(column.name)) continue;
-    const alias = legacyAliasesFor(spec.name, column.name).find((name) => existing.has(name));
-    if (alias) {
-      const from = existing.get(alias)!;
-      if (!compatible(from.dataType, column.sqlType)) {
-        report.skipped.push(`${alias} → ${column.name} (${from.dataType} is not ${column.sqlType})`);
-        await query(addColumnSql(spec.name, column));
-        existing.set(column.name, { name: column.name, dataType: from.dataType });
-        report.added.push(column.name);
-        continue;
-      }
-      await query(
-        `ALTER TABLE ${quoteIdent(spec.name)} RENAME COLUMN ${quoteIdent(alias)} TO ${quoteIdent(column.name)}`
-      );
-      existing.delete(alias);
-      existing.set(column.name, from);
-      report.renamed.push({ from: alias, to: column.name });
-      continue;
-    }
-    await query(addColumnSql(spec.name, column));
-    existing.set(column.name, { name: column.name, dataType: column.sqlType });
-    report.added.push(column.name);
-  }
-
-  // 2. Where an old column survived next to the new one, carry its values across.
-  for (const column of spec.columns) {
-    for (const alias of legacyAliasesFor(spec.name, column.name)) {
-      const source = existing.get(alias);
-      if (!source) continue;
-      if (!compatible(source.dataType, column.sqlType)) {
-        report.skipped.push(`${alias} → ${column.name} (${source.dataType} is not ${column.sqlType})`);
-        continue;
-      }
-      await query(backfillSql(spec.name, column, alias));
-      report.backfilled.push(`${alias} → ${column.name}`);
-    }
-  }
-
-  return report;
-}
-
-async function reconcile(): Promise<SchemaReport> {
-  const report: SchemaReport = { ok: false, reconciled: false, tables: {} };
-  try {
-    for (const spec of TABLES) {
-      report.tables[spec.name] = await reconcileTable(spec);
-    }
-    report.ok = true;
-    report.reconciled = true;
-  } catch (error) {
-    report.error = error instanceof Error ? error.message : String(error);
-  }
-  return report;
+  return ensuredPromise;
 }

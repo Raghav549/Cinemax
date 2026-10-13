@@ -15,13 +15,11 @@ export interface MovieCardData {
   genre: string | null;
   duration: string | null;
   type?: string | null;
+  catalogStatus?: string | null;
+  releaseDate?: string | null;
+  sourceType?: string | null;
 }
 
-/**
- * Keep the catalogue card itself independent from watchlist context. A saved
- * item used to invalidate the full artwork/card tree for every visible title;
- * now only this small control subscribes to that changing state.
- */
 const MovieSaveButton = memo(function MovieSaveButton({ movieId, title }: { movieId: number; title: string }) {
   const { savedIds, pendingIds, toggle } = useWatchlist();
   const saved = savedIds.has(movieId);
@@ -41,19 +39,55 @@ const MovieSaveButton = memo(function MovieSaveButton({ movieId, title }: { movi
 
 function MovieCard({ movie, progress }: { movie: MovieCardData; progress?: number }) {
   const progressValue = progress === undefined ? undefined : Math.max(0, Math.min(100, progress));
-  return <article className="movie-card" role="listitem">
-    <Link className="movie-card-link" href={`/movie/${movie.id}${progressValue !== undefined ? "?play=1" : ""}`} aria-label={`${progressValue !== undefined ? "Continue watching" : "View"} ${movie.title}`}>
-      <div className="movie-poster">
-        <Artwork className="movie-poster-image" src={movie.posterUrl} alt={`${movie.title} poster`} />
-        {movie.type && movie.type.toLowerCase() !== "movie" && <span className="movie-type-badge">{movie.type}</span>}
-        <span className="movie-hover-play" aria-hidden="true"><Icon name="play" filled /></span>
-        {movie.rating && <span className="movie-rating-badge"><Icon name="star" filled />{movie.rating}</span>}
-        {progressValue !== undefined && <span className="movie-progress" aria-label={`${Math.round(progressValue)} percent watched`}><span style={{ width: `${progressValue}%` }} /></span>}
-      </div>
-      <div className="movie-card-copy"><h3 className="movie-card-title">{movie.title}</h3><p className="movie-card-meta">{[movie.year, movie.genre?.split(",")[0]?.trim() || movie.duration].filter(Boolean).join(" · ")}</p></div>
-    </Link>
-    <MovieSaveButton movieId={movie.id} title={movie.title} />
-  </article>;
+  const upcoming = movie.catalogStatus === "upcoming";
+  const href = `/movie/${movie.id}${progressValue !== undefined && !upcoming ? "?play=1" : ""}`;
+
+  return (
+    <article className="movie-card" role="listitem" data-status={movie.catalogStatus ?? "verified_playable"}>
+      <Link
+        className="movie-card-link"
+        href={href}
+        aria-label={`${progressValue !== undefined ? "Continue watching" : "View"} ${movie.title}`}
+      >
+        <div className="movie-poster">
+          <Artwork className="movie-poster-image" src={movie.posterUrl} alt={`${movie.title} poster`} />
+          {upcoming ? (
+            <span className="movie-type-badge movie-badge-upcoming">Coming Soon</span>
+          ) : (
+            movie.type && movie.type.toLowerCase() !== "movie" && <span className="movie-type-badge">{movie.type}</span>
+          )}
+          {!upcoming && (
+            <span className="movie-hover-play" aria-hidden="true">
+              <Icon name="play" filled />
+            </span>
+          )}
+          {movie.rating && !upcoming && (
+            <span className="movie-rating-badge">
+              <Icon name="star" filled />
+              {movie.rating}
+            </span>
+          )}
+          {upcoming && movie.releaseDate && (
+            <span className="movie-rating-badge movie-release-badge">{movie.releaseDate}</span>
+          )}
+          {progressValue !== undefined && (
+            <span className="movie-progress" aria-label={`${Math.round(progressValue)} percent watched`}>
+              <span style={{ width: `${progressValue}%` }} />
+            </span>
+          )}
+        </div>
+        <div className="movie-card-copy">
+          <h3 className="movie-card-title">{movie.title}</h3>
+          <p className="movie-card-meta">
+            {[movie.year, movie.genre?.split(",")[0]?.trim() || movie.duration || (upcoming ? "Upcoming" : "")]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+      </Link>
+      <MovieSaveButton movieId={movie.id} title={movie.title} />
+    </article>
+  );
 }
 
 export default memo(MovieCard);

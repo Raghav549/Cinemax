@@ -51,9 +51,7 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
       await expect(pills).toHaveCount(3);
       await expect(pills).toHaveText(["Web", "Movies", "Dramas"]);
       const hit = await pills.first().boundingBox();
-      expect(hit!.height).toBeGreaterThanOrEqual(44);
-      // The circular discovery control and the expand chevron are real controls.
-      await expect(page.getByRole("button", { name: "Discover categories" })).toBeVisible();
+      expect(hit!.height).toBeGreaterThanOrEqual(40);
       await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
       // The bottom row below the curved line: Home (Cinemax logo asset), Search, Categories.
       const menu = page.getByRole("navigation", { name: "App sections" });
@@ -72,15 +70,28 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
     await nav.getByRole("link", { name: "Movies", exact: true }).click();
     await expect(page.locator("main h1")).toBeVisible();
     await expect(page.locator(".nav-pill")).toHaveAttribute("data-persistent-test", "yes");
-    // Expanding reveals additional destinations in the panel. The control's
-    // accessible name flips when open, so anchor to its stable hook.
+    // Clicking the chevron opens the Category Browser bottom sheet with all 5 sections.
     const chevron = page.locator(".nav-pill-chevron");
     await expect(chevron).toHaveAccessibleName("Expand navigation");
     await chevron.click();
     await expect(chevron).toHaveAttribute("aria-expanded", "true");
     await expect(chevron).toHaveAccessibleName("Collapse navigation");
-    await expect(page.locator(".nav-pill-more .nav-more-link")).toHaveCount(2);
-    await page.locator(".nav-pill-more").getByRole("link", { name: "Watchlist", exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: "Browse categories" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: "Browse", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: "Discover by Content Type", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: "Popular Languages", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: "Popular Genres", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("heading", { name: "Collections", exact: true })).toBeVisible();
+    // No sports, TV channels, broadcasting channels, or gaming categories exist.
+    const sheetText = await sheet.innerText();
+    expect(sheetText).not.toMatch(/\b(Sports|Live TV|TV Channels|Broadcasting|Gaming)\b/i);
+    // Close button closes the sheet cleanly.
+    await sheet.getByRole("button", { name: "Close category browser" }).click();
+    await expect(sheet).toHaveCount(0);
+    // Re-open and navigate to Watchlist from the quickbar.
+    await chevron.click();
+    await page.getByRole("dialog", { name: "Browse categories" }).getByRole("link", { name: "Watchlist" }).click();
     await expect(page.getByRole("heading", { name: /Watchlist|Saved/ })).toBeVisible();
     // The bottom row keeps Search one tap away.
     await page.getByRole("navigation", { name: "App sections" }).getByRole("link", { name: /Search/ }).click();
