@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createPlaybackMovie, preparePage, servePlaybackFixtures, expectNoOverflow } from "./helpers";
+import { createPlaybackMovie, preparePage, servePlaybackFixtures, expectNoOverflow, dismissPlayer, ensureWindowedPlayer, revealPlayerControls } from "./helpers";
 
 test.beforeEach(async ({ page }) => { await preparePage(page); await servePlaybackFixtures(page); });
 
@@ -26,17 +26,18 @@ test("Watch Now launches direct playback with subtitles, speed, resume and focus
     await video.evaluate((element) => { const video = element as HTMLVideoElement; video.currentTime = 45; video.pause(); video.dispatchEvent(new Event("timeupdate")); });
     await expect.poll(() => page.evaluate((id) => JSON.parse(localStorage.getItem(`cinemax:playback:${id}`) || "{}").currentTime || 0, movie.id)).toBeGreaterThanOrEqual(44);
     await player.getByRole("button", { name: "Close playback settings", exact: true }).click();
-    await page.keyboard.press("Escape");
+    await dismissPlayer(page);
     await expect(player).toHaveCount(0);
     expect(await page.locator("#cinemax-app").evaluate((element) => (element as HTMLElement).inert)).toBe(false);
-    await expect(watch).toBeFocused();
+    // Focus returns to the play action, which now offers to resume.
+    await expect(page.getByRole("button", { name: /Watch Now|Resume watching/ }).first()).toBeFocused();
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const resume = page.getByRole("region", { name: "Continue watching", exact: true });
     await expect(resume.getByRole("link", { name: `Continue watching ${movie.title}`, exact: true })).toBeVisible();
     await resume.getByRole("link", { name: `Continue watching ${movie.title}`, exact: true }).click();
     await expect(page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true })).toBeVisible();
     await expect.poll(() => page.locator("video").evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(40);
-    await page.keyboard.press("Escape");
+    await dismissPlayer(page);
   } finally { await request.delete(`/api/movies/${movie.id}`); }
 });
 
@@ -55,8 +56,7 @@ test("HLS uses the real adaptive player and exposes selectable stream quality", 
     await expect(quality.getByRole("button", { name: "1080p", exact: true })).toHaveCount(0);
     await quality.getByRole("button", { name: "360p", exact: true }).click();
     await expect(quality.getByRole("button", { name: "360p", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
+    await dismissPlayer(page);
     await expect(player).toHaveCount(0);
   } finally { await request.delete(`/api/movies/${movie.id}`); }
 });
@@ -67,14 +67,22 @@ test("fullscreen fills the browser surface and exits before closing playback", a
     await page.goto(`/movie/${movie.id}?play=1`, { waitUntil: "domcontentloaded" });
     const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
     await expect(player).toBeVisible();
+    await ensureWindowedPlayer(page);
+    // The toggle's label flips as fullscreen settles - wait for it to exist,
+    // then click without re-resolving actionability against that transition.
+    await revealPlayerControls(page);
     const fullscreen = player.getByRole("button", { name: "Enter fullscreen", exact: true });
-    await fullscreen.click();
+    await expect(fullscreen).toBeVisible();
+    await fullscreen.click({ force: true });
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
     await expect(player).toHaveClass(/is-fullscreen/);
-    await player.getByRole("button", { name: "Exit fullscreen", exact: true }).click();
+    await revealPlayerControls(page);
+    const windowed = player.getByRole("button", { name: "Exit fullscreen", exact: true });
+    await expect(windowed).toBeVisible();
+    await windowed.click({ force: true });
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
     await expect(player).toBeVisible();
-    await page.keyboard.press("Escape");
+    await dismissPlayer(page);
     await expect(player).toHaveCount(0);
   } finally { await request.delete(`/api/movies/${movie.id}`); }
 });
@@ -101,7 +109,7 @@ test("unavailable media shows recoverable errors and Escape returns to details",
     await page.goto(`/movie/${movie.id}?play=1`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "This stream needs another moment" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
+    await dismissPlayer(page);
     await expect(page.locator(".video-player-shell")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: movie.title, exact: true })).toBeVisible();
   } finally { await request.delete(`/api/movies/${movie.id}`); }

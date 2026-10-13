@@ -3,19 +3,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type Hls from "hls.js";
+import { hasNativeShell, setNativePlayerFullscreen } from "@/lib/open-external";
 
 interface VideoPlayerProps {
   src: string;
   title: string;
   poster?: string;
-  movieId: number;
+  /** Catalogue id, or a stable id for ad-hoc share-link playback (resume keys). */
+  movieId: number | string;
   subtitleUrl?: string | null;
   subtitleLanguage?: string | null;
   onClose: () => void;
+  /** Request landscape/immersive playback as the player opens (Watch Now). */
+  openImmersive?: boolean;
 }
+
+/** Controls fade away ~1s after the last interaction while playing. */
+const CONTROLS_HIDE_DELAY_MS = 1000;
 
 type FitMode = "contain" | "cover" | "fill";
 type PlaybackSpeed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2;
+/** The only values offered - every HTML media engine supports this range. */
+const SUPPORTED_SPEEDS: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
 type SubtitleChoice = "off" | "external" | `hls:${number}`;
 interface QualityOption { index: number; label: string; height: number; bitrate: number; }
 interface SubtitleOption { value: SubtitleChoice; label: string; }
@@ -54,7 +63,7 @@ function IconButton({ label, onClick, children, pressed }: { label: string; onCl
   );
 }
 
-export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, subtitleLanguage, onClose }: VideoPlayerProps) {
+export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, subtitleLanguage, onClose, openImmersive = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -70,6 +79,10 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const seekingRef = useRef(false);
   const resumeAppliedRef = useRef(false);
   const showSettingsRef = useRef(false);
+  const dashRef = useRef<{ destroy?: () => void; reset?: () => void } | null>(null);
+  const interactingRef = useRef(false);
+  const fullscreenBusyRef = useRef(false);
+  const immersiveRequestedRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -100,6 +113,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const [resumeNotice, setResumeNotice] = useState("");
 
   const isHlsSource = useMemo(() => /\.m3u8(?:$|[?#])/i.test(src), [src]);
+  const isDashSource = useMemo(() => /\.mpd(?:$|[?#])/i.test(src), [src]);
   const hasExternalSubtitles = Boolean(subtitleUrl);
   const subtitleOptions = useMemo(() => [
     ...(hasExternalSubtitles ? [{ value: "external" as const, label: subtitleLanguageLabel(subtitleLanguage) }] : []),
@@ -108,13 +122,32 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
 
   useEffect(() => { showSettingsRef.current = showSettings; }, [showSettings]);
 
-  const showControls = useCallback(() => {
-    setControlsVisible(true);
+
+  const scheduleHideControls = useCallback((delay = CONTROLS_HIDE_DELAY_MS) => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused && !showSettingsRef.current) setControlsVisible(false);
-    }, 3500);
+      const video = videoRef.current;
+      // The visibility state machine never hides mid-gesture, with settings
+      // open, or while playback is paused - only after the interaction is over
+      // and the film is actually running.
+      if (!video || video.paused || showSettingsRef.current || interactingRef.current) return;
+      setControlsVisible(false);
+    }, delay);
   }, []);
+
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    scheduleHideControls();
+  }, [scheduleHideControls]);
+  // The auto-hide timer pauses while the settings sheet is open and restarts
+  // when it closes - no timer pile-up, no controls vanishing mid-adjustment.
+  useEffect(() => {
+    if (showSettings) {
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+    } else {
+      scheduleHideControls();
+    }
+  }, [showSettings, scheduleHideControls]);
 
   const saveProgress = useCallback(() => {
     const video = videoRef.current;
@@ -144,6 +177,16 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     let hls: Hls | null = null;
     let networkRecoveries = 0;
     let mediaRecoveries = 0;
+    // Warm the connection to the media host before the first segment request -
+    // one of the few things under Cinemax's control that shortens time-to-first-frame.
+    const preconnect = document.createElement("link");
+    preconnect.rel = "preconnect";
+    preconnect.setAttribute("data-cinemax-player", "preconnect");
+    try {
+      preconnect.href = new URL(src, window.location.href).origin;
+      if (preconnect.href !== window.location.origin) document.head.appendChild(preconnect);
+      else preconnect.remove();
+    } catch { preconnect.remove(); }
     const resumeKey = `cinemax:playback:${movieId}`;
 
     resumeAppliedRef.current = false;
@@ -185,6 +228,32 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     };
 
     const attachSource = async () => {
+      if (isDashSource) {
+        // MPEG-DASH through dash.js, loaded lazily so it never weighs on
+        // startup for the MP4/HLS majority.
+        try {
+          const dashLibrary = await import("dashjs");
+          if (isCancelled) return;
+          const dashModule = (dashLibrary as { default?: Record<string, unknown> }).default ?? (dashLibrary as unknown as Record<string, unknown>);
+          const mediaPlayer = (dashModule as { MediaPlayer: () => { create: () => { initialize: (el: HTMLVideoElement, src: string, auto: boolean) => void; on: (name: string, cb: () => void) => void; destroy?: () => void; reset?: () => void; updateSettings: (s: unknown) => void } } }).MediaPlayer().create();
+          if (isCancelled) { try { mediaPlayer.destroy?.(); } catch { /* already gone */ } return; }
+          dashRef.current = mediaPlayer;
+          try { mediaPlayer.updateSettings({ streaming: { buffer: { fastSwitchEnabled: true } } }); } catch { /* defaults are fine */ }
+          mediaPlayer.on("error", () => {
+            if (isCancelled) return;
+            setErrored(true);
+            setBuffering(false);
+            setPreparing(false);
+          });
+          mediaPlayer.initialize(video, src, true);
+        } catch {
+          if (!isCancelled) {
+            setErrored(true);
+            setPreparing(false);
+          }
+        }
+        return;
+      }
       if (!isHlsSource) {
         video.src = src;
         video.load();
@@ -296,7 +365,14 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       }
     };
     const onPlay = () => { setPlaying(true); setBuffering(false); setPreparing(false); showControls(); };
-    const onPause = () => { setPlaying(false); setBuffering(false); setControlsVisible(true); saveProgress(); };
+    const onPause = () => {
+      setPlaying(false);
+      setBuffering(false);
+      // The auto-hide timer is cancelled while paused: controls stay visible.
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+      setControlsVisible(true);
+      saveProgress();
+    };
     const onWaiting = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
       bufferingTimerRef.current = setTimeout(() => setBuffering(true), 220);
@@ -312,7 +388,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     const onError = () => {
       clearPrepareTimeout();
       setPreparing(false);
-      if (!isHlsSource || !hlsRef.current) setErrored(true);
+      // HLS and DASH surface their own recoverable error paths.
+      if (!isHlsSource && !isDashSource) setErrored(true);
     };
     const onEnded = () => {
       setPlaying(false);
@@ -371,10 +448,14 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       video.removeEventListener("leavepictureinpicture", onPipLeave);
       if (hlsRef.current === hls) hlsRef.current = null;
       hls?.destroy();
+      const dash = dashRef.current;
+      dashRef.current = null;
+      try { dash?.destroy?.(); } catch { try { dash?.reset?.(); } catch { /* engine already gone */ } }
+      if (preconnect.isConnected) preconnect.remove();
       video.removeAttribute("src");
       video.load();
     };
-  }, [isHlsSource, movieId, retryCount, saveProgress, showControls, src]);
+  }, [isDashSource, isHlsSource, movieId, retryCount, saveProgress, showControls, src]);
 
   useEffect(() => () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -443,46 +524,76 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   }, [showControls]);
 
   const dispatchNativeFullscreen = useCallback((active: boolean) => {
-    window.dispatchEvent(new CustomEvent("cinemax:player-fullscreen", { detail: { active } }));
+    setNativePlayerFullscreen(active);
   }, []);
 
   const exitPlayerFullscreen = useCallback(async () => {
+    if (fullscreenBusyRef.current) return;
+    fullscreenBusyRef.current = true;
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-    } catch {
-      // The native shell still restores orientation and system bars below.
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } catch {
+        // The native shell still restores orientation and system bars below.
+      }
+      try { (window.screen?.orientation as { unlock?: () => void } | undefined)?.unlock?.(); } catch { /* not supported */ }
+      setNativeFullscreen(false);
+      setIsFullscreen(false);
+      dispatchNativeFullscreen(false);
+      showControls();
+    } finally {
+      fullscreenBusyRef.current = false;
     }
-    setNativeFullscreen(false);
-    setIsFullscreen(false);
-    dispatchNativeFullscreen(false);
-    showControls();
   }, [dispatchNativeFullscreen, showControls]);
 
-  const toggleFullscreen = useCallback(async () => {
+  const enterPlayerFullscreen = useCallback(async () => {
     const element = wrapRef.current;
-    if (!element) return;
-    if (document.fullscreenElement || nativeFullscreen) {
-      await exitPlayerFullscreen();
-      return;
-    }
-    const nativeBridge = (window as typeof window & { CinemaxNative?: { enterPlayerFullscreen?: () => void } }).CinemaxNative;
-    const hasNativeFullscreen = typeof nativeBridge?.enterPlayerFullscreen === "function";
-    if (hasNativeFullscreen) {
-      // Android keeps the WebView in place, rotates it to landscape and hides
-      // system bars. The CSS shell continues to fill that native surface.
+    if (!element || fullscreenBusyRef.current) return;
+    if (document.fullscreenElement || nativeFullscreen) return;
+    fullscreenBusyRef.current = true;
+    // Android keeps the WebView in place, rotates it to landscape and hides
+    // system bars. The CSS shell continues to fill that native surface.
+    const nativeShell = hasNativeShell();
+    if (nativeShell) {
       setNativeFullscreen(true);
       setIsFullscreen(true);
       dispatchNativeFullscreen(true);
     }
     try {
       await element.requestFullscreen();
+      try { await (window.screen?.orientation as { lock?: (orientation: string) => Promise<void> } | undefined)?.lock?.("landscape"); } catch { /* desktop browsers refuse; playback is already landscape there */ }
     } catch {
-      // A WebView can deny the DOM Fullscreen API; the native Android path above
-      // remains a complete fullscreen experience in that case.
-      if (!hasNativeFullscreen) setIsFullscreen(false);
+      // A WebView or a browser without a user gesture can deny the DOM
+      // Fullscreen API; the native Android path above remains complete.
+      if (!nativeShell) setIsFullscreen(false);
+    } finally {
+      fullscreenBusyRef.current = false;
     }
+  }, [dispatchNativeFullscreen, nativeFullscreen]);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (document.fullscreenElement || nativeFullscreen) {
+      await exitPlayerFullscreen();
+      return;
+    }
+    await enterPlayerFullscreen();
     showControls();
-  }, [dispatchNativeFullscreen, exitPlayerFullscreen, nativeFullscreen, showControls]);
+  }, [enterPlayerFullscreen, exitPlayerFullscreen, nativeFullscreen, showControls]);
+
+  // Watch Now opens landscape/immersive playback by default: the Android shell
+  // rotates to landscape and hides system bars; a phone-sized portrait browser
+  // gets the Fullscreen API where the platform allows it. Desktop browsers,
+  // already landscape, simply show the player.
+  useEffect(() => {
+    if (!openImmersive || immersiveRequestedRef.current) return;
+    immersiveRequestedRef.current = true;
+    const portraitHandset = typeof window !== "undefined" && window.innerHeight > window.innerWidth + 40;
+    if (!hasNativeShell() && !portraitHandset) return;
+    // Deferred one frame so the request happens as an async interaction with
+    // the Fullscreen API, not as synchronous work inside the effect body.
+    const frame = window.requestAnimationFrame(() => { void enterPlayerFullscreen(); });
+    return () => window.cancelAnimationFrame(frame);
+  }, [enterPlayerFullscreen, openImmersive]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -554,8 +665,12 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   }, [exitPlayerFullscreen, isFullscreen, locked, onClose, setVolumeValue, seekBy, showSettings, toggleFullscreen, toggleMute, togglePlay, volume]);
 
   const setPlaybackSpeed = (value: PlaybackSpeed) => {
-    if (videoRef.current) videoRef.current.playbackRate = value;
-    setSpeed(value);
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = value;
+    // Display the speed the engine actually applied, not the one requested.
+    const applied = video.playbackRate;
+    setSpeed((SUPPORTED_SPEEDS as PlaybackSpeed[]).includes(applied as PlaybackSpeed) ? (applied as PlaybackSpeed) : 1);
     showControls();
   };
 
@@ -718,6 +833,10 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           onPointerDown={(event) => {
             if (locked) return;
             seekingRef.current = true;
+            // Dragging the seek bar pins the controls; the hide timer restarts
+            // only after the gesture ends.
+            interactingRef.current = true;
+            if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
             event.currentTarget.setPointerCapture?.(event.pointerId);
             seekToPointer(event.clientX, event.currentTarget);
           }}
@@ -728,9 +847,15 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
             if (!seekingRef.current) return;
             seekToPointer(event.clientX, event.currentTarget, true);
             seekingRef.current = false;
+            interactingRef.current = false;
             if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId);
+            scheduleHideControls();
           }}
-          onPointerCancel={() => { seekingRef.current = false; }}
+          onPointerCancel={() => {
+            seekingRef.current = false;
+            interactingRef.current = false;
+            scheduleHideControls();
+          }}
           onClick={(event) => seekToPointer(event.clientX, event.currentTarget, true)}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") seekBy(-5);
@@ -754,7 +879,11 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
             <IconButton label={muted ? "Unmute" : "Mute"} onClick={toggleMute}>
               {muted ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 4 5 6m0-6-5 6" /></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Zm4 3a6 6 0 0 1 0 8m2.5-10.5a9.5 9.5 0 0 1 0 13" /></svg>}
             </IconButton>
-            <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={(event) => setVolumeValue(Number(event.target.value))} style={{ width: 62, accentColor: "var(--accent)" }} />
+            <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+              onChange={(event) => setVolumeValue(Number(event.target.value))}
+              onPointerDown={() => { interactingRef.current = true; if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; } }}
+              onPointerUp={() => { interactingRef.current = false; scheduleHideControls(); }}
+              style={{ width: 62, accentColor: "var(--accent)" }} />
             <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
           </div>
           <div className="player-control-group">
@@ -793,7 +922,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
 
           <span className="player-setting-label">Playback speed</span>
           <div className="player-setting-group">
-            {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((value) => (
+            {(SUPPORTED_SPEEDS as PlaybackSpeed[]).map((value) => (
               <button key={value} className="player-setting-option" type="button" aria-pressed={speed === value} onClick={() => setPlaybackSpeed(value)}>{value}×</button>
             ))}
           </div>

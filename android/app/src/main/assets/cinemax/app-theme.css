@@ -108,18 +108,10 @@ html[data-cinemax-app="android"] .site-header-wrap {
   background: linear-gradient(180deg, rgba(5, 5, 7, 0.98), rgba(5, 5, 7, 0.72) 70%, rgba(5, 5, 7, 0));
 }
 
-/* Brand accent line inside the status-bar band. */
-html[data-cinemax-app="android"] .site-header-wrap::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  border-radius: 0 0 3px 3px;
-  background: linear-gradient(90deg, #4fd8ff, #8b5cf6 45%, #ff4fa3 82%, #ffb45c);
-  opacity: 0.9;
-}
+/* No decorative strip in the system status-bar band. The previous revision
+   painted a multicoloured accent line at the very top edge of the screen; the
+   status-bar background now simply blends with the screen background (the
+   deep-black Cinemax canvas), on every screen and in every orientation. */
 
 html[data-cinemax-app="android"] .site-header-wrap[data-scrolled="true"] {
   background: rgba(5, 5, 7, 0.98);

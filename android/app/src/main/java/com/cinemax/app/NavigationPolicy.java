@@ -25,7 +25,13 @@ public final class NavigationPolicy {
         /** Load inside the app WebView. */
         STAY_IN_APP,
         /** Open with the system (browser, mail client, dialer, store, ...). */
-        OPEN_EXTERNALLY
+        OPEN_EXTERNALLY,
+        /**
+         * Cancel the navigation entirely. Reserved for dangerous schemes
+         * (javascript:, data:, file:, vbscript:, content:) that must never be
+         * loaded in the privileged WebView nor handed to another app.
+         */
+        BLOCK
     }
 
     public static Decision decide(String scheme, String host) {
@@ -33,14 +39,20 @@ public final class NavigationPolicy {
         String normalizedHost = normalize(host);
 
         if (normalizedScheme.isEmpty()) {
-            // Relative / same-document navigation (about:blank, blob:, data:).
+            // Relative / same-document navigation (about:blank, blob:).
             return Decision.STAY_IN_APP;
         }
-        if ("about".equals(normalizedScheme)
-                || "javascript".equals(normalizedScheme)
+        if ("javascript".equals(normalizedScheme)
                 || "data".equals(normalizedScheme)
-                || "blob".equals(normalizedScheme)
-                || "file".equals(normalizedScheme)) {
+                || "file".equals(normalizedScheme)
+                || "vbscript".equals(normalizedScheme)
+                || "content".equals(normalizedScheme)) {
+            // Untrusted input can never make the privileged WebView execute
+            // script URLs, render data: documents or read local files.
+            return Decision.BLOCK;
+        }
+        if ("about".equals(normalizedScheme) || "blob".equals(normalizedScheme)) {
+            // about:blank and blob media documents are same-context only.
             return Decision.STAY_IN_APP;
         }
         if ("http".equals(normalizedScheme) || "https".equals(normalizedScheme)) {

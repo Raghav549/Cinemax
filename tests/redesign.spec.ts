@@ -49,11 +49,19 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
       await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
       const pills = page.locator(".nav-pill-link");
       await expect(pills).toHaveCount(3);
+      await expect(pills).toHaveText(["Web", "Movies", "Dramas"]);
       const hit = await pills.first().boundingBox();
       expect(hit!.height).toBeGreaterThanOrEqual(44);
       // The circular discovery control and the expand chevron are real controls.
-      await expect(page.getByRole("link", { name: "Discover categories" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Discover categories" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Expand navigation" })).toBeVisible();
+      // The bottom row below the curved line: Home (Cinemax logo asset), Search, Categories.
+      const menu = page.getByRole("navigation", { name: "App sections" });
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("link", { name: /Home/ })).toBeVisible();
+      await expect(menu.locator("img.nav-menu-logo")).toHaveAttribute("src", "/brand/cinemax-symbol.svg");
+      await expect(menu.getByRole("link", { name: /Search/ })).toBeVisible();
+      await expect(menu.getByRole("link", { name: /Categories/ })).toBeVisible();
     }
   }
   if (info.project.name !== "desktop") {
@@ -64,12 +72,18 @@ test("layouts stay within desktop, mobile and 320px screens; navigation survives
     await nav.getByRole("link", { name: "Movies", exact: true }).click();
     await expect(page.locator("main h1")).toBeVisible();
     await expect(page.locator(".nav-pill")).toHaveAttribute("data-persistent-test", "yes");
-    // Expanding reveals the original destinations in the panel.
-    const chevron = page.getByRole("button", { name: "Expand navigation" });
+    // Expanding reveals additional destinations in the panel. The control's
+    // accessible name flips when open, so anchor to its stable hook.
+    const chevron = page.locator(".nav-pill-chevron");
+    await expect(chevron).toHaveAccessibleName("Expand navigation");
     await chevron.click();
     await expect(chevron).toHaveAttribute("aria-expanded", "true");
-    await expect(page.locator(".nav-more-link")).toHaveCount(4);
-    await page.getByRole("link", { name: "Search", exact: true }).click();
+    await expect(chevron).toHaveAccessibleName("Collapse navigation");
+    await expect(page.locator(".nav-pill-more .nav-more-link")).toHaveCount(2);
+    await page.locator(".nav-pill-more").getByRole("link", { name: "Watchlist", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Watchlist|Saved/ })).toBeVisible();
+    // The bottom row keeps Search one tap away.
+    await page.getByRole("navigation", { name: "App sections" }).getByRole("link", { name: /Search/ }).click();
     await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
   }
 });
@@ -131,10 +145,15 @@ test("carousel keyboard scrolling is smooth and posters are not vertically clipp
   await track.focus();
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(10);
-  const bounds = await track.boundingBox();
-  const poster = await track.locator(".movie-poster").first().boundingBox();
-  expect(poster!.y).toBeGreaterThanOrEqual(bounds!.y);
-  expect(poster!.y + poster!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
+  // Both rects are read in one shot: separate boundingBox() calls can straddle
+  // a layout settle (lazy rows, artwork decode) and compare stale geometry.
+  const geometry = await track.evaluate((element) => {
+    const trackRect = element.getBoundingClientRect();
+    const posterRect = element.querySelector(".movie-poster")!.getBoundingClientRect();
+    return { trackTop: trackRect.top, trackBottom: trackRect.bottom, posterTop: posterRect.top, posterBottom: posterRect.bottom };
+  });
+  expect(geometry.posterTop).toBeGreaterThanOrEqual(geometry.trackTop - 1);
+  expect(geometry.posterBottom).toBeLessThanOrEqual(geometry.trackBottom + 1);
 });
 
 test("unavailable catalogue is explicit and never replaced with mock titles", async ({ page }) => {

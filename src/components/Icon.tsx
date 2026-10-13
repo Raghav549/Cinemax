@@ -1,6 +1,6 @@
 import type { SVGProps, ReactNode } from "react";
 
-export type IconName = "home" | "search" | "explore" | "discover" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "chevron-down" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort";
+export type IconName = "home" | "search" | "explore" | "discover" | "categories" | "bookmark" | "play" | "pause" | "info" | "arrow-left" | "arrow-right" | "chevron-left" | "chevron-right" | "chevron-down" | "close" | "plus" | "check" | "star" | "film" | "series" | "sparkles" | "action" | "orbit" | "drama" | "comedy" | "thriller" | "horror" | "documentary" | "trending" | "share" | "trash" | "refresh" | "lock" | "sort" | "link" | "external";
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" /><path d="M9 21v-7h6v7" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.8" /><path d="m15.6 15.6 4.7 4.7" /></>,
@@ -35,6 +35,9 @@ const paths: Record<IconName, ReactNode> = {
   refresh: <><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.7-2L20 8M4 16l2.2 3A7 7 0 0 0 17.9 17" /></>,
   lock: <><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" /></>,
   sort: <><path d="M8 4v16m-4-4 4 4 4-4M16 20V4m-4 4 4-4 4 4" /></>,
+  categories: <><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></>,
+  link: <><path d="M10 13.5a4.5 4.5 0 0 0 6.4.4l2.7-2.7a4.5 4.5 0 1 0-6.4-6.3l-1.5 1.5" /><path d="M14 10.5a4.5 4.5 0 0 0-6.4-.4l-2.7 2.7a4.5 4.5 0 1 0 6.4 6.3l1.5-1.5" /></>,
+  external: <><path d="M14 4h6v6" /><path d="m20 4-8.5 8.5" /><path d="M19 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" /></>,
 };
 
 export default function Icon({ name, filled = false, ...props }: SVGProps<SVGSVGElement> & { name: IconName; filled?: boolean }) {
