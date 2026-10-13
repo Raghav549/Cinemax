@@ -57,7 +57,7 @@ function MovieRow({ title, category, movies, progressByMovie }: { title: string;
   }, [reducedMotion]);
 
   if (!movies.length) return null;
-  return <section className="movie-row" aria-label={title}>
+  return <section className="movie-row" data-category={category} aria-label={title}>
     <div className="movie-row-head"><h2 className="movie-row-title">{title}</h2><div className="movie-row-actions">
       {category && category !== "continue" && <Link className="movie-row-more" href={`/category/${encodeURIComponent(category)}`}>View all <Icon name="chevron-right" /></Link>}
       <button className="icon-button row-arrow" type="button" aria-label={`Scroll ${title} left`} disabled={edges.start} onClick={() => scroll(-1)}><Icon name="chevron-left" /></button>

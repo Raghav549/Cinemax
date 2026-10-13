@@ -950,3 +950,29 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
 @media (max-width: 400px) {
   .category-browser-header, .category-browser-quickbar, .category-browser-body { padding-inline: 14px; }
 }
+
+/* Mobile home rails and roomy, safe-area-aware primary navigation. */
+@media (max-width: 640px) {
+  .home-shell .movie-track .movie-card { flex-basis: clamp(156px, 44vw, 220px); }
+  .home-shell .movie-track .movie-poster-image { object-fit: contain; }
+  .home-shell .movie-row-head { margin-bottom: 16px; }
+
+  /* In normal flow: the glow can never cross the heading or View all. */
+  .home-shell .movie-row[data-category="movies"]::before {
+    content: "";
+    display: block;
+    height: 28px;
+    margin: 0 var(--gutter) 12px;
+    background: url("/decoration/movies-streak.svg") center / 100% 100% no-repeat;
+    pointer-events: none;
+  }
+
+  .bottom-nav-wrap { padding: 8px 10px calc(10px + var(--safe-bottom)); }
+  .nav-menu { width: min(100%, 480px); padding: 6px; gap: 4px; border-radius: 22px; background-color: #030305; }
+  .nav-menu-link, button.nav-menu-link { min-height: 64px; gap: 5px; padding: 8px 6px; border-radius: 16px; font-size: 12px; font-weight: 680; line-height: 1.1; }
+  .nav-menu-icon { width: 28px; height: 28px; }
+  .nav-menu-icon svg, .nav-menu-logo { width: 26px; height: 26px; }
+  .nav-menu-more .nav-menu-icon, .nav-menu-more .more-icon { width: 30px; height: 30px; }
+  .nav-menu-link[aria-current="page"]::before { width: 28px; }
+  .home-shell, .secondary-page, .movie-detail-page { padding-bottom: calc(112px + var(--safe-bottom)); }
+}
