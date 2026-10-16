@@ -55,7 +55,7 @@ export const unknownPageAdapter: ProviderAdapter = {
     tagline: "Cinemax plays this link through the site’s own experience.",
     accent: "#8a93b2",
     requirements: { login: false, subscription: false, drm: false },
-    restriction: "Cinemax doesn’t have an integration for this site yet, and won’t load unknown pages inside the app player. The original link is preserved and can be opened in your browser.",
+    restriction: "Cinemax plays a page’s own player or a video it publishes inside the app. When a page offers neither, the original link is preserved and can be opened in your browser.",
   },
   match() {
     return true;

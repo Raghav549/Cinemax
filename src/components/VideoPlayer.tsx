@@ -16,6 +16,8 @@ interface VideoPlayerProps {
   onClose: () => void;
   /** Request landscape/immersive playback as the player opens (Watch Now). */
   openImmersive?: boolean;
+  /** Engine chosen by the playback resolver. Overrides URL-extension sniffing (signed manifests). */
+  engine?: "video" | "hls" | "dash";
 }
 
 /** Controls fade away ~1s after the last interaction while playing. */
@@ -63,7 +65,7 @@ function IconButton({ label, onClick, children, pressed }: { label: string; onCl
   );
 }
 
-export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, subtitleLanguage, onClose, openImmersive = true }: VideoPlayerProps) {
+export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, subtitleLanguage, onClose, openImmersive = true, engine }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -112,8 +114,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const [subtitleChoice, setSubtitleChoice] = useState<SubtitleChoice>("off");
   const [resumeNotice, setResumeNotice] = useState("");
 
-  const isHlsSource = useMemo(() => /\.m3u8(?:$|[?#])/i.test(src), [src]);
-  const isDashSource = useMemo(() => /\.mpd(?:$|[?#])/i.test(src), [src]);
+  const isHlsSource = useMemo(() => (engine ? engine === "hls" : /\.m3u8(?:$|[?#])/i.test(src)), [engine, src]);
+  const isDashSource = useMemo(() => (engine ? engine === "dash" : /\.mpd(?:$|[?#])/i.test(src)), [engine, src]);
   const hasExternalSubtitles = Boolean(subtitleUrl);
   const subtitleOptions = useMemo(() => [
     ...(hasExternalSubtitles ? [{ value: "external" as const, label: subtitleLanguageLabel(subtitleLanguage) }] : []),

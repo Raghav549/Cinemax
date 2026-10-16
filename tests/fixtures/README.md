@@ -18,3 +18,14 @@ The original synthetic clip was generated with FFmpeg's `color` and
 `drawbox` filters; the 640×360 test rendition was then scaled and H.264
 re-encoded from it with FFmpeg. No third-party media,
 licensed catalogue artwork, database snapshots or credentials are committed.
+
+## Local provider for `universal-playback.spec.ts`
+
+`local-provider.mjs` is a loopback test provider (not a real streaming site). It serves
+range-capable media, HLS/DASH manifests and watch-page shapes (JS-only player, static
+`<video>`, OpenGraph video, iframe embed, frame-denied, redirect, article, 404) on port 8900
+(`PORT` overrides). Run it with `FIXTURE_ROOT=<dir containing media/>` and start the app with
+`CINEMAX_PLAYBACK_ALLOW_PRIVATE_HOSTS=true` so the server may reach the loopback provider.
+
+The media it serves (`media/clip.mp4`, `media/clip.webm`, `media/hls/`, `media/dash/`) are
+short synthetic clips generated locally and are intentionally not committed.

@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import VideoPlayer from "./VideoPlayer";
 import ProviderLanding from "./ProviderLanding";
 import Icon from "./Icon";
 import { hasNativeShell, setNativePlayerFullscreen } from "@/lib/open-external";
 import { resolveShareLink, type LinkResolution } from "@/lib/providers";
+import { needsServerResolution } from "@/lib/playback/classify";
 import type { CatalogueMovie } from "@/lib/catalogue";
 
 /**
@@ -34,6 +35,39 @@ export function resolvePlaybackSource(videoUrl: string | null | undefined): Link
   // pre-registry behaviour. Pasted share links never take this path.
   const resolution = resolveShareLink(videoUrl, { allowUnknownDirect: true });
   return resolution.ok ? resolution : null;
+}
+
+/**
+ * Fetches the server-side playback plan for a catalogue title whose stored source
+ * is a web link (watch page, unidentified CDN URL). The request is aborted when
+ * the overlay closes, so a late answer can never start playback afterwards.
+ */
+function useServerPlayback(movieId: number, enabled: boolean) {
+  const key = enabled ? String(movieId) : "";
+  const [state, setState] = useState<{ key: string; resolution: LinkResolution | null; error: string }>({ key: "", resolution: null, error: "" });
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    fetch(`/api/movies/${movieId}/playback`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as { resolution?: LinkResolution; error?: string } | null;
+        if (!response.ok || !body?.resolution) {
+          throw new Error(body?.error || "This title’s playback link could not be checked.");
+        }
+        setState({ key, resolution: body.resolution, error: "" });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({ key, resolution: null, error: error instanceof Error ? error.message : "The playback link could not be checked." });
+      });
+    return () => controller.abort();
+  }, [enabled, key, movieId]);
+  const ready = enabled && state.key === key;
+  return {
+    loading: enabled && !ready,
+    resolution: ready ? state.resolution : null,
+    error: ready ? state.error : "",
+  };
 }
 
 export interface PlaybackTarget {
@@ -105,10 +139,15 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
   const closingRef = useRef(false);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
 
-  const resolution = useMemo(
-    () => (providedResolution !== undefined ? providedResolution : resolvePlaybackSource(movie.videoUrl)),
-    [providedResolution, movie.videoUrl],
+  // Web links (watch pages, unidentified URLs) are inspected on the server first;
+  // known providers and direct files keep resolving instantly in the browser.
+  const serverSourced = providedResolution === undefined && needsServerResolution(movie.videoUrl);
+  const remote = useServerPlayback(Number(movie.id), serverSourced);
+  const localResolution = useMemo(
+    () => (providedResolution !== undefined || serverSourced ? null : resolvePlaybackSource(movie.videoUrl)),
+    [providedResolution, serverSourced, movie.videoUrl],
   );
+  const resolution = providedResolution !== undefined ? providedResolution : serverSourced ? remote.resolution : localResolution;
   const poster = ("poster" in movie ? movie.poster : null) || movie.backdropUrl || movie.posterUrl || undefined;
 
   // One history entry per viewing session: back unwinds the player before it
@@ -199,6 +238,20 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
     };
   }, [requestClose]);
 
+  if (serverSourced && remote.loading) {
+    return createPortal(<div ref={layer} className="playback-layer" tabIndex={-1}>
+      <div className="video-player-shell" role="dialog" aria-modal="true" aria-label={`Preparing ${movie.title}`}>
+        <div className="player-error">
+          <h2 className="player-error-title">Finding the stream…</h2>
+          <p className="player-error-copy">Cinemax is checking this title’s link for a video or the provider’s own player.</p>
+          <div className="player-error-actions">
+            <button type="button" onClick={requestClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>, document.body);
+  }
+
   if (!resolution) {
     return createPortal(<div ref={layer} className="playback-layer" tabIndex={-1}>
       <div className="video-player-shell" role="dialog" aria-modal="true" aria-label={`Playback unavailable: ${movie.title}`}>
@@ -207,7 +260,7 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 8v4m0 4h.01" /></svg>
           </span>
           <h2 className="player-error-title">No playable source</h2>
-          <p className="player-error-copy">This title’s playback link is not a supported video source. Nothing has been started.</p>
+          <p className="player-error-copy">{(serverSourced && remote.error) || "This title’s playback link is not a supported video source. Nothing has been started."}</p>
           <div className="player-error-actions">
             <button className="primary" type="button" onClick={requestClose}>Back to title</button>
           </div>
@@ -227,6 +280,7 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
         subtitleLanguage={movie.subtitleLanguage ?? undefined}
         onClose={requestClose}
         openImmersive={openImmersive}
+        engine={resolution.playback.engine}
       />
     ) : resolution.playback.strategy === "embed" ? (
       <EmbedShell resolution={resolution} title={movie.title} onClose={requestClose} />

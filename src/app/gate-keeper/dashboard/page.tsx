@@ -289,7 +289,7 @@ export default function AdminDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                     <div><label style={labelStyle}>Poster URL</label><input className="glass-input" value={mPoster} onChange={e=>setMPoster(e.target.value)} /></div>
                     <div><label style={labelStyle}>Backdrop URL</label><input className="glass-input" value={mBackdrop} onChange={e=>setMBackdrop(e.target.value)} /></div>
-                    <div><label style={labelStyle}>Playback source</label><input className="glass-input" value={mVideo} onChange={e=>setMVideo(e.target.value)} placeholder="MP4, HLS, YouTube, Vimeo, or magnet URI" /><p style={{ color: "rgba(255,255,255,0.32)", fontSize: 10, lineHeight: 1.5, marginTop: 6 }}>Magnet streams are private server-side and require a configured persistent gateway.</p></div>
+                    <div><label style={labelStyle}>Playback source</label><input className="glass-input" value={mVideo} onChange={e=>setMVideo(e.target.value)} placeholder="MP4, WebM, HLS, DASH, watch-page link, YouTube, Vimeo, or magnet URI" /><p style={{ color: "rgba(255,255,255,0.32)", fontSize: 10, lineHeight: 1.5, marginTop: 6 }}>Magnet streams are private server-side and require a configured persistent gateway.</p></div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
                     <div><label style={labelStyle}>Subtitle / captions URL (WebVTT)</label><input className="glass-input" value={mSubtitle} onChange={e=>setMSubtitle(e.target.value)} placeholder="https://…/captions.vtt" /></div>
