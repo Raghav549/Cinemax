@@ -5,6 +5,8 @@ import { getDb } from "@/db";
 import { movies } from "@/db/schema";
 import { normalizeMovie, type CatalogStatus, type MovieRow, type SourceType } from "@/db/rows";
 import { resolveShareLink } from "@/lib/providers/registry";
+import { needsServerResolution } from "@/lib/playback/classify";
+import { resolveWebPlayback } from "@/lib/playback/web-resolver";
 
 export type VerificationCheckReport = {
   verified: boolean;
@@ -230,7 +232,50 @@ export async function verifyMovieSource(
     };
   }
 
-  const { playback } = resolved;
+  // Web links (watch pages, unidentified URLs) are verified by what the server
+  // finds at the link - the same plan the player will use - not by assuming the
+  // page itself is a media file.
+  let playback = resolved.playback;
+  if (needsServerResolution(videoUrl)) {
+    const web = await resolveWebPlayback(videoUrl, { embedderOrigin: options.baseUrl });
+    if (!web.ok) {
+      return {
+        verified: false,
+        catalogStatus: web.status >= 500 ? "temporarily_unavailable" : "verification_failed",
+        sourceType: movie.sourceType ?? "direct",
+        strategy: "none",
+        httpStatus: web.status,
+        mimeType: null,
+        rangeSupported: false,
+        seekSupported: false,
+        corsPermitted: false,
+        containerValid: false,
+        rightsVerified: Boolean(movie.rightsConfirmed),
+        metadataValid: metaCheck.valid,
+        reason: web.message,
+        checkedAt,
+      };
+    }
+    if (web.resolution.playback.strategy === "external") {
+      return {
+        verified: false,
+        catalogStatus: "verification_failed",
+        sourceType: movie.sourceType ?? "direct",
+        strategy: "none",
+        httpStatus: 200,
+        mimeType: "text/html",
+        rangeSupported: false,
+        seekSupported: false,
+        corsPermitted: false,
+        containerValid: false,
+        rightsVerified: Boolean(movie.rightsConfirmed),
+        metadataValid: metaCheck.valid,
+        reason: web.resolution.playback.message,
+        checkedAt,
+      };
+    }
+    playback = web.resolution.playback;
+  }
 
   // 5. Official external OTT services (Netflix, Prime Video, Hotstar, etc.)
   if (playback.strategy === "external") {
@@ -411,13 +456,19 @@ export async function verifyMovieSource(
         };
       }
 
-      const childUrl = firstChild.startsWith("/") || firstChild.startsWith("http") ? firstChild : `${baseDir}${firstChild}`;
-      const childRes = await fetchMediaEndpoint(childUrl, {}, options.baseUrl);
-      const childText = Buffer.from(childRes.body).toString("utf8");
-      const segmentLine = childText
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .find((l) => l && !l.startsWith("#"));
+      // A single-level (media) playlist lists segments directly, so its first
+      // entry is already a segment rather than a child playlist.
+      const isChildPlaylist = /\.m3u8(?:[?#]|$)/i.test(firstChild);
+      let segmentLine: string | undefined = firstChild;
+      if (isChildPlaylist) {
+        const childUrl = firstChild.startsWith("/") || firstChild.startsWith("http") ? firstChild : `${baseDir}${firstChild}`;
+        const childRes = await fetchMediaEndpoint(childUrl, {}, options.baseUrl);
+        const childText = Buffer.from(childRes.body).toString("utf8");
+        segmentLine = childText
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .find((l) => l && !l.startsWith("#"));
+      }
 
       if (segmentLine) {
         const segUrl = segmentLine.startsWith("/") || segmentLine.startsWith("http") ? segmentLine : `${baseDir}${segmentLine}`;
@@ -446,6 +497,84 @@ export async function verifyMovieSource(
           };
         }
       }
+    }
+
+    // MPEG-DASH manifest: confirm the MPD and that its first initialization
+    // segment (or media segment) resolves to an MP4 container.
+    if (playback.engine === "dash") {
+      const mpdRes = await fetchMediaEndpoint(playback.src, {}, options.baseUrl);
+      const mpdText = Buffer.from(mpdRes.body).toString("utf8");
+      const mpdMime = mpdRes.headers.get("content-type") ?? "";
+      if (mpdRes.status !== 200 || !/<MPD[\s>]/.test(mpdText)) {
+        return {
+          verified: false,
+          catalogStatus: mpdRes.status >= 500 ? "temporarily_unavailable" : "verification_failed",
+          sourceType: movie.sourceType ?? "direct",
+          strategy: "direct",
+          engine: "dash",
+          httpStatus: mpdRes.status,
+          mimeType: mpdMime,
+          rangeSupported: false,
+          seekSupported: false,
+          corsPermitted: false,
+          containerValid: false,
+          rightsVerified: true,
+          metadataValid: true,
+          reason: `DASH manifest invalid or unavailable (HTTP ${mpdRes.status})`,
+          checkedAt,
+        };
+      }
+
+      const representationId = /<Representation[^>]*\bid="([^"]+)"/.exec(mpdText)?.[1] ?? "0";
+      const startNumber = Number(/<SegmentTemplate[^>]*\bstartNumber="(\d+)"/.exec(mpdText)?.[1] ?? 1);
+      const initTemplate = /<SegmentTemplate[^>]*\binitialization="([^"]+)"/.exec(mpdText)?.[1];
+      const fill = (template: string) =>
+        template
+          .replace(/\$RepresentationID\$/g, representationId)
+          .replace(/\$Number(?:%0(\d+)d)?\$/g, (_match, width?: string) =>
+            String(startNumber).padStart(Number(width ?? 0), "0")
+          );
+      const target = initTemplate ? fill(initTemplate) : undefined;
+      const initUrl = target ? new URL(target, playback.src).toString() : undefined;
+      const initRes = initUrl ? await fetchMediaEndpoint(initUrl, { Range: "bytes=0-511" }, options.baseUrl) : undefined;
+      const containerOk = initRes ? inspectContainerMagic(initRes.body, "video/mp4") : false;
+
+      if (initRes && (initRes.status === 200 || initRes.status === 206) && containerOk) {
+        return {
+          verified: true,
+          catalogStatus: "verified_playable",
+          sourceType: movie.sourceType ?? "open_license",
+          strategy: "direct",
+          engine: "dash",
+          httpStatus: initRes.status,
+          mimeType: mpdMime,
+          rangeSupported: initRes.status === 206 || initRes.headers.get("accept-ranges") === "bytes",
+          seekSupported: true,
+          corsPermitted: Boolean(mpdRes.headers.get("access-control-allow-origin")),
+          containerValid: true,
+          rightsVerified: true,
+          metadataValid: true,
+          reason: "Verified MPEG-DASH manifest and fragmented MP4 initialization segment",
+          checkedAt,
+        };
+      }
+      return {
+        verified: false,
+        catalogStatus: "verification_failed",
+        sourceType: movie.sourceType ?? "direct",
+        strategy: "direct",
+        engine: "dash",
+        httpStatus: initRes?.status ?? mpdRes.status,
+        mimeType: mpdMime,
+        rangeSupported: false,
+        seekSupported: false,
+        corsPermitted: false,
+        containerValid: false,
+        rightsVerified: true,
+        metadataValid: true,
+        reason: "DASH manifest did not resolve to a playable MP4 initialization segment",
+        checkedAt,
+      };
     }
 
     // Direct progressive video (WebM / MP4)
