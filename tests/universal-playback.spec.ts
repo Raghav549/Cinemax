@@ -142,6 +142,22 @@ test.describe("Universal playback in the browser", () => {
     }
   });
 
+  test("a slow watch page shows a finding-the-stream state, then plays", async ({ page, request }) => {
+    const created = await createTestMovie(request, "slow-watch", `${FIXTURE_BASE}/watch/slow`);
+    try {
+      await page.goto(`/movie/${created.id}`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("button", { name: "Watch Now", exact: true }).click();
+      // While the server searches the page, the player shows the loading panel and no video yet.
+      await expect(page.locator(".player-error-title", { hasText: "Finding the stream" })).toBeVisible({ timeout: 4000 });
+      expect(await page.locator("video").count()).toBe(0);
+      // Once the media is found, the loading panel is replaced by real playback.
+      await expect.poll(async () => (await videoState(page))?.time ?? 0, { timeout: 40000 }).toBeGreaterThan(0.5);
+      await expect(page.locator(".player-error-title", { hasText: "Finding the stream" })).toHaveCount(0);
+    } finally {
+      await deleteTestMovie(request, created.id);
+    }
+  });
+
   test("a direct video enters and leaves fullscreen from the player's own control", async ({ page, request }) => {
     const created = await createTestMovie(request, "direct-fullscreen", `${FIXTURE_BASE}/media/clip.mp4`);
     try {

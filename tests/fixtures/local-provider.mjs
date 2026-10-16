@@ -77,6 +77,13 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "application/javascript", ...cors });
     return createReadStream(HLS_JS).pipe(res);
   }
+  if (path === "/watch/slow") {
+    // Slow provider: the resolver is still searching for media for a few seconds (loading-state check).
+    return setTimeout(() => {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...cors });
+      res.end(staticWatch);
+    }, 6000);
+  }
   if (path === "/watch/redirect") {
     res.writeHead(302, { Location: "/watch/static-video" });
     return res.end();
