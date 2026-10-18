@@ -6,7 +6,8 @@
 
      · publish real device insets so the existing layout clears system bars;
      · tell the native shell when its themed first paint is ready;
-     · report media playback so the screen stays awake only while a film plays;
+     · report media playback so the screen stays awake only while audio or
+       video actually plays;
      · bridge the web player's fullscreen intent to Android landscape/immersive
        mode, while leaving routes, sources, API calls and authentication alone;
      · keep touch behaviour direct and avoid an expensive DOM mutation observer;
@@ -76,6 +77,20 @@
       document.body.setAttribute("data-cinemax-app", "android");
     }
     // The native splash replaces the in-page session intro on this device.
+    // `miley:intro:v1` is the deployed site's intro key (src/components/
+    // SplashScreen.tsx); the legacy CinemaX keys are kept for compatibility
+    // pages. The attribute fallback suppresses the intro even in private mode.
+    try {
+      sessionStorage.setItem("miley:intro:v1", "1");
+    } catch (error) {
+      /* Private mode: the attribute below still suppresses the intro. */
+    }
+    root.setAttribute("data-miley-intro", "seen");
+    try {
+      window.dispatchEvent(new Event("miley:intro-phase"));
+    } catch (error) {
+      /* Older engines: the session key alone is enough on the next render. */
+    }
     try {
       sessionStorage.setItem("cinemax:prism-intro:v1", "1");
     } catch (error) {
@@ -122,7 +137,9 @@
   }
 
   function refreshPlaybackState() {
-    var medias = document.getElementsByTagName("video");
+    // The deployed player is an <audio> element (music and podcasts); the
+    // retained media routes still mount <video>. Both hold the wake lock.
+    var medias = document.querySelectorAll("video, audio");
     var active = 0;
     for (var index = 0; index < medias.length; index++) {
       if (isActiveMedia(medias[index])) {
@@ -214,7 +231,6 @@
   var scrolling = false;
   var warmScheduled = false;
   var warmCursor = 0;
-  var warmedSlides = {};
 
   function now() {
     if (window.performance && typeof window.performance.now === "function") {
@@ -316,7 +332,6 @@
     if (connectionSavesData()) {
       return;
     }
-    warmNextHeroSlide();
     var images = document.images;
     if (!images || !images.length) {
       return;
@@ -357,77 +372,12 @@
       return false;
     }
     var className = typeof image.className === "string" ? image.className : "";
-    return className.indexOf("movie-poster-image") >= 0 ||
+    return className.indexOf("miley-artwork") >= 0 ||
+      className.indexOf("podcast-artwork") >= 0 ||
+      className.indexOf("movie-poster-image") >= 0 ||
       className.indexOf("collection-artwork") >= 0 ||
       className.indexOf("hero-image") >= 0 ||
       image.getAttribute("loading") === "lazy";
-  }
-
-  /**
-   * The featured slideshow rotates on a nine second timer and mounts the next
-   * backdrop at that moment: on a phone that is a fresh 1280px decode painted
-   * into a full-screen cross-fade, whenever it happens to land - very often in
-   * the middle of a scroll. Every slide is already announced as a small
-   * pagination thumbnail, so the *next* slide's full-size source can be decoded
-   * during idle time instead. One image at a time, only when the device is not
-   * saving data, reusing the browser's own image cache.
-   */
-  function warmNextHeroSlide() {
-    var previews = document.querySelectorAll(".hero-preview img");
-    if (!previews || previews.length < 2) {
-      return;
-    }
-    var index = 0;
-    for (var i = 0; i < previews.length; i++) {
-      var button = previews[i].parentNode;
-      if (button && button.getAttribute && button.getAttribute("aria-current") === "true") {
-        index = i;
-        break;
-      }
-    }
-    var next = previews[(index + 1) % previews.length];
-    var source = fullSizeSource(next);
-    if (!source || warmedSlides[source]) {
-      return;
-    }
-    warmedSlides[source] = true;
-    var image = new window.Image();
-    image.decoding = "async";
-    image.src = source;
-    if (typeof image.decode === "function") {
-      var decode = image.decode();
-      if (decode && typeof decode.catch === "function") {
-        decode.catch(function () { /* A missing backdrop falls back to its placeholder. */ });
-      }
-    }
-  }
-
-  /** The largest candidate the browser may pick for an <img srcset>, or its src. */
-  function fullSizeSource(image) {
-    if (!image) {
-      return "";
-    }
-    var srcset = image.getAttribute("srcset");
-    if (srcset) {
-      var best = "";
-      var bestWidth = -1;
-      var candidates = srcset.split(",");
-      for (var i = 0; i < candidates.length; i++) {
-        var parts = candidates[i].replace(/^\s+|\s+$/g, "").split(/\s+/);
-        if (!parts[0]) {
-          continue;
-        }
-        var width = parts.length > 1 ? parseFloat(parts[1]) || 0 : 0;
-        if (width > bestWidth) {
-          bestWidth = width;
-          best = parts[0];
-        }
-      }
-      if (best) {
-        return best;
-      }
-    }
-    return image.currentSrc || image.getAttribute("src") || "";
   }
 
   function connectionSavesData() {

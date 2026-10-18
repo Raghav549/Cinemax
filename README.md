@@ -78,7 +78,7 @@ Additional constraints to plan for:
 
 - Images are byte-size/type/signature checked and privacy-gated, but no image resizing, EXIF stripping, malware scanning, or content moderation service is integrated.
 - Audio rights are an uploader attestation, not independently established or licensed by MiLey; a staffed report/takedown process is not included.
-- No native Android MediaSession/background audio integration was added. The shipped Android project still identifies as CinemaX, points at the old `cinemax-orpin.vercel.app` deployment, and has not been validated against MiLey.
+- No native Android MediaSession/background audio integration was added. The shipped Android project still identifies as CinemaX and wraps the `cinemax-orpin.vercel.app` deployment, but its injected presentation layer and Android test suite are validated against the deployed MiLey surface (session-intro suppression, audio/video wake lock, and the scroll-path rules against the live site stylesheet); native background playback and OS media controls remain unimplemented.
 - The retained CinemaX database/API/admin code is not the MiLey product surface. `/categories`, `/category/*`, `/movie/*`, `/search`, and `/watchlist` are compatibility redirects; legacy APIs and `/gate-keeper` have not been removed or rebranded.
 
 ## Useful commands
