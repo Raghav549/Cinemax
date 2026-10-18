@@ -1,0 +1,58 @@
+import type { ReactNode, SVGProps } from "react";
+
+export type MusicIconName = "home" | "search" | "channels" | "messages" | "library" | "play" | "pause" | "previous" | "next" | "heart" | "heart-fill" | "plus" | "close" | "settings" | "upload" | "volume" | "shuffle" | "repeat" | "repeat-one" | "queue" | "disc" | "playlist" | "album" | "bell" | "profile" | "lock" | "check" | "sparkle" | "logout" | "clock" | "trash" | "edit" | "shield" | "chevron" | "arrow" | "more" | "headphones" | "download" | "moon" | "sun" | "globe" | "send" | "music" | "verified" | "eye" | "eye-off" | "pause-circle" | "note";
+
+const paths: Record<MusicIconName, ReactNode> = {
+  home: <><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z" /></>,
+  search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></>,
+  channels: <><path d="M4 17.5V6.8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10.7" /><path d="M2.5 17.5h19l-1.6 3H4.1z" /><path d="M9 8.5v5l4.5-2.5z" /></>,
+  messages: <><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2 .8-4A7.5 7.5 0 1 1 20 11.5Z" /><path d="M8 11h.01M12 11h.01M16 11h.01" /></>,
+  library: <><path d="M4 5.5h13a2 2 0 0 1 2 2V20H6a2 2 0 0 1-2-2z" /><path d="M4 16.5h15M8 9h7m-7 3h7" /></>,
+  play: <path d="m9 6 10 6-10 6z" />,
+  pause: <><path d="M9 6v12M15 6v12" /></>,
+  previous: <><path d="M6 6v12M19 7l-9 5 9 5z" /></>,
+  next: <><path d="M18 6v12M5 7l9 5-9 5z" /></>,
+  heart: <path d="M20.8 8.8c0 5.1-8.8 10.1-8.8 10.1S3.2 13.9 3.2 8.8A4.3 4.3 0 0 1 11 6.3l1 1 1-1a4.3 4.3 0 0 1 7.8 2.5Z" />,
+  "heart-fill": <path d="M20.8 8.8c0 5.1-8.8 10.1-8.8 10.1S3.2 13.9 3.2 8.8A4.3 4.3 0 0 1 11 6.3l1 1 1-1a4.3 4.3 0 0 1 7.8 2.5Z" fill="currentColor" />,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  close: <><path d="m6 6 12 12m0-12L6 18" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1a1.8 1.8 0 1 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 1 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 1 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3h-.2a1.8 1.8 0 1 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 1 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 1 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 1 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 1 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3Z" /></>,
+  upload: <><path d="M12 16V4m-5 5 5-5 5 5" /><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" /></>,
+  volume: <><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9a5 5 0 0 1 0 6m2.5-9a9 9 0 0 1 0 12" /></>,
+  shuffle: <><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M4 4l5 5m4 4 8 8" /></>,
+  repeat: <><path d="m17 2 4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /></>,
+  "repeat-one": <><path d="m17 2 4 4-4 4" /><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4" /><path d="M21 13v2a3 3 0 0 1-3 3H3" /><path d="M11 11h2v5" /></>,
+  queue: <><path d="M4 6h16M4 11h16M4 16h9" /><path d="m17 15 4 3-4 3z" /></>,
+  disc: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2" /><path d="M12 3a9 9 0 0 1 9 9" /></>,
+  playlist: <><path d="M4 6h12M4 11h12M4 16h8" /><circle cx="18" cy="17" r="3" /><path d="M21 17V6l-7 2v9" /></>,
+  album: <><rect x="3" y="3" width="18" height="18" rx="4" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" /></>,
+  bell: <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12h4" /></>,
+  profile: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 5v2" /></>,
+  check: <path d="m5 12 4 4L19 6" />,
+  sparkle: <><path d="m12 3 2.1 6.1L20 11l-5.9 2-2.1 6-2.1-6L4 11l5.9-1.9z" /><path d="m19 14 1.1 3L23 18l-2.9 1L19 22l-1-3-3-1 3-1z" /></>,
+  logout: <><path d="M10 17l5-5-5-5m5 5H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  trash: <><path d="M4 7h16m-10 4v7m4-7v7M6 7l1 14h10l1-14M9 7V4h6v3" /></>,
+  edit: <><path d="m4 16.5-.8 4.3 4.3-.8L20 7.5 16.5 4z" /><path d="m14.5 6 3.5 3.5" /></>,
+  shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
+  chevron: <path d="m9 18 6-6-6-6" />,
+  arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
+  more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
+  headphones: <><path d="M4 14v-3a8 8 0 0 1 16 0v3" /><path d="M4 14h3v6H6a2 2 0 0 1-2-2zm13 0h3v4a2 2 0 0 1-2 2h-1z" /></>,
+  download: <><path d="M12 3v12m-5-5 5 5 5-5" /><path d="M5 20h14" /></>,
+  moon: <path d="M20.8 13.4A8.7 8.7 0 0 1 10.6 3.2 9 9 0 1 0 20.8 13.4Z" />,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2m10-10h-2M4 12H2m17.1-7.1-1.4 1.4M6.3 17.7l-1.4 1.4m14.2 0-1.4-1.4M6.3 6.3 4.9 4.9" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18m0-18a15 15 0 0 0 0 18" /></>,
+  send: <><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></>,
+  music: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
+  verified: <><path d="m12 3 2.2 1.2 2.5-.1 1.3 2.1 2.1 1.3-.1 2.5L21 12l-1.2 2.2.1 2.5-2.1 1.3-1.3 2.1-2.5-.1L12 21l-2.2-1.2-2.5.1L6 17.8 3.9 16.5l.1-2.5L3 12l1.2-2.2-.1-2.5 2.1-1.3 1.3-2.1 2.5.1z" /><path d="m8.5 12 2.2 2.2 4.8-4.8" /></>,
+  eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="2.5" /></>,
+  "eye-off": <><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.3 6.3C3.5 8.1 2 12 2 12s3.5 7 10 7a10.4 10.4 0 0 0 3.1-.5" /></>,
+  "pause-circle": <><circle cx="12" cy="12" r="9" /><path d="M10 9v6m4-6v6" /></>,
+  note: <><path d="M7 17.5V6l12-2v11.5" /><circle cx="4.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></>,
+};
+
+export default function MusicIcon({ name, ...props }: SVGProps<SVGSVGElement> & { name: MusicIconName }) {
+  return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...props}>{paths[name]}</svg>;
+}

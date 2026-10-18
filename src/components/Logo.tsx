@@ -1,36 +1,35 @@
 "use client";
 
-import { useId } from "react";
+import type { SVGProps } from "react";
 
-/** Original folded-aperture emblem: a cinematic C and two interlocking light ribbons. */
-export function CinemaxEmblem({ className = "" }: { className?: string }) {
-  const id = useId().replace(/:/g, "");
+export function MiLeyEmblem({ className = "", ...props }: SVGProps<SVGSVGElement> & { className?: string }) {
   return (
-    <svg className={`cinemax-emblem ${className}`} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+    <svg className={`miley-emblem ${className}`} viewBox="0 0 56 56" fill="none" role="img" aria-label="MiLey" {...props}>
       <defs>
-        <linearGradient id={`${id}-ribbon`} x1="10" y1="12" x2="42" y2="58" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#70E0FF" /><stop offset=".36" stopColor="#4479FF" /><stop offset=".7" stopColor="#8355FF" /><stop offset="1" stopColor="#BE65F7" />
+        <linearGradient id="miley-pink" x1="11" y1="8" x2="46" y2="48" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#F6B9CD" /><stop offset=".52" stopColor="#E69BB7" /><stop offset="1" stopColor="#B96F90" />
         </linearGradient>
-        <linearGradient id={`${id}-fold`} x1="31" y1="19" x2="59" y2="43" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#BCA7FF" /><stop offset=".46" stopColor="#E579F1" /><stop offset="1" stopColor="#FF65AE" />
-        </linearGradient>
-        <linearGradient id={`${id}-edge`} x1="15" y1="22" x2="48" y2="12" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#A2ECFF" /><stop offset="1" stopColor="#97AAFF" stopOpacity=".15" />
+        <linearGradient id="miley-glass" x1="9" y1="6" x2="45" y2="49" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#fff" stopOpacity=".12" /><stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path className="emblem-ribbon" d="M42.2 5.8 12.8 22.5a10.9 10.9 0 0 0 0 19L42.2 58.2l9.6-11.3L25.7 32l26.1-14.9-9.6-11.3Z" fill={`url(#${id}-ribbon)`} />
-      <path className="emblem-fold" d="m39.5 19.8 17.7 10.1a2.4 2.4 0 0 1 0 4.2L39.5 44.2l-7.4-8.5 6.6-3.7-6.6-3.7 7.4-8.5Z" fill={`url(#${id}-fold)`} />
-      <path d="M42.1 6.6 13.3 23a10.3 10.3 0 0 0-5.1 8.9" stroke={`url(#${id}-edge)`} strokeWidth="1.1" />
-      <path d="m39.5 20.4 17.3 9.9" stroke="#FFE1FF" strokeOpacity=".55" strokeWidth=".8" />
+      <circle cx="28" cy="28" r="26" fill="#161116" stroke="#543344" strokeWidth="1.4" />
+      <circle cx="28" cy="28" r="23.2" fill="url(#miley-glass)" />
+      <path d="M12.8 18.2c0-2.2 1.8-4 4-4h22.4a4 4 0 0 1 4 4v19.6a4 4 0 0 1-4 4H16.8a4 4 0 0 1-4-4V18.2Z" fill="#100C10" fillOpacity=".72" stroke="#E6A2BA" strokeOpacity=".24" />
+      <path d="M18 30.7V24c0-1.2 1-2.2 2.2-2.2 1.2 0 2.2 1 2.2 2.2v6.7m0-4.7c0-2.3 1.4-4.2 3.1-4.2s3.1 1.9 3.1 4.2v4.7m0-4.7c0-2.3 1.4-4.2 3.1-4.2s3.1 1.9 3.1 4.2v4.7m0-4.7c0-2.3 1.2-4.2 2.8-4.2s2.8 1.9 2.8 4.2v5.6" stroke="url(#miley-pink)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17.5 16h20.8" stroke="#FFF6FA" strokeOpacity=".14" strokeLinecap="round" />
     </svg>
   );
 }
 
+// Kept as an export alias so archived cinema detail routes remain buildable while the product migrates.
+export const CinemaxEmblem = MiLeyEmblem;
+
 export default function Logo({ className = "", emblemOnly = false }: { className?: string; emblemOnly?: boolean }) {
   return (
-    <span className={`cinemax-logo ${className}`}>
-      <CinemaxEmblem />
-      {!emblemOnly && <span className="logo-wordmark">cinema<span className="logo-x">x</span></span>}
+    <span className={`miley-logo ${className}`}>
+      <MiLeyEmblem className="miley-logo-mark" />
+      {!emblemOnly && <span className="miley-wordmark">Mi<span className="miley-wordmark-accent">Ley</span></span>}
     </span>
   );
 }

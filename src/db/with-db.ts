@@ -1,19 +1,23 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { getDb } from "@/db";
 import { ensureSchema } from "@/db/ensure-schema";
+import { ensureMusicSchema } from "@/db/ensure-music-schema";
 
 /**
  * Runs a query with the guarantees every route needs:
  *
- *  1. the schema has been reconciled with ./schema.ts (once per process), so a
- *     database whose columns predate the current Drizzle mapping still works;
+ *  1. by default, legacy and MiLey schema bootstraps run once per process;
+ *     set MILEY_SCHEMA_AUTO_CREATE=false after applying the canonical Drizzle
+ *     schema to use a migration-only, read/write runtime role;
  *  2. a single transparent retry for connection-level failures, which hosted
  *     Postgres produces when it drops an idle socket.
  */
 export async function withDb<T>(run: (db: NodePgDatabase) => Promise<T>): Promise<T> {
   // `ensureSchema` resolves with a report instead of throwing: a database that
   // refuses DDL (read-only branch, restricted role) should still serve reads.
-  await ensureSchema();
+  const autoCreate = process.env.MILEY_SCHEMA_AUTO_CREATE !== "false";
+  if (autoCreate) await ensureSchema();
+  await ensureMusicSchema();
   try {
     return await run(getDb());
   } catch (error) {
