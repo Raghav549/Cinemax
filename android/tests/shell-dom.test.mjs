@@ -1,12 +1,12 @@
 /**
  * Runs the *real* injected app layer (the script produced by AppTheme in Java)
- * against a DOM fixture that mirrors the Cinemax page structure, and checks the
- * app-only behaviour:
+ * against a DOM fixture that mirrors the deployed MiLey page structure, and
+ * checks the app-only behaviour:
  *
  *   · the document is marked as the Android app and the theme is installed;
  *   · the native bridge is told when the theme is live and when the shell is up;
  *   · device insets reach the page as CSS custom properties;
- *   · video playback is reported so the screen can stay awake;
+ *   · media playback is reported so the screen can stay awake;
  *   · the viewport is tuned for the app (no zoom);
  *   · the shell installs exactly once and never throws.
  *
@@ -73,91 +73,102 @@ function check(condition, label) {
 const injectionScript = readFileSync(scriptPath, "utf8");
 const shellScript = readFileSync(shellPath, "utf8");
 
-/* A trimmed but structurally accurate slice of the live Cinemax page: header,
-   hero, rails with posters, bottom navigation, a video element and the site's
-   own session intro element. */
+/* A trimmed but structurally accurate slice of the live MiLey page: sticky
+   header, hero with the floating vinyl, a music-note rail, track list, media
+   card grid, loading skeleton, bottom navigation dock, the mini player, the
+   full-screen player stage, the audio element and the site's own session intro
+   element. */
 const fixture = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Cinemax — Movies &amp; Series</title>
+  <title>MiLey — music, made personal</title>
 </head>
 <body>
-  <div id="cinemax-app">
+  <div id="miley-app">
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <header class="site-header-wrap" data-home="true" data-scrolled="false">
-      <div class="site-header">
-        <a class="brand-lockup" href="/" aria-label="Cinemax home"><span class="logo-wordmark">Cine<span class="logo-x">max</span></span></a>
-        <div class="header-actions">
-          <a class="header-search" href="/search" aria-label="Search"><span>Search titles</span></a>
-          <a class="header-icon-link" href="/watchlist" aria-current="page"><span class="header-count">2</span></a>
-        </div>
+    <header class="miley-header">
+      <div class="miley-header-brand"><a class="miley-logo" href="/" aria-label="MiLey home"><svg class="miley-emblem" viewBox="0 0 42 42" aria-hidden="true"></svg><span class="miley-wordmark">Mi<span class="miley-wordmark-accent">Ley</span></span></a></div>
+      <nav class="miley-header-nav" aria-label="Primary"><a class="is-active" href="/">Home</a><a href="/explore">Explore</a><a href="/podcasts">Podcasts</a></nav>
+      <div class="miley-header-actions">
+        <a class="header-search-link" href="/search" aria-label="Search"><span>Search</span></a>
+        <a class="header-signin" href="/login">Sign in</a>
       </div>
     </header>
-    <main class="home-shell" id="main-content" tabindex="-1">
-      <section class="hero-card" aria-label="Featured">
-        <div class="hero-vignette"></div>
-        <div class="hero-copy"><h1 class="hero-title">Featured Title</h1>
-          <div class="hero-meta"><span>2026</span><span>Action</span></div>
-          <div class="hero-actions"><button class="cinematic-button" type="button"><span class="button-content">Watch Now</span></button></div>
-        </div>
-        <div class="hero-pagination"><div class="hero-dots"><button class="hero-dot" aria-current="true"><span></span></button></div>
-          <div class="hero-preview-track" aria-label="Featured titles">
-            <button class="hero-preview" type="button" aria-current="true"><img src="https://image.tmdb.org/t/p/w1280/slide-one.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-one.jpg 300w, https://image.tmdb.org/t/p/w780/slide-one.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-one.jpg 1280w" sizes="140px" alt=""><span>One</span></button>
-            <button class="hero-preview" type="button"><img src="https://image.tmdb.org/t/p/w1280/slide-two.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-two.jpg 300w, https://image.tmdb.org/t/p/w780/slide-two.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-two.jpg 1280w" sizes="140px" alt=""><span>Two</span></button>
-            <button class="hero-preview" type="button"><img src="https://image.tmdb.org/t/p/w1280/slide-three.jpg" srcset="https://image.tmdb.org/t/p/w300/slide-three.jpg 300w, https://image.tmdb.org/t/p/w780/slide-three.jpg 780w, https://image.tmdb.org/t/p/w1280/slide-three.jpg 1280w" sizes="140px" alt=""><span>Three</span></button>
+    <main class="miley-page home-page" id="main-content" tabindex="-1">
+      <section class="home-hero" aria-labelledby="welcome-title">
+        <div class="home-hero-copy">
+          <span class="page-eyebrow">MiLey · music, made personal</span>
+          <h1 id="welcome-title">Sound that finds <em>you</em></h1>
+          <p>Real creator releases, curated in the open.</p>
+          <div class="home-hero-actions">
+            <a class="primary-button" href="/explore">Explore music</a>
+            <a class="secondary-button" href="/register">Create an account</a>
           </div>
-          <div class="hero-controls"><button class="icon-button hero-arrow" type="button"></button></div>
+        </div>
+        <div class="home-hero-art" aria-hidden="true">
+          <div class="hero-orbit"></div>
+          <div class="hero-vinyl"><div class="hero-vinyl-center"><svg viewBox="0 0 24 24" aria-hidden="true"></svg></div></div>
+        </div>
+        <span class="home-hero-aside">built around real creator releases</span>
+      </section>
+      <div class="home-shortcuts" aria-label="Quick links">
+        <a class="shortcut-card" href="/explore"><span class="shortcut-icon"></span><span><strong>Find your sound</strong><small>Search creator releases</small></span></a>
+        <a class="shortcut-card" href="/channels"><span class="shortcut-icon"></span><span><strong>Meet the creators</strong><small>Explore real channels</small></span></a>
+        <a class="shortcut-card" href="/library"><span class="shortcut-icon"></span><span><strong>Your collection</strong><small>Favorites, playlists &amp; uploads</small></span></a>
+        <a class="shortcut-card" href="/podcasts"><span class="shortcut-icon"></span><span><strong>Podcasts</strong><small>Authorized shows only</small></span></a>
+      </div>
+      <section class="section-block" aria-label="Music notes">
+        <div class="section-heading"><div><h2>Notes from your circle</h2><p>Music notes are shared only between mutual follows.</p></div></div>
+        <div class="music-note-rail hide-scrollbar">
+          <a class="note-composer" href="/library"><span class="note-add">+</span><span>Share a song note</span></a>
+          <button class="music-note-card" type="button"><span class="note-avatar"><img src="/avatars/ada.jpg" alt=""></span><span class="note-copy"><strong>Ada · @ada</strong><span><span class="note-track-art"></span>Night Signal</span></span></button>
+          <button class="music-note-card" type="button"><span class="note-avatar"><img loading="lazy" src="/avatars/lin.jpg" alt=""></span><span class="note-copy"><strong>Lin · @lin</strong><span><span class="note-track-art"></span>Harbour Lights</span></span></button>
         </div>
       </section>
-      <div class="hero-scenes" aria-hidden="true">
-        <div class="hero-scene" data-active="true"><img class="hero-image" src="https://image.tmdb.org/t/p/w1280/slide-one.jpg" alt=""></div>
-        <div class="hero-scene"><img class="hero-image" src="https://image.tmdb.org/t/p/w1280/slide-three.jpg" alt=""></div>
-      </div>
-      <div class="home-content">
-        <div class="browse-bar"><div class="filter-chips"><button class="filter-chip" aria-pressed="true">All</button><button class="filter-chip" aria-pressed="false">Action</button></div></div>
-        <section class="movie-row" aria-label="Trending">
-          <div class="movie-row-head"><h2 class="movie-row-title">Trending</h2>
-            <div class="movie-row-actions"><a class="movie-row-more" href="/category/trending">View all</a>
-              <button class="icon-button row-arrow" type="button"></button></div>
-          </div>
-          <div class="movie-track hide-scrollbar" role="list">
-            <article class="movie-card" role="listitem"><a class="movie-card-link" href="/movie/1">
-              <div class="movie-poster"><img class="movie-poster-image" src="/icon-192.png" alt="poster">
-                <span class="movie-type-badge">Series</span><span class="movie-rating-badge">8.1</span>
-                <span class="movie-progress"><span style="width:40%"></span></span></div>
-              <div class="movie-card-copy"><h3 class="movie-card-title">Sample</h3><p class="movie-card-meta">2026 · Action</p></div>
-            </a><button class="movie-save is-saved" type="button" aria-pressed="true"></button></article>
-            <article class="movie-card" role="listitem"><a class="movie-card-link" href="/movie/2">
-              <div class="movie-poster"><img class="movie-poster-image" loading="lazy" src="/poster-two.png" srcset="/poster-two.png 300w, /poster-two-large.png 780w" sizes="40vw" alt="poster">
-                <span class="movie-type-badge">Film</span></div>
-              <div class="movie-card-copy"><h3 class="movie-card-title">Second</h3><p class="movie-card-meta">2026 · Drama</p></div>
-            </a><button class="movie-save" type="button" aria-pressed="false"></button></article>
-          </div>
-        </section>
-        <section class="movie-row" aria-label="Library">
-          <div class="movie-row-head"><h2 class="movie-row-title">Library</h2></div>
-          <div class="shimmer shimmer-row-title"></div>
-          <div class="movie-track hide-scrollbar"><article class="movie-card"><div class="movie-poster"><img class="movie-poster-image" loading="lazy" src="/poster-three.png" alt="poster"></div></article></div>
-        </section>
-        <div class="cinematic-button"><span class="button-light"><svg viewBox="0 0 100 40"><rect class="light-body" x="0" y="0"></rect></svg></span><span class="button-content">Watch Now</span></div>
-        <footer class="site-footer"><span>© 2026 Cinemax</span></footer>
-      </div>
+      <section class="section-block" aria-label="Public tracks">
+        <div class="section-heading"><div><h2>Fresh releases</h2><p>Public, rights-confirmed songs.</p></div><a class="text-link" href="/explore">See all</a></div>
+        <div class="track-list">
+          <div class="track-row"><div class="track-main"><div class="track-row-index"><span class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="miley-artwork"><img loading="lazy" decoding="async" src="/art/night-signal.jpg" alt="Night Signal cover art"></div><div class="track-meta"><strong>Night Signal</strong><span>Ada Vale</span><span class="track-genre">Ambient</span></div></div><div class="track-actions"><span class="track-duration">3:42</span></div></div>
+          <div class="track-row"><div class="track-main"><div class="track-row-index"><span>02</span></div><div class="miley-artwork"><img loading="lazy" decoding="async" src="/art/harbour-lights.jpg" alt="Harbour Lights cover art"></div><div class="track-meta"><strong>Harbour Lights</strong><span>Lin Ortega</span><span class="track-genre">Indie</span></div></div><div class="track-actions"><span class="track-duration">4:05</span></div></div>
+        </div>
+      </section>
+      <section class="section-block" aria-label="Playlists">
+        <div class="section-heading"><div><h2>Your playlists</h2><p>Your music, in your own order.</p></div></div>
+        <div class="playlist-grid">
+          <a class="media-card" href="/playlist/1"><div class="miley-artwork"><img loading="lazy" decoding="async" src="/art/deep-focus.jpg" alt="Deep Focus cover"></div><p class="media-card-title">Deep Focus</p><p class="media-card-subtitle">Public playlist</p></a>
+          <a class="media-card" href="/playlist/2"><div class="miley-artwork"><img loading="lazy" decoding="async" src="/art/late-drive.jpg" alt="Late Drive cover"></div><p class="media-card-title">Late Drive</p><p class="media-card-subtitle">Private playlist</p></a>
+          <a class="media-card" href="/playlist/3"><div class="miley-artwork"><img loading="lazy" decoding="async" src="/art/sunday-cook.jpg" alt="Sunday Cook cover"></div><p class="media-card-title">Sunday Cook</p><p class="media-card-subtitle">Public playlist</p></a>
+        </div>
+      </section>
+      <section class="section-block" aria-label="Loading">
+        <div class="loading-skeleton" style="height:180px"></div>
+      </section>
+      <footer class="miley-footer"><a href="/">MiLey</a><span>Music shared with care.</span></footer>
     </main>
-    <div class="bottom-nav-wrap"><nav class="bottom-nav" aria-label="Primary navigation">
-      <span class="bottom-nav-indicator" aria-hidden="true"></span>
-      <a class="bottom-nav-link" href="/" aria-current="page"><span class="nav-icon"></span><span>Home</span></a>
-      <a class="bottom-nav-link" href="/search"><span class="nav-icon"></span><span>Search</span></a>
-      <a class="bottom-nav-link" href="/categories"><span class="nav-icon"></span><span>Explore</span></a>
-      <a class="bottom-nav-link" href="/watchlist"><span class="nav-icon"></span><span>Watchlist</span></a>
+    <div class="miley-bottom-nav-wrap"><nav class="miley-bottom-nav" aria-label="Primary">
+      <a class="is-active" href="/"><span class="bottom-nav-icon"></span><span>Home</span></a>
+      <a href="/explore"><span class="bottom-nav-icon"></span><span>Explore</span></a>
+      <a href="/library"><span class="bottom-nav-icon"></span><span>Library</span></a>
+      <a href="/podcasts"><span class="bottom-nav-icon"></span><span>Podcasts</span></a>
+      <a href="/profile"><span class="bottom-nav-icon"></span><span>Profile</span></a>
     </nav></div>
-    <div class="app-toast">Saved</div>
-    <div class="splash-screen" role="dialog"><span>intro</span></div>
-    <section class="playback-layer"><div class="video-player-shell"><div class="video-screen">
-      <video class="video-element" id="player" playsinline></video>
-      <div class="player-progress"><div class="player-progress-rail"><div class="player-progress-fill" style="width:0%"></div></div></div>
-    </div></div></section>
+    <div class="mini-player">
+      <div class="mini-player-progress"><span style="width:20%"></span></div>
+      <button class="mini-player-open" type="button"><div class="miley-artwork mini-player-art"><img loading="lazy" src="/art/night-signal.jpg" alt=""></div><div class="mini-player-copy"><strong>Night Signal</strong><span>Ada Vale</span></div></button>
+      <button class="mini-player-control" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"></svg></button>
+      <button class="mini-player-control" type="button" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"></svg></button>
+    </div>
+    <div class="miley-toast" role="status">Saved</div>
+    <div class="miley-splash" role="dialog" aria-label="Opening MiLey"><div class="miley-splash-lockup"><span class="miley-splash-tagline">A little closer to the music.</span></div><button type="button" class="miley-splash-skip">Skip intro</button></div>
+    <section class="player-overlay">
+      <div class="player-content">
+        <div class="player-art-stage is-playing"><div class="player-art-ring ring-a"></div><div class="player-art-ring ring-b"></div><div class="miley-artwork player-artwork"><img loading="lazy" src="/art/night-signal.jpg" alt="Night Signal cover art"></div></div>
+        <div class="player-details"><div class="player-details-copy"><span class="eyebrow">Now playing</span><h1>Night Signal</h1><p>Ada Vale</p></div></div>
+      </div>
+    </section>
+    <audio id="player" preload="metadata"></audio>
   </div>
 </body>
 </html>`;
@@ -208,6 +219,7 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 console.log("\n== injected app layer");
 check(document.documentElement.getAttribute("data-cinemax-app") === "android", "document is marked as the Android app");
 check(document.documentElement.getAttribute("data-cinemax-intro") === "seen", "in-page web intro is marked seen");
+check(document.documentElement.getAttribute("data-miley-intro") === "seen", "the site's own intro flag is marked seen");
 check(!!document.getElementById("cinemax-native-theme"), "theme stylesheet element exists");
 check(document.querySelectorAll("#cinemax-native-theme").length === 1, "theme is installed exactly once");
 check(!document.querySelector("script[data-cinemax-native]"), "no inline script element is required");
@@ -221,10 +233,11 @@ check(themeText.includes("--cinemax-inset-top"), "theme reads the native inset v
 check(/background:\s*transparent/.test(themeText), "body background defers to the deep app canvas");
 check(themeText.includes("radial-gradient"), "cinematic gradient details remain available");
 check(themeText.includes("#4fd8ff") || themeText.includes("#4FD8FF"), "brand gradient colours are present");
-check(themeText.includes(".bottom-nav"), "bottom navigation restyled");
-check(themeText.includes(".movie-poster"), "movie cards restyled");
-check(themeText.includes(".hero-"), "hero restyled");
-check(themeText.includes(".player-progress-fill"), "player progress restyled");
+check(themeText.includes(".miley-bottom-nav"), "bottom navigation restyled");
+check(themeText.includes(".media-card"), "music cards restyled");
+check(themeText.includes(".hero-vinyl"), "hero motion is managed for the app");
+check(themeText.includes(".mini-player"), "mini player restyled");
+check(themeText.includes(".miley-splash"), "the in-page session intro is suppressed");
 check(themeText.includes(".studio-login"), "studio login restyled with the same palette");
 check(themeText.includes("safe-top") && themeText.includes("safe-bottom"), "safe-area handling is themed");
 
@@ -247,20 +260,22 @@ const viewportContent = document.querySelector('meta[name="viewport"]').getAttri
 check(viewportContent.includes("user-scalable=no"), "app viewport disables pinch zoom");
 check(!/maximum-scale/.test(viewportContent), "app viewport drops the maximum-scale override");
 
-// Playback reporting: the native layer only wakes up when media really plays.
-const video = document.getElementById("player");
-Object.defineProperty(video, "paused", { value: false, writable: true, configurable: true });
-Object.defineProperty(video, "ended", { value: false, writable: true, configurable: true });
-Object.defineProperty(video, "readyState", { value: 4, writable: true, configurable: true });
-Object.defineProperty(video, "currentTime", { value: 12, writable: true, configurable: true });
+// Playback reporting: the native layer only wakes up when media really plays
+// (the deployed player is an <audio> element; the retained media routes still
+// mount <video>).
+const media = document.getElementById("player");
+Object.defineProperty(media, "paused", { value: false, writable: true, configurable: true });
+Object.defineProperty(media, "ended", { value: false, writable: true, configurable: true });
+Object.defineProperty(media, "readyState", { value: 4, writable: true, configurable: true });
+Object.defineProperty(media, "currentTime", { value: 12, writable: true, configurable: true });
 
 bridgeCalls.length = 0;
-video.dispatchEvent(new window.Event("playing"));
+media.dispatchEvent(new window.Event("playing"));
 check(bridgeCalls.includes("media:true"), "playing media keeps the screen awake");
 
-video.paused = true;
+media.paused = true;
 bridgeCalls.length = 0;
-video.dispatchEvent(new window.Event("pause"));
+media.dispatchEvent(new window.Event("pause"));
 check(bridgeCalls.includes("media:false"), "paused media releases the wake lock");
 
 bridgeCalls.length = 0;
@@ -399,42 +414,56 @@ const siteCss = readFileSync(
 const sheets = [siteCss, themeText];
 
 console.log("\n== the app layer wins the cascade on the scroll path");
-const heroScene = document.querySelector('.hero-scene[data-active="true"]');
-const rows = document.querySelectorAll(".movie-row");
-const row = rows[rows.length - 1];
-const track = document.querySelector(".movie-track");
-const rect = document.querySelector(".button-light rect");
+const heroVinyl = document.querySelector(".hero-vinyl");
+const noteRail = document.querySelector(".music-note-rail");
+const mediaCard = document.querySelector(".media-card");
+const playerArtwork = document.querySelector(".player-artwork");
+const skeleton = document.querySelector(".loading-skeleton");
+const eqBar = document.querySelector(".mini-eq i");
 
 // The site rules these overrides exist for are still there (a guard against the
 // website changing underneath the app layer).
-check(/\.movie-row\s*\{[^}]*content-visibility:\s*auto/.test(siteCss), "the site still skips offscreen rails");
 check(/html\s*\{[^}]*scroll-behavior:\s*smooth/.test(siteCss), "the site still animates document scrolling");
-check(/\.button-light rect\s*\{[^}]*animation:/.test(siteCss), "the site still runs the flowing button light");
+check(/\.music-note-rail\s*\{[^}]*overflow-x:\s*auto/.test(siteCss), "the site still ships rails as native horizontal scrollers");
+check(/\.hero-vinyl\s*\{[^}]*animation:\s*vinyl-float[^;]*infinite/.test(siteCss), "the site still runs the endless hero motion");
+check(/\.media-card\s*\{[^}]*transition:\s*transform/.test(siteCss), "the site still eases card interactions");
 
-const rowVisibility = winningValue(sheets, row, "content-visibility");
-check(rowVisibility && rowVisibility.value === "visible", `rails render without content-visibility skipping (${rowVisibility && rowVisibility.value})`);
-const rowIntrinsic = winningValue(sheets, row, "contain-intrinsic-size");
-check(rowIntrinsic && rowIntrinsic.value.includes("none"), `the 390px rail estimate is dropped (${rowIntrinsic && rowIntrinsic.value})`);
-const rowContain = winningValue(sheets, row, "contain");
-check(rowContain && rowContain.value.includes("layout"), `rails isolate their own layout work (${rowContain && rowContain.value})`);
 const scrollBehaviour = winningValue(sheets, document.documentElement, "scroll-behavior");
 check(scrollBehaviour && scrollBehaviour.value === "auto", `document scrolling is immediate in the app (${scrollBehaviour && scrollBehaviour.value})`);
-const trackTouch = winningValue(sheets, track, "touch-action");
-check(trackTouch && trackTouch.value === "auto", `rails leave both pan axes to the compositor (${trackTouch && trackTouch.value})`);
+const railVisibility = winningValue(sheets, noteRail, "content-visibility");
+check(railVisibility && railVisibility.value === "visible", `rails render without content-visibility skipping (${railVisibility && railVisibility.value})`);
+const railIntrinsic = winningValue(sheets, noteRail, "contain-intrinsic-size");
+check(railIntrinsic && railIntrinsic.value.includes("none"), `the rail height estimate is dropped (${railIntrinsic && railIntrinsic.value})`);
+const railContain = winningValue(sheets, noteRail, "contain");
+check(railContain && railContain.value.includes("layout"), `rails isolate their own layout work (${railContain && railContain.value})`);
+const railTouch = winningValue(sheets, noteRail, "touch-action");
+check(railTouch && railTouch.value === "auto", `rails leave both pan axes to the compositor (${railTouch && railTouch.value})`);
+const railOverscroll = winningValue(sheets, noteRail, "overscroll-behavior-x");
+check(railOverscroll && railOverscroll.value === "contain", `rails contain their own horizontal overscroll (${railOverscroll && railOverscroll.value})`);
 
 document.documentElement.setAttribute("data-cinemax-scrolling", "true");
-const lightState = winningValue(sheets, rect, "animation-play-state");
+const lightState = winningValue(sheets, heroVinyl, "animation-play-state");
 check(
   lightState && lightState.value === "paused" && lightState.selector.includes("data-cinemax-scrolling"),
   `decorative animations park while scrolling (${lightState && lightState.value})`
 );
-const sceneTransition = winningValue(sheets, heroScene, "transition");
+const eqState = winningValue(sheets, eqBar, "animation-play-state");
 check(
-  sceneTransition && /opacity .65s ease/.test(sceneTransition.value),
-  `the hero keeps its own cross-fade, untouched by the scroll layer (${sceneTransition && sceneTransition.value})`
+  eqState && eqState.value === "paused" && eqState.selector.includes("data-cinemax-scrolling"),
+  `the equaliser bars park while scrolling (${eqState && eqState.value})`
+);
+const shimmerState = winningValue(sheets, skeleton, "animation-play-state");
+check(
+  shimmerState && shimmerState.value === "paused" && shimmerState.selector.includes("data-cinemax-scrolling"),
+  `the loading shimmer parks while scrolling (${shimmerState && shimmerState.value})`
+);
+const recordTransition = winningValue(sheets, playerArtwork, "transition");
+check(
+  recordTransition && /transform .8s/.test(recordTransition.value),
+  `the rotating record keeps its own easing, untouched by the scroll layer (${recordTransition && recordTransition.value})`
 );
 check(
-  !/data-cinemax-scrolling[^{]*\.hero-scene/.test(themeText),
+  !/data-cinemax-scrolling[^{]*\.(media-card|player-artwork|track-row)/.test(themeText),
   "only endless animations are parked while scrolling (nothing the user looks at can snap)"
 );
 document.documentElement.removeAttribute("data-cinemax-scrolling");
@@ -510,6 +539,9 @@ check(
 // repeat work, and never while the page is scrolling.
 await new Promise((resolve) => setTimeout(resolve, 700));
 check(decodedUrls.length > 0, `nearby artwork is decoded during idle time (${decodedUrls.length} images)`);
+// Artwork beyond one warm-up batch is decoded in a follow-up idle pass; let the
+// queue drain completely before asserting that nothing runs again.
+await new Promise((resolve) => setTimeout(resolve, 700));
 const firstPass = decodedUrls.length;
 await new Promise((resolve) => setTimeout(resolve, 700));
 check(
@@ -521,12 +553,8 @@ check(
   "every lazy image on screen is marked as warmed"
 );
 check(
-  decodedUrls.some((url) => url.includes("/w1280/slide-two.jpg")),
-  "the next featured slide's full-size backdrop is decoded before the rotation"
-);
-check(
-  !decodedUrls.some((url) => url.includes("/w300/")),
-  "only the size the full-size view will use is warmed"
+  !decodedUrls.some((url) => url.includes("ada.jpg")),
+  "artwork the site did not mark lazy is left to the browser"
 );
 
 const beforeScroll = decodedUrls.length;

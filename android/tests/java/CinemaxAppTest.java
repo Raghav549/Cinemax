@@ -148,6 +148,16 @@ public final class CinemaxAppTest {
         check(theme.contains("prefers-reduced-motion"), "the theme still honours reduced motion");
         check(theme.contains("@media (min-width: 820px)"), "the theme scales up for tablets");
 
+        // The live deployed surface (the MiLey music platform).
+        check(theme.contains(".miley-splash"), "the theme suppresses the MiLey in-page session intro");
+        check(theme.contains(".miley-bottom-nav"), "the theme restyles the MiLey bottom navigation");
+        check(theme.contains(".media-card"), "the theme restyles the music cards");
+        check(theme.contains(".hero-vinyl"), "the theme parks the endless hero motion while scrolling");
+        check(theme.contains(".music-note-rail"), "the theme polishes the live music rails");
+        check(script.contains("miley:intro:v1"), "the injection marks the site's own intro seen");
+        check(shell.contains("miley:intro:v1"), "the shell marks the site's own intro seen");
+        check(shell.contains("video, audio"), "the wake lock follows both audio and video playback");
+
         check(shell.contains("__cinemaxInsets"), "the shell publishes device insets");
         check(shell.contains("setMediaPlaying"), "the shell reports playback to the native layer");
         check(shell.contains("__cinemaxAppShellInstalled"), "the shell installs exactly once");

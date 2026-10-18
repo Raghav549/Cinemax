@@ -1,13 +1,16 @@
 /* ============================================================================
    Cinemax · Android app presentation layer  (v1.1.0)
 
-   This file is additive and app-only. It is injected into the live Cinemax
-   production page inside the Android app, scoped to
+   This file is additive and app-only. It is injected into the live production
+   page (now the MiLey music platform) inside the Android app, scoped to
    html[data-cinemax-app="android"], and it never runs on the web deployment.
 
    Nothing here changes behaviour, routes, API calls, data or authentication:
-   it keeps the existing colourful Cinemax controls while using a deep-black,
-   low-compositing page foundation for smooth native WebView scrolling.
+   it keeps the deployed controls' colours while using a deep-black,
+   low-compositing page foundation for smooth native WebView scrolling. The
+   deep-black palette flows into the site through the shared custom properties
+   (--bg, --text, --accent, --safe-top, ...); the rules below cover the live
+   music surface and the retained legacy/CinemaX compatibility pages.
    ========================================================================== */
 
 html[data-cinemax-app="android"] {
@@ -62,8 +65,11 @@ html[data-cinemax-app="android"] ::selection {
   color: #fff;
 }
 
-/* The native splash covers launch; the in-page session intro is suppressed. */
-html[data-cinemax-app="android"] .splash-screen {
+/* The native splash covers launch; the in-page session intro is suppressed.
+   `.splash-screen` is the legacy CinemaX intro, `.miley-splash` the current
+   site's session intro (src/components/SplashScreen.tsx). */
+html[data-cinemax-app="android"] .splash-screen,
+html[data-cinemax-app="android"] .miley-splash {
   display: none !important;
 }
 
@@ -94,7 +100,8 @@ html[data-cinemax-app="android"] .filter-chips {
 /* Rails: native momentum, no rubber-band leaking to the page. */
 html[data-cinemax-app="android"] .movie-track,
 html[data-cinemax-app="android"] .filter-chips,
-html[data-cinemax-app="android"] .hero-preview-track {
+html[data-cinemax-app="android"] .hero-preview-track,
+html[data-cinemax-app="android"] .music-note-rail {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -592,6 +599,43 @@ html[data-cinemax-app="android"] .gate-keeper-shell {
   padding-top: var(--safe-top);
 }
 
+/* --- live surface (the deployed site: music rails, cards, player dock) - */
+
+/* The sticky header sits under the status bar in the app; its content is
+   pushed below the measured inset (MiLey already consumes --safe-top /
+   --safe-bottom everywhere else through the mapping above). */
+html[data-cinemax-app="android"] .miley-header {
+  padding-top: calc(12px + var(--safe-top));
+}
+
+html[data-cinemax-app="android"] .miley-bottom-nav {
+  background: linear-gradient(180deg, rgba(12, 12, 18, 0.96), rgba(8, 8, 12, 0.98));
+  border-color: rgba(196, 160, 255, 0.16);
+}
+
+html[data-cinemax-app="android"] .miley-bottom-nav a.is-active {
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.28), rgba(255, 79, 163, 0.16));
+  color: #fff;
+}
+
+html[data-cinemax-app="android"] .media-card {
+  border-color: rgba(196, 160, 255, 0.14);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.04), transparent 48%), #12121a;
+}
+
+html[data-cinemax-app="android"] .media-card:active {
+  transform: scale(0.985);
+}
+
+html[data-cinemax-app="android"] .mini-player {
+  background: rgba(12, 12, 18, 0.97);
+  border-color: rgba(196, 160, 255, 0.2);
+}
+
+html[data-cinemax-app="android"] .track-row.is-current {
+  background: rgba(139, 92, 246, 0.12);
+}
+
 /* --- misc polish ------------------------------------------------------ */
 
 html[data-cinemax-app="android"] .app-toast {
@@ -656,15 +700,16 @@ html[data-cinemax-app="android"] .content-poster-grid .movie-card {
    ========================================================================== */
 
 /* 1. Rails are never skipped with content-visibility.
-   The site skips offscreen rails (`content-visibility: auto` inside @supports)
-   and reserves `contain-intrinsic-size: auto 390px` for them. The real rail is
-   closer to 378px on a 412dp phone, so a row that scrolls back into view both
-   forces a synchronous style+layout+paint of ~20 posters *during* the scroll and
-   changes the document height - felt as a stutter with a small jump. Layout and
-   style containment keep the paint invalidation isolated; the one-off layout of
-   every rail now happens behind the native splash instead of under the finger.
-   (Poster artwork, cards and their own shadows are deliberately untouched.) */
-html[data-cinemax-app="android"] .movie-row {
+   The legacy catalogue skips offscreen rails (`content-visibility: auto` inside
+   @supports) and reserves `contain-intrinsic-size: auto 390px` for them; the
+   live music rails are laid out eagerly but still get the same treatment, so a
+   rail that scrolls back into view can never force a synchronous
+   style+layout+paint *during* the scroll or change the document height.
+   Layout and style containment keep the paint invalidation isolated; the one-off
+   layout of every rail now happens behind the native splash instead of under
+   the finger. (Artwork, cards and their own shadows are deliberately untouched.) */
+html[data-cinemax-app="android"] .movie-row,
+html[data-cinemax-app="android"] .music-note-rail {
   content-visibility: visible;
   contain-intrinsic-size: auto none;
   contain: layout style;
@@ -681,13 +726,19 @@ html[data-cinemax-app="android"] {
 
 /* 3. Continuous decorative animations pause while the page is actually moving.
    The shell sets [data-cinemax-scrolling] during a gesture and removes it the
-   moment scrolling stops, so the flowing button light, the skeleton shimmer and
-   the magic-line sweep all resume exactly where they were - they just stop
-   repainting on every frame of a gesture (a repeating SVG stroke animation is
-   per-frame paint work on WebView builds that cannot keep it on the
+   moment scrolling stops, so the floating hero vinyl, the equaliser bars, the
+   loading shimmer and the player ring all resume exactly where they were -
+   they just stop repainting on every frame of a gesture (a repeating animation
+   is per-frame paint work on WebView builds that cannot keep it on the
    compositor). Deliberately limited to animations that never end: one-shot
-   entrance animations and the hero's own cross-fade are left alone, so nothing
-   the user is looking at can snap. */
+   entrance animations and the rotating record's own easing are left alone, so
+   nothing the user is looking at can snap. */
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .hero-vinyl,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .mini-eq i,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .loading-skeleton,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .player-art-stage.is-playing .ring-a,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .loader-dot,
+html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .auth-side-viz i,
 html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .button-light rect,
 html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .shimmer::after,
 html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .magic-line-sweep,
@@ -696,12 +747,13 @@ html[data-cinemax-app="android"][data-cinemax-scrolling="true"] .magic-line-swee
 }
 
 /* 4. Keep both scroll axes on the compositor.
-   A touch-action of pan-x on a rail forces vertical pans that start on a poster
+   A touch-action of pan-x on a rail forces vertical pans that start on a card
    back through the main thread; the rails already contain their own horizontal
    overscroll, so the default action is both correct and cheaper. */
 html[data-cinemax-app="android"] .movie-track,
 html[data-cinemax-app="android"] .filter-chips,
-html[data-cinemax-app="android"] .hero-preview-track {
+html[data-cinemax-app="android"] .hero-preview-track,
+html[data-cinemax-app="android"] .music-note-rail {
   touch-action: auto;
 }
 

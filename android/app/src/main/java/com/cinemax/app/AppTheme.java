@@ -98,6 +98,12 @@ final class AppTheme {
                 .append("head.appendChild(s);}")
                 // The native splash replaces the in-page session intro, so the
                 // site's own intro is marked as already seen for this session.
+                // `miley:intro:v1` is the deployed MiLey intro (src/components/
+                // SplashScreen.tsx); the legacy CinemaX keys stay for the
+                // retained compatibility pages.
+                .append("try{sessionStorage.setItem('miley:intro:v1','1');}catch(e){}")
+                .append("d.setAttribute('data-miley-intro','seen');")
+                .append("try{window.dispatchEvent(new Event('miley:intro-phase'));}catch(e){}")
                 .append("try{sessionStorage.setItem('cinemax:prism-intro:v1','1');}catch(e){}")
                 .append("d.setAttribute('data-cinemax-intro','seen');")
                 .append("try{window.dispatchEvent(new Event('cinemax:intro-phase'));}catch(e){}")
