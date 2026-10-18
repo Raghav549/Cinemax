@@ -61,3 +61,8 @@ export const admins = pgTable("admins", {
   email: varchar("email", { length: 200 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
 });
+
+// Drizzle Kit uses this canonical export for `npm run db:push` and migrations.
+// MiLey's tables are additive; the existing CinemaX tables remain intact.
+export * from "./music-schema";
+export * from "./miley-messages-schema";

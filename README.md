@@ -1,191 +1,105 @@
-# CineMax
+# MiLey
 
-Movie streaming PWA built with Next.js 16, PostgreSQL and Drizzle ORM.
+MiLey is a music and social platform built in the existing Next.js 16 / React 19 / PostgreSQL project. It replaces the public CinemaX movie-browsing experience while retaining the useful application, database, and deployment infrastructure. No tracks, artists, podcasts, episodes, or creator statistics are seeded or invented.
+
+## What is implemented
+
+- **Accounts:** two-step email/password registration, server-side age/password validation, bcrypt password hashes, hashed one-time verification/reset tokens, HTTP-only session cookies, rate-limited password sign-in, password change, and account deletion. Account deletion removes owned and pending-upload objects before deleting account rows; if storage is unavailable or cleanup fails, deletion stops and the account remains available for retry. Email delivery uses the Resend HTTP API only when configured; there is no Google sign-in or SMTP flow.
+- **Music and creator tools:** database-backed track catalog, favorites, history, playlists, albums, creator channels, channel subscriptions, and direct uploads. Audio uploads are limited to 60 MB, sent to private S3-compatible storage using a short-lived signed PUT URL, and checked server-side for declared size, supported file signature, and SHA-256 before a track is created. Public playback requires a public track, a public channel, and the uploader's rights attestation.
+- **Social:** profiles, public/private account controls, follow requests, blocks/reports, in-app notifications and preferences, and music notes. Notes require mutual follows and a public rights-confirmed track. Direct messages require verified email, mutual follows, and no block; messages are stored by the service and are **not end-to-end encrypted**.
+- **Podcasts:** the public API and UI only return shows explicitly marked distribution-authorized and rights-reviewed. No podcast importer or catalog data is included, so the honest empty state is expected until an operator supplies and reviews authorized content.
+- **Interface and privacy:** responsive MiLey navigation, animated introductory splash, dark/charcoal/soft-pink brand, mostly white messaging, reduced-motion styles, accessible page landmarks and labels, legal/community pages, a small offline fallback, and a service worker that never caches API responses or user media.
+
+The web player uses the browser's audio element and Media Session API where supported. Native Android background playback and OS media controls are **not implemented or verified** in this migration; see the platform note below.
 
 ## Local development
 
+Requirements: Node.js 20.9+, npm, and PostgreSQL. Copy the sample environment file and configure at least the database URL:
+
 ```bash
-npm install
-cp .env.example .env.local   # then fill in the values
+npm ci
+cp .env.example .env.local
+# Edit .env.local and set DATABASE_URL.
 npm run dev
 ```
 
-Open http://localhost:3000. On first visit the app creates the database tables if they are missing. Nothing is seeded: movies, slides and categories are managed exclusively from the studio (`/gate-keeper`), and the admin panel is the single source of truth for the public catalogue.
+Open <http://localhost:3000>. With the default `MILEY_SCHEMA_AUTO_CREATE=true` behavior (the default when unset), the first database-backed request creates the additive MiLey tables. The database role therefore needs schema `CREATE` privileges for local first boot. Nothing is seeded; an empty catalog remains empty.
 
-## Deploy to Vercel
-
-1. **Create a PostgreSQL database**: Neon (Vercel → Storage → Neon), Supabase, Railway, etc. Copy its connection string.
-2. **Import the repo** in Vercel. The framework preset should be **Next.js**. Leave the build command (`next build`) and output directory at their defaults.
-3. **Add environment variables** (Project → Settings → Environment Variables, for Production *and* Preview):
-
-   | Name             | Value                                                    |
-   | ---------------- | -------------------------------------------------------- |
-   | `DATABASE_URL`   | your Postgres connection string                          |
-   | `JWT_SECRET`     | a long random string (`openssl rand -base64 32`)         |
-   | `ADMIN_EMAIL`    | admin login email for `/gate-keeper`                     |
-   | `ADMIN_PASSWORD` | admin login password                                     |
-
-   If you used Vercel's Neon integration, `POSTGRES_URL` / `DATABASE_URL` is added for you. Both names work.
-4. **Redeploy** (Deployments → ⋯ → Redeploy) so the new variables take effect.
-5. Open the site and sign in to the studio (`/gate-keeper`) to add your movies and homepage slides. The tables are created on first visit; no demo data is ever inserted automatically. (`POST /api/seed` only checks the schema — it never writes catalogue rows.)
-6. Check the database connection at `https://YOUR-APP.vercel.app/api/health`. It should return `{"ok":true}`.
-
-### Optional: manage the schema with Drizzle
+Before production, prefer applying the schema in a deployment/migration step, then set `MILEY_SCHEMA_AUTO_CREATE=false` so web instances do not attempt runtime DDL. The canonical Drizzle schema includes both the retained legacy tables and MiLey tables:
 
 ```bash
-DATABASE_URL="postgresql://..." npm run db:push    # create/update tables
-DATABASE_URL="postgresql://..." npm run db:studio  # browse data
+DATABASE_URL="postgresql://..." npm run db:push
 ```
 
-## Existing data, schema drift and diagnostics
+Review Drizzle's proposed changes before applying them to an existing database. `src/db/ensure-music-schema.ts` remains an additive runtime bootstrap for local/easy setup; no production migration has been run by this repository checkout.
 
-The app never assumes your database was created by this exact revision. On the
-first request of each server process it reconciles the schema **without dropping
-anything**:
+## Environment variables
 
-| Situation                                       | What happens                                              |
-| ----------------------------------------------- | --------------------------------------------------------- |
-| Table missing                                   | created from `src/db/schema.ts`                           |
-| Column the mapping expects is missing           | added (`ADD COLUMN IF NOT EXISTS`)                        |
-| Column exists under an older name (`poster`)    | renamed onto the expected name (`poster_url`), data kept  |
-| Old and new column both exist                   | values copied into the new column where it is empty       |
+| Variable | Required for | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` (or `POSTGRES_URL`) | Accounts, catalog, social, settings | PostgreSQL connection string. `DATABASE_URL` takes precedence. |
+| `MILEY_SCHEMA_AUTO_CREATE` | Optional schema mode | Defaults to enabled. Set to `false` only after applying the Drizzle schema; runtime then assumes tables already exist. |
+| `RESEND_API_KEY` | Verification/reset email | Resend API key. Without it, delivery is not attempted; production does not return a development token. |
+| `MILEY_MAIL_FROM` | Verification/reset email | Verified sender, e.g. `MiLey <accounts@your-domain.example>`. |
+| `MILEY_APP_URL` | Email links | Canonical HTTPS app origin used to build links. `NEXT_PUBLIC_APP_URL` is a fallback. |
+| `S3_ENDPOINT` | Audio uploads and playback | HTTPS S3-compatible endpoint. `http://localhost` is allowed only for local development. |
+| `S3_BUCKET` | Audio uploads and playback | Private bucket name; do not enable public bucket access. |
+| `S3_REGION` | Audio uploads and playback | S3 signing region; use the provider's region (`auto` for compatible services that require it). |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Audio uploads and playback | Server-only credentials. Never prefix these with `NEXT_PUBLIC_`. |
+| `MILEY_SCHEMA_AUTO_CREATE=false` | Production least-privilege rollout | Use only after the database schema has been applied. |
+| `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Legacy CinemaX `/gate-keeper` only | These are not MiLey account credentials and are not used by MiLey's email/password auth. Keep them out of public client variables. |
 
-The old names it recognises live in `src/db/table-map.ts`. Nothing is deleted and
-no data is rewritten unless the target column is empty.
+For S3-compatible direct browser uploads, configure bucket CORS for the exact deployed MiLey origin and `PUT`; allow the `Content-Type` request header. Keep the bucket private: the server issues short-lived signed upload and playback URLs. Resend requires a verified sending domain/from address. Do not commit `.env.local` or credentials.
 
-`GET /api/health` reports the whole chain instead of just the TCP connection:
+## Production rollout checklist
 
-```jsonc
-{
-  "ok": true,
-  "connection": { "host": "ep-…neon.tech", "database": "neondb", "ssl": true, "source": "DATABASE_URL" },
-  "tables": { "movies": { "created": false, "added": ["featured"], "renamed": [{ "from": "poster", "to": "poster_url" }], "backfilled": [], "skipped": [] } },
-  "counts": { "movies": 32, "slides": 3, "categories": 12 }
-}
-```
+1. Provision PostgreSQL, apply/review the Drizzle schema, and verify `GET /api/health` reports a healthy connection.
+2. Configure Resend and a verified sender before allowing public registration; confirm verification and reset messages arrive at real addresses.
+3. Configure private S3-compatible storage and CORS before enabling creator uploads. Verify signed PUT, HEAD, GET, and DELETE with a test account and a rights-cleared test recording.
+4. Set `MILEY_APP_URL` to the HTTPS production origin. Use HTTPS so session cookies are secure.
+5. Review legal and moderation requirements for the jurisdictions where the service will operate. The repository intentionally does not invent an operator identity, support address, takedown agent, or legal advice.
+6. Keep podcast content absent unless distribution permission has been reviewed and the catalog entry has both `distribution_authorized=true` and a non-null `rights_reviewed_at` value. This repo does not include an ingestion workflow.
+7. Test registration, email verification/reset, privacy and block rules, message/note permissions, image access, uploads, playback, deletion, backups, and retention against the actual configured services before launch.
 
-When `ok` is `false`, `stage` says which step failed (`connect`, `schema` or
-`read`) and `error` carries the Postgres message — e.g.
-`column "poster_url" of relation "movies" does not exist`. The admin panel shows
-the same message in a banner rather than rendering an empty library.
+## Validation and known limitations
 
-## Catalogue ownership and demo-catalog cleanup
+Validation run in this workspace:
 
-The studio (`/gate-keeper`) is the only writer of movies, slides and
-categories. There is no automatic catalogue seeding or synchronisation anywhere
-in the app: nothing re-inserts deleted titles, overwrites admin edits, or
-substitutes a hardcoded catalog when the database is empty — the public app
-shows an explicit empty state instead.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed with no warnings.
+- `npm run build` — passed; Next.js generated the production route manifest.
+- HTTP smoke checks — MiLey pages returned 200 and legacy movie pages redirected to `/explore` or `/library`; auth session returned an anonymous session as expected.
+- Database-backed API checks — **blocked/unavailable** because `DATABASE_URL` is not configured here. `/api/health` returned 500 with the explicit missing-variable message; music/podcast/catalog endpoints returned service errors rather than mock content. Registration, Postgres persistence, email delivery, image storage, S3 upload/playback, and account deletion were not end-to-end tested.
+- Playwright browser tests — **not run**: this environment has no installed Chromium executable. The existing Playwright suite under `tests/` still targets the retired CinemaX film UI and is not a MiLey acceptance suite. Install a supported browser and add/run MiLey-specific browser coverage before release.
 
-Deployments that still contain rows from the old hardcoded demo catalog can
-remove exactly those rows with the guarded cleanup script. It identifies a
-record as demo content only when its title/year **and** its stored video or
-poster URL match `scripts/demo-catalog-manifest.json`, writes a full JSON
-backup of the movies/slides/categories tables before deleting anything, and
-changes nothing in its default dry-run mode:
+`npm audit` reports 9 findings in the full dependency tree (4 moderate, 5 high); `npm audit --omit=dev` reports 0 production dependency findings. The reported issues are in development tooling such as Drizzle Kit and Next ESLint tooling; review and update them through the normal lockfile review process before production. No blanket `npm audit fix` was applied.
+
+Additional constraints to plan for:
+
+- Images are byte-size/type/signature checked and privacy-gated, but no image resizing, EXIF stripping, malware scanning, or content moderation service is integrated.
+- Audio rights are an uploader attestation, not independently established or licensed by MiLey; a staffed report/takedown process is not included.
+- No native Android MediaSession/background audio integration was added. The shipped Android project still identifies as CinemaX, points at the old `cinemax-orpin.vercel.app` deployment, and has not been validated against MiLey.
+- The retained CinemaX database/API/admin code is not the MiLey product surface. `/categories`, `/category/*`, `/movie/*`, `/search`, and `/watchlist` are compatibility redirects; legacy APIs and `/gate-keeper` have not been removed or rebranded.
+
+## Useful commands
 
 ```bash
-# 1. See what would be removed (changes nothing)
-DATABASE_URL="postgresql://..." node scripts/cleanup-demo-catalog.mjs
-
-# 2. Back up (./backups/cinemax-backup-<timestamp>.json) and delete only those rows
-DATABASE_URL="postgresql://..." node scripts/cleanup-demo-catalog.mjs --apply
+npm run dev          # Local development
+npm run typecheck    # TypeScript
+npm run lint         # ESLint
+npm run build        # Production build
+npm run db:push      # Apply the Drizzle schema (review first)
+npm run test:ui      # Existing legacy CinemaX Playwright suite; not MiLey coverage
 ```
 
-Admin-created records are preserved even when they share a title with a demo
-entry, as long as their own source/poster differs. Note that the original
-pre-demo production data is **not** stored in this repository (no database
-backup is committed), so rows the old sync already destroyed in a live
-database can only be restored from that database provider's own backups
-(e.g. Neon/Supabase point-in-time recovery); the cleanup script never invents
-replacement content.
+## Repository map
 
-## Playback and authorized magnet sources
-
-Cinemax keeps direct MP4/WebM URLs, HLS (`.m3u8`), YouTube, and Vimeo playback. HLS uses `hls.js` on compatible browsers for adaptive buffering and selectable renditions; Safari/iOS can use native HLS. The player also supports WebVTT subtitle tracks, speed and picture controls, keyboard shortcuts, recoverable network/media errors, and a private per-device resume marker (stored locally in the browser).
-
-Magnet sources are an opt-in path for **content Cinemax is authorized to distribute**:
-
-1. In `/gate-keeper`, paste the licensed `magnet:?xt=urn:btih:…` or v2 magnet URI into a movie’s Playback source field.
-2. Confirm the public distribution-rights checkbox. The API rejects magnet sources without this attestation, and the public catalogue never returns the magnet itself.
-3. Deploy a private, persistent torrent streaming gateway and set `TORRENT_STREAMING_ENABLED=true`, `TORRENT_GATEWAY_URL`, and a long random `TORRENT_GATEWAY_TOKEN`. The gateway must stream the selected video file as soon as pieces are available; it must not require the viewer to wait for the whole torrent.
-
-The Cinemax `/api/stream/{movieId}` Node route is the public playback endpoint and security boundary: it only resolves magnets already saved to an authorized movie, keeps the source server-side, forwards byte-range requests for seeking/buffering, and streams the gateway response through without buffering the whole file in Next.js. It returns `503` when magnet streaming is not configured. The gateway must be private, use HTTPS outside localhost, validate the bearer token, choose a video file only, support `GET`/`HEAD` and HTTP `Range` (including `206`, `Content-Range`, and `416`), and return a streaming response with `Content-Length`/`Accept-Ranges` where available. The private `X-Cinemax-Authorized-Magnet` header contains the approved source; do not log that header or expose the gateway directly to browsers.
-
-**Deployment note:** the torrent engine is intentionally a separately operated persistent service rather than a torrent client embedded in a serverless Next.js function. Vercel can host the Cinemax UI/API adapter, but it cannot host the always-on peer discovery and stream lifecycle needed by a torrent engine. If you do not operate an authorized gateway, leave `TORRENT_STREAMING_ENABLED=false`; direct video and HLS playback are unaffected. The app does not supply, index, seed, or recommend any torrent content.
-
-## Scripts
-
-| Script              | What it does                                                       |
-| ------------------- | ------------------------------------------------------------------ |
-| `npm run dev`       | Start dev server                                                   |
-| `npm run build`     | Production build                                                   |
-| `npm run lint`      | ESLint                                                             |
-| `npm run typecheck` | TypeScript check                                                   |
-| `npm run test:ui`   | API-backed Playwright regression checks (desktop/mobile/reduced motion) |
-| `npm run test:ui:report` | Open the latest browser-check report                          |
-| `npm run db:push`   | Push Drizzle schema to database                                    |
-| `npm run verify:api`| End-to-end check of every admin/public API route (see below)        |
-
-### Verifying a deployment
-
-`scripts/verify-admin.mjs` logs in, then exercises every read and every
-add/edit/delete path (movies, slides, categories, watchlist) plus the auth and
-validation guards. It creates its own rows and deletes them again, so it is safe
-to run against a database that already holds data.
-
-```bash
-# against a local dev server
-npm run dev &
-BASE_URL=http://localhost:3000 ADMIN_EMAIL=admin@cinemax.com ADMIN_PASSWORD=... npm run verify:api
-
-# against a deployment
-BASE_URL=https://your-app.vercel.app ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run verify:api
-```
-
-It prints one line per check and exits non-zero if anything fails.
-
-## Android app
-
-The repository also ships a real, installable Android app
-(`android/dist/Cinemax-1.1.0.apk`, package `com.cinemax.app`). It is a native
-shell around this same deployment — `https://cinemax-orpin.vercel.app` — so the
-existing web app, API routes, PostgreSQL data, studio/admin panel, authentication
-and playback all run unchanged. The app adds a native splash, app icon, adaptive
-+ legacy launcher icons, edge-to-edge inset handling, back-button behaviour,
-rotation and fullscreen playback handling, external-link routing, and an
-app-only premium presentation layer (its own stylesheet, scoped to the app, that
-never affects the website).
-
-The splash shows the existing Cinemax logo and nothing else — no wordmark,
-tagline, rings, orbit lines, dots, streaks or spinner — as one composited view on
-a deep near-black canvas: the logo dollies in over rising blue/violet/pink light,
-a single blue-to-pink band sweeps across it, and the glow settles. It plays only
-on a genuine cold launch, hands over as soon as the page has a themed first
-paint, and stops drawing frames as soon as it has settled.
-
-![The Cinemax splash, frame by frame](docs/android-splash/timeline.png)
-
-```bash
-bash android/build.sh            # signed APK → android/dist/Cinemax-1.1.0.apk
-bash android/tests/run-tests.sh  # 158 JVM + 64 DOM + 100 APK checks
-bash android/tools/preview-splash.sh   # render the splash offline (no device)
-adb install -r android/dist/Cinemax-1.1.0.apk
-```
-
-Gradle-free and SDK-manager-free: the build fetches a pinned, checksum-verified
-toolchain. The same build runs in CI on every push and pull request, and the
-finished `Cinemax-1.1.0.apk` (with its SHA-256) is attached to the run as the
-`cinemax-android-apk` artifact — download it from the *Actions* tab and open it
-on the device. Full details, the design system, device verification steps and
-the remaining notes live in [android/README.md](android/README.md).
-
-## Cinemax / Prism visual redesign
-
-The public UI now uses an original multicolour aperture emblem, cinematic
-artwork, a session-only intro, flowing SVG button lighting, and persistent
-responsive navigation. Existing APIs, database records, studio/authentication,
-and playback are retained.
-
-See [the redesign and verification notes](docs/prism-redesign.md) for the design
-system, interaction fixes, browser-check setup, and deployment caveats.
+- `src/app/api/auth/` — account registration, login, verification, password reset, sessions.
+- `src/app/api/music/` — tracks, uploads, playback, favorites, history, albums, playlists, channels, settings.
+- `src/app/api/social/` — profiles, follows, blocks/reports, notes, messages, notifications.
+- `src/db/music-schema.ts`, `src/db/miley-messages-schema.ts` — additive PostgreSQL/Drizzle tables.
+- `src/db/ensure-music-schema.ts` — additive runtime DDL for easy setup.
+- `src/lib/storage/s3.ts` — server-only S3 SigV4 signing, object verification, and deletion.
+- `src/components/miley/` — MiLey UI, music player, collection and social screens.
+- `public/brand/`, `public/manifest.json`, `public/sw.js` — MiLey PWA branding and offline shell.
+- `public/licenses/` — included font/dependency license notices.

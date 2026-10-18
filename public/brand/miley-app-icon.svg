@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" fill="none">
+  <defs>
+    <linearGradient id="miley-wave" x1="38" y1="55" x2="146" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6C1D3"/><stop offset=".55" stop-color="#E8A2BD"/><stop offset="1" stop-color="#C77F9F"/>
+    </linearGradient>
+    <radialGradient id="miley-glow" cx="0" cy="0" r="1" gradientTransform="matrix(0 122 -132 0 90 33)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6C3B50" stop-opacity=".42"/><stop offset="1" stop-color="#100C10" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="5" y="5" width="170" height="170" rx="52" fill="#100C10" stroke="#543344" stroke-width="4"/>
+  <rect x="8" y="8" width="164" height="164" rx="49" fill="url(#miley-glow)"/>
+  <path d="M36 91c7 0 7-29 14-29s7 58 14 58 7-64 14-64 7 70 14 70 7-70 14-70 7 64 14 64 7-58 14-58 7 29 14 29" stroke="url(#miley-wave)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M45 140h90" stroke="#F9DCE6" stroke-opacity=".3" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,45 +1,18 @@
 {
-  "name": "Cinemax — Movies & Series",
-  "short_name": "Cinemax",
-  "description": "Discover movies, series and anime. Save your favourites and keep watching on Cinemax.",
+  "name": "MiLey — music, made personal",
+  "short_name": "MiLey",
+  "description": "Listen to music shared by independent creators, build your library, and find your people on MiLey.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": [
-    "standalone",
-    "minimal-ui"
-  ],
-  "background_color": "#050507",
-  "theme_color": "#050507",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#100c10",
+  "theme_color": "#100c10",
   "orientation": "portrait-primary",
-  "categories": [
-    "entertainment",
-    "video"
-  ],
+  "categories": ["music", "social"],
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "/brand/miley-symbol.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/brand/miley-app-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/miley-app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
   ]
 }
