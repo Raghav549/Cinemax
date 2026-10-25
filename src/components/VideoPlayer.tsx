@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type Hls from "hls.js";
 import { hasNativeShell, setNativePlayerFullscreen } from "@/lib/open-external";
+import { lockPlayerLandscape, requestBrowserImmersive, unlockPlayerOrientation } from "@/lib/playback/immersive";
 
 interface VideoPlayerProps {
   src: string;
@@ -538,7 +539,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       } catch {
         // The native shell still restores orientation and system bars below.
       }
-      try { (window.screen?.orientation as { unlock?: () => void } | undefined)?.unlock?.(); } catch { /* not supported */ }
+      unlockPlayerOrientation();
       setNativeFullscreen(false);
       setIsFullscreen(false);
       dispatchNativeFullscreen(false);
@@ -551,23 +552,27 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const enterPlayerFullscreen = useCallback(async () => {
     const element = wrapRef.current;
     if (!element || fullscreenBusyRef.current) return;
-    if (document.fullscreenElement || nativeFullscreen) return;
+    if (document.fullscreenElement) {
+      // Watch Now may already have fullscreened the document from its click
+      // handler, before this player was mounted.
+      setIsFullscreen(true);
+      void lockPlayerLandscape();
+      return;
+    }
+    if (nativeFullscreen) return;
     fullscreenBusyRef.current = true;
-    // Android keeps the WebView in place, rotates it to landscape and hides
-    // system bars. The CSS shell continues to fill that native surface.
     const nativeShell = hasNativeShell();
     if (nativeShell) {
+      // Keep the WebView mounted while Android rotates and hides system bars.
       setNativeFullscreen(true);
       setIsFullscreen(true);
       dispatchNativeFullscreen(true);
+      fullscreenBusyRef.current = false;
+      return;
     }
     try {
-      await element.requestFullscreen();
-      try { await (window.screen?.orientation as { lock?: (orientation: string) => Promise<void> } | undefined)?.lock?.("landscape"); } catch { /* desktop browsers refuse; playback is already landscape there */ }
-    } catch {
-      // A WebView or a browser without a user gesture can deny the DOM
-      // Fullscreen API; the native Android path above remains complete.
-      if (!nativeShell) setIsFullscreen(false);
+      const entered = await requestBrowserImmersive(element);
+      if (entered) setIsFullscreen(true);
     } finally {
       fullscreenBusyRef.current = false;
     }
@@ -582,17 +587,13 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     showControls();
   }, [enterPlayerFullscreen, exitPlayerFullscreen, nativeFullscreen, showControls]);
 
-  // Watch Now opens landscape/immersive playback by default: the Android shell
-  // rotates to landscape and hides system bars; a phone-sized portrait browser
-  // gets the Fullscreen API where the platform allows it. Desktop browsers,
-  // already landscape, simply show the player.
+  // Browser fullscreen must be requested synchronously from Watch Now; an
+  // effect runs after user activation has expired and is rejected by mobile
+  // browsers. Android's native bridge does not have that browser restriction.
   useEffect(() => {
     if (!openImmersive || immersiveRequestedRef.current) return;
     immersiveRequestedRef.current = true;
-    const portraitHandset = typeof window !== "undefined" && window.innerHeight > window.innerWidth + 40;
-    if (!hasNativeShell() && !portraitHandset) return;
-    // Deferred one frame so the request happens as an async interaction with
-    // the Fullscreen API, not as synchronous work inside the effect body.
+    if (!hasNativeShell()) return;
     const frame = window.requestAnimationFrame(() => { void enterPlayerFullscreen(); });
     return () => window.cancelAnimationFrame(frame);
   }, [enterPlayerFullscreen, openImmersive]);
@@ -600,21 +601,18 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   useEffect(() => {
     const onFullscreenChange = () => {
       const browserFullscreen = Boolean(document.fullscreenElement);
-      if (!browserFullscreen && nativeFullscreen) {
-        setNativeFullscreen(false);
-        setIsFullscreen(false);
-        dispatchNativeFullscreen(false);
-        return;
-      }
-      setIsFullscreen(browserFullscreen);
+      setIsFullscreen(browserFullscreen || nativeFullscreen);
+      if (!browserFullscreen && !nativeFullscreen) unlockPlayerOrientation();
     };
     const onNativeExit = () => {
       setNativeFullscreen(false);
       setIsFullscreen(false);
+      unlockPlayerOrientation();
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     };
     const onExitRequest = () => { void exitPlayerFullscreen(); };
     document.addEventListener("fullscreenchange", onFullscreenChange);
+    onFullscreenChange();
     window.addEventListener("cinemax:native-fullscreen-exit", onNativeExit);
     window.addEventListener("cinemax:request-exit-player-fullscreen", onExitRequest);
     return () => {
@@ -622,11 +620,12 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       window.removeEventListener("cinemax:native-fullscreen-exit", onNativeExit);
       window.removeEventListener("cinemax:request-exit-player-fullscreen", onExitRequest);
     };
-  }, [dispatchNativeFullscreen, exitPlayerFullscreen, nativeFullscreen]);
+  }, [exitPlayerFullscreen, nativeFullscreen]);
 
   useEffect(() => () => {
-    // Closing the overlay must restore Android orientation even if the route
+    // Closing the overlay must restore browser/native orientation even if the route
     // changes while playback is fullscreen.
+    unlockPlayerOrientation();
     dispatchNativeFullscreen(false);
   }, [dispatchNativeFullscreen]);
 

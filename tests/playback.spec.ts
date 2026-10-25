@@ -87,6 +87,30 @@ test("fullscreen fills the browser surface and exits before closing playback", a
   } finally { await request.delete(`/api/movies/${movie.id}`); }
 });
 
+test("Watch Now uses a phone browser's fullscreen surface and restores it on exit", async ({ page, request }, testInfo) => {
+  test.skip(!["mobile", "small-mobile"].includes(testInfo.project.name), "Portrait handset browser check");
+  const movie = await createPlaybackMovie(request, "/__e2e__/prism-test.webm");
+  try {
+    await page.goto(`/movie/${movie.id}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Watch Now", exact: true }).click();
+    const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
+    await expect(player).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+    await expect(player).toHaveClass(/is-fullscreen/);
+
+    const video = page.locator("video");
+    const centerPlay = player.locator(".player-center-controls").getByRole("button", { name: "Play", exact: true });
+    if (await centerPlay.count()) await centerPlay.click();
+    await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime), { timeout: 20000 }).toBeGreaterThan(1);
+
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
+    await expect(player).toBeVisible();
+    await dismissPlayer(page);
+    await expect(player).toHaveCount(0);
+  } finally { await request.delete(`/api/movies/${movie.id}`); }
+});
+
 test("provider embeds retain their playback path and close without navigation collisions", async ({ page, request }) => {
   const movie = await createPlaybackMovie(request, "https://www.youtube.com/watch?v=abcDEF_1234");
   await page.route("https://www.youtube-nocookie.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: '<html><body style="background:black;color:white">Provider verification</body></html>' }));
@@ -94,11 +118,50 @@ test("provider embeds retain their playback path and close without navigation co
     await page.goto(`/movie/${movie.id}?play=1`, { waitUntil: "domcontentloaded" });
     const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
     await expect(player).toBeVisible();
-    await expect(player.locator("iframe")).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/abcDEF_1234\?autoplay=1/);
+    const iframe = player.locator("iframe.embedded-video");
+    await expect(iframe).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/abcDEF_1234\?autoplay=1/);
+    await expect(player.locator(".player-topbar")).toHaveCount(0);
+    await expect(player.locator(".embedded-video-hint")).toHaveCount(0);
+    await expect(player.getByRole("button", { name: /Close player|Back to details/i })).toHaveCount(0);
+    const frameBox = await iframe.boundingBox();
+    const viewport = page.viewportSize();
+    expect(frameBox).not.toBeNull();
+    expect(frameBox!.width).toBeCloseTo(viewport!.width, 0);
+    expect(frameBox!.height).toBeCloseTo(viewport!.height, 0);
     await expectNoOverflow(page);
-    await player.getByRole("button", { name: "Close player", exact: true }).last().click();
+    // With no Cinemax close buttons in the provider frame, the existing browser
+    // Back history entry is the user-facing exit path.
+    await page.goBack();
     await expect(player).toHaveCount(0);
     await expect(page.getByRole("heading", { name: movie.title, exact: true })).toBeVisible();
+  } finally { await request.delete(`/api/movies/${movie.id}`); }
+});
+
+test("a provider embed restores browser orientation when Back exits fullscreen", async ({ page, request }, testInfo) => {
+  test.skip(!["mobile", "small-mobile"].includes(testInfo.project.name), "Portrait handset browser check");
+  const movie = await createPlaybackMovie(request, "https://www.youtube.com/watch?v=abcDEF_1234");
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    (window as typeof window & { __orientationCalls?: string[] }).__orientationCalls = calls;
+    const orientation = screen.orientation as unknown as { lock?: (value: "landscape") => Promise<void>; unlock?: () => void };
+    Object.defineProperty(orientation, "lock", { configurable: true, value: async (value: "landscape") => { calls.push(`lock:${value}`); } });
+    Object.defineProperty(orientation, "unlock", { configurable: true, value: () => { calls.push("unlock"); } });
+  });
+  await page.route("https://www.youtube-nocookie.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<html><body>Provider verification</body></html>" }));
+  try {
+    await page.goto(`/movie/${movie.id}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Watch Now", exact: true }).click();
+    const player = page.getByRole("dialog", { name: `Now playing ${movie.title}`, exact: true });
+    await expect(player.locator("iframe.embedded-video")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { __orientationCalls?: string[] }).__orientationCalls?.includes("lock:landscape"))).toBeTruthy();
+
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeFalsy();
+    await expect(player).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { __orientationCalls?: string[] }).__orientationCalls?.includes("unlock"))).toBeTruthy();
+    await page.goBack();
+    await expect(player).toHaveCount(0);
   } finally { await request.delete(`/api/movies/${movie.id}`); }
 });
 

@@ -126,6 +126,9 @@ test.describe("Universal playback in the browser", () => {
       await expect(iframe).toHaveCount(1);
       await expect(iframe).toHaveAttribute("src", /color=B72CDD/);
       await expect(iframe).toHaveAttribute("src", /autoplay=true/);
+      await expect(page.locator(".playback-layer .player-topbar")).toHaveCount(0);
+      await expect(page.locator(".embedded-video-hint")).toHaveCount(0);
+      await expect(page.locator(".playback-layer .player-icon-button")).toHaveCount(0);
       const provider = page.frameLocator("iframe.embedded-video");
       await expect.poll(() => provider.locator("#provider-player").getAttribute("data-color"), { timeout: 12000 }).toBe("B72CDD");
       await expect.poll(() => provider.locator("#provider-player").getAttribute("data-autoplay"), { timeout: 12000 }).toBe("true");
