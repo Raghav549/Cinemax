@@ -1,4 +1,13 @@
 import type { ProviderAdapter } from "../types";
+import { preservePlayerSettings } from "../url";
+
+function preserveVimeoPlayerSettings(targetRaw: string, source: URL): string {
+  const target = new URL(preservePlayerSettings(targetRaw, source));
+  // Vimeo's `h` is the documented privacy hash for unlisted videos.
+  const privacyHash = source.searchParams.get("h");
+  if (privacyHash && !target.searchParams.has("h")) target.searchParams.set("h", privacyHash);
+  return target.toString();
+}
 
 /**
  * Vimeo - public videos via the official player.vimeo.com embed and the
@@ -39,9 +48,14 @@ export const vimeoAdapter: ProviderAdapter = {
       canonicalUrl: `https://vimeo.com/${id}`,
       playback: {
         strategy: "embed",
-        src: `https://player.vimeo.com/video/${id}?autoplay=1&color=8b5cf6&title=0&byline=0`,
+        // The official player URL can carry unlisted-video hashes and
+        // presentation settings; do not rebuild it from only the numeric ID.
+        src: url.hostname.toLowerCase() === "player.vimeo.com" && url.pathname.startsWith("/video/")
+          ? url.toString()
+          : preserveVimeoPlayerSettings(`https://player.vimeo.com/video/${id}?autoplay=1&color=8b5cf6&title=0&byline=0`, url),
         embedTitle: "Vimeo player",
       },
+
     };
   },
   oembed(url) {

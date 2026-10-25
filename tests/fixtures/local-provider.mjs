@@ -42,6 +42,7 @@ const staticWatch = page("Static video page", `<main><video controls muted width
 const ogWatch = page("OG video page", `<main><h1>OG page</h1></main>`,
   `<meta property="og:video" content="/media/clip.mp4"><meta property="og:video:type" content="video/mp4">`);
 const iframeWatch = page("Iframe embed page", `<main><h1>Embedded</h1><iframe src="/embed/player-1" width="640" height="360" allowfullscreen></iframe></main>`);
+const vidyShapedWatch = page("Vidy-shaped provider page", `<main><h1>Provider movie</h1><iframe src="/embed/vidy/315162" title="Provider player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></main>`);
 const embedPlayer = page("Embed player", `
   <video id="v" controls muted autoplay playsinline width="640"></video>
   <script src="/vendor/hls.min.js"></script>
@@ -55,6 +56,7 @@ const routes = {
   "/watch/static-video": { body: staticWatch, type: "text/html; charset=utf-8" },
   "/watch/og-video": { body: ogWatch, type: "text/html; charset=utf-8" },
   "/watch/iframe-embed": { body: iframeWatch, type: "text/html; charset=utf-8" },
+  "/movie/315162": { body: vidyShapedWatch, type: "text/html; charset=utf-8" },
   "/embed/player-1": { body: embedPlayer, type: "text/html; charset=utf-8" },
   "/embed/denied": { body: deniedEmbed, type: "text/html; charset=utf-8", headers: { "X-Frame-Options": "DENY" } },
   "/watch/denied": { body: deniedWatch, type: "text/html; charset=utf-8", headers: { "X-Frame-Options": "DENY" } },
@@ -91,6 +93,24 @@ const server = http.createServer((req, res) => {
   if (path === "/api/stream/1058424") {
     res.writeHead(200, { "Content-Type": "application/json", ...cors });
     return res.end(JSON.stringify({ url: "/media/hls/index.m3u8" }));
+  }
+  if (path === "/embed/vidy/315162") {
+    const color = /^[0-9a-f]{6}$/i.test(url.searchParams.get("color") || "") ? url.searchParams.get("color") : "";
+    const autoplay = url.searchParams.get("autoplay") === "true";
+    const player = page("Provider-owned test player", `<main id="provider-player" data-color="${color}" data-autoplay="${autoplay}"><video id="provider-video" controls muted ${autoplay ? "autoplay" : ""} playsinline width="640"><source src="/media/clip.webm" type="video/webm"></video></main>`);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...cors });
+    return res.end(player);
+  }
+  if (path === "/movie/315163") {
+    // Model a public player page that denies Cinemax's server probe but loads
+    // normally in the user's browser frame; no private APIs or cookies involved.
+    if (String(req.headers["user-agent"] || "").includes("CinemaxPlayback")) {
+      res.writeHead(403, { "Content-Type": "text/html; charset=utf-8", ...cors });
+      return res.end("<h1>Automated server probe denied</h1>");
+    }
+    const player = page("Browser-only provider player", `<main><video id="browser-provider-video" controls muted autoplay playsinline width="640"><source src="/media/clip.webm" type="video/webm"></video></main>`);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...cors });
+    return res.end(player);
   }
   if (path.startsWith("/nocors/")) {
     // Same media without CORS headers: exercises the hls.js/dash.js CORS failure path.

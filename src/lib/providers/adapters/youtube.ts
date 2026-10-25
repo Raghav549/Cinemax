@@ -1,4 +1,5 @@
 import type { ProviderAdapter } from "../types";
+import { preservePlayerSettings } from "../url";
 
 /**
  * YouTube - videos, Shorts, live streams and embed URLs.
@@ -62,8 +63,12 @@ export const youtubeAdapter: ProviderAdapter = {
       canonicalUrl,
       playback: {
         strategy: "embed",
-        // Official youtube-nocookie embed; the provider's own controls are preserved.
-        src: `https://www.youtube-nocookie.com/embed/${parsed.id}?autoplay=1&rel=0&playsinline=1`,
+        // Keep already-issued official embed URLs byte-for-byte (including
+        // access hashes and player settings). Share URLs get the privacy-safe
+        // embed plus defaults that explicit query settings can override.
+        src: url.pathname.startsWith("/embed/")
+          ? url.toString()
+          : preservePlayerSettings(`https://www.youtube-nocookie.com/embed/${parsed.id}?autoplay=1&rel=0&playsinline=1`, url),
         embedTitle: "YouTube player",
       },
     };

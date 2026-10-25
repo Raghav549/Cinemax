@@ -24,7 +24,10 @@ licensed catalogue artwork, database snapshots or credentials are committed.
 `local-provider.mjs` is a loopback test provider (not a real streaming site). It serves
 range-capable media, HLS/DASH manifests and watch-page shapes (JS-only player, static
 `<video>`, OpenGraph video, iframe embed, frame-denied, redirect, article, 404) on port 8900
-(`PORT` overrides). Run it with `FIXTURE_ROOT=<dir containing media/>` and start the app with
+(`PORT` overrides). It also has a Vidy-shaped `/movie/315162?color=…&autoplay=…` page and a
+route that denies the resolver's server user-agent but plays in a browser frame. These model
+URL/query and probe-fallback behavior; they are not the Vidy service. Run it with
+`FIXTURE_ROOT=<dir containing media/>` and start the app with
 `CINEMAX_PLAYBACK_ALLOW_PRIVATE_HOSTS=true` so the server may reach the loopback provider.
 
 The media it serves (`media/clip.mp4`, `media/clip.webm`, `media/hls/`, `media/dash/`) are

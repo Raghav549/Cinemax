@@ -1,4 +1,5 @@
 import type { ProviderAdapter } from "../types";
+import { preservePlayerSettings } from "../url";
 
 /**
  * Social/video platforms with official embeddable players.
@@ -41,7 +42,7 @@ export const dailymotionAdapter: ProviderAdapter = {
       canonicalUrl: `https://www.dailymotion.com/video/${id}`,
       playback: {
         strategy: "embed",
-        src: `https://www.dailymotion.com/embed/video/${id}?autoplay=1`,
+        src: preservePlayerSettings(`https://www.dailymotion.com/embed/video/${id}?autoplay=1`, url),
         embedTitle: "Dailymotion player",
       },
     };

@@ -2,9 +2,9 @@ import type { IncomingHttpHeaders } from "node:http";
 import { resolveShareLink } from "@/lib/providers/registry";
 import { directMediaAdapter } from "@/lib/providers/adapters/direct-media";
 import { unknownPageAdapter } from "@/lib/providers/adapters/generic";
-import { displayHost } from "@/lib/providers/url";
+import { displayHost, hasPlayerSettings, preservePlayerSettings } from "@/lib/providers/url";
 import type { DirectEngine, LinkResolution, PlaybackPlan, ProviderInfo } from "@/lib/providers/types";
-import { SafeFetchError, safeGet, validatePlaybackUrl, type SafeResponse } from "@/lib/playback/safe-fetch";
+import { privateHostsAllowed, SafeFetchError, safeGet, validatePlaybackUrl, type SafeResponse } from "@/lib/playback/safe-fetch";
 
 /**
  * Turns an admin-entered web link into a playback plan the player can use.
@@ -35,6 +35,34 @@ const MAX_IFRAME_CANDIDATES = 4;
 
 /** Words a page only uses when it actually contains a player. */
 const PLAYER_HINT = /<video\b|<iframe\b|\bplayer\b|\bhls\b|\bdash\b|\.m3u8|\.mpd\b|videojs|jwplayer|plyr|artplayer/i;
+const NON_PLAYER_WATCH_PATHS = new Set(["article", "blog", "news", "help", "support", "about", "terms"]);
+
+/**
+ * Admin-entered URLs are playback sources, but some official players use a
+ * `/movie/{id}` or `/watch/{id}` route without static `<video>` markup. Keep
+ * those URLs eligible for an in-frame browser attempt instead of assuming the
+ * page is an unrelated article when server-side inspection is incomplete.
+ */
+function looksLikePlayerPage(url: URL): boolean {
+  const segments = url.pathname.split("/").filter(Boolean).map((segment) => segment.toLowerCase());
+  if (segments.some((segment) => ["movie", "video", "player", "embed", "stream", "play"].includes(segment))) return true;
+  const watchIndex = segments.indexOf("watch");
+  if (watchIndex >= 0) {
+    const next = segments[watchIndex + 1];
+    if (next && !NON_PLAYER_WATCH_PATHS.has(next)) return true;
+    if (["v", "video", "id", "autoplay", "start"].some((key) => url.searchParams.has(key))) return true;
+  }
+  return hasPlayerSettings(url);
+}
+
+function mayFrame(url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  if (!privateHostsAllowed() || url.protocol !== "http:") return false;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // The test/development exception is for loopback fixtures only. Do not let
+  // enabling private-host fetches make arbitrary remote HTTP pages frameable.
+  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || host.startsWith("127.");
+}
 
 export type WebPlaybackResult =
   | { ok: true; resolution: LinkResolution }
@@ -205,7 +233,12 @@ function manifestRank(url: string): number {
 async function probeFrame(url: string, embedderOrigin: string | undefined): Promise<boolean> {
   try {
     const response = await safeGet(url, { maxBytes: FRAME_PROBE_MAX_BYTES, timeoutMs: 6000 });
-    return response.status >= 200 && response.status < 300 && framingAllowed(response.headers, embedderOrigin);
+    // Some providers return an auth, bot-check, or rate-limit page to a
+    // server-side probe while serving the real player to a normal browser.
+    // Let the browser's own frame attempt decide in those cases, but never
+    // override an explicit frame-ancestors/X-Frame-Options denial.
+    const frameableResponse = (response.status >= 200 && response.status < 400) || [401, 403, 429].includes(response.status);
+    return frameableResponse && framingAllowed(response.headers, embedderOrigin);
   } catch {
     return false;
   }
@@ -213,16 +246,51 @@ async function probeFrame(url: string, embedderOrigin: string | undefined): Prom
 
 async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: string | undefined): Promise<WebPlaybackResult> {
   const finalUrl = new URL(page.url);
+  const originalUrl = validatePlaybackUrl(rawUrl);
   const html = page.body.toString("utf8");
   const pageWebProvider = providerFor(finalUrl, "web-page", PAGE_PROVIDER_TAGLINE, PAGE_PROVIDER_RESTRICTION);
 
-  // 2. A known provider's official embed used on the page.
+  // 2. Follow the iframe the provider itself publishes. The source page is the
+  // authority for that player URL; requiring a registry entry here used to
+  // discard valid provider embeds from otherwise unknown hosts. Preserve the
+  // provider's own URL and its settings rather than rewriting it to a guessed
+  // endpoint. Known DRM/subscription services still stay on their official app.
   for (const iframe of extractIframes(html, finalUrl.toString()).slice(0, MAX_IFRAME_CANDIDATES)) {
-    const strict = resolveShareLink(iframe);
-    if (!strict.ok || strict.playback.strategy !== "embed" || strict.provider.id === "web") continue;
-    if (await probeFrame(iframe, embedderOrigin)) {
-      return makeResolution(rawUrl, finalUrl.toString(), strict.provider, strict.kind, strict.playback);
+    const iframeSrc = preservePlayerSettings(iframe, originalUrl);
+    let iframeUrl: URL;
+    try {
+      iframeUrl = validatePlaybackUrl(iframeSrc);
+    } catch {
+      continue;
     }
+    if (!mayFrame(iframeUrl)) continue;
+
+    const strict = resolveShareLink(iframeSrc);
+    if (strict.ok && strict.playback.strategy === "external" && strict.provider.id !== "web") continue;
+    // If a page publishes a direct media URL in an iframe, keep it on the
+    // native media path rather than wrapping a raw MP4/manifest in another
+    // frame. The URL is page-published, and the direct adapter owns MIME/engine
+    // selection (including HLS/DASH).
+    if (strict.ok && strict.playback.strategy === "direct") {
+      return makeResolution(rawUrl, finalUrl.toString(), strict.provider, strict.kind, {
+        ...strict.playback,
+        src: iframeUrl.toString(),
+      });
+    }
+    if (!await probeFrame(iframeUrl.toString(), embedderOrigin)) continue;
+
+    const knownEmbed = strict.ok && strict.playback.strategy === "embed" && strict.provider.id !== "web";
+    const provider = knownEmbed
+      ? strict.provider
+      : providerFor(iframeUrl, "web-embed", "This provider's own embedded player plays inside Cinemax.");
+    const embedTitle = knownEmbed && strict.ok && strict.playback.strategy === "embed"
+      ? strict.playback.embedTitle
+      : `${displayHost(iframeUrl.toString())} player`;
+    return makeResolution(rawUrl, finalUrl.toString(), provider, knownEmbed && strict.ok ? strict.kind : "page", {
+      strategy: "embed",
+      src: iframeUrl.toString(),
+      embedTitle,
+    });
   }
 
   // 3. Media the page publishes that answers as real media.
@@ -244,14 +312,20 @@ async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: s
     corsBlocked ??= { engine, src: probe.url, provider };
   }
 
-  // 4. The page's own player, framed with its own controls.
-  const hasPlayer = PLAYER_HINT.test(html);
-  const framable = framingAllowed(page.headers, embedderOrigin);
+  // 4. The page's own player, framed with its own controls. Admin-entered
+  // `/movie/{id}` and player/watch URLs are valid source candidates even when
+  // the provider creates its controls only after JavaScript starts. Use the
+  // original address so provider settings (color, autoplay, start time, etc.)
+  // survive redirects that canonicalize the URL server-side.
+  const hasPlayer = PLAYER_HINT.test(html) || looksLikePlayerPage(originalUrl);
+  const frameUrl = mayFrame(originalUrl) ? originalUrl : finalUrl;
+  const parentSrc = mayFrame(frameUrl) ? preservePlayerSettings(frameUrl.toString(), originalUrl) : "";
+  const framable = Boolean(parentSrc) && framingAllowed(page.headers, embedderOrigin);
   if (hasPlayer && framable) {
     return makeResolution(rawUrl, finalUrl.toString(), pageWebProvider, "page", {
       strategy: "embed",
-      src: finalUrl.toString(),
-      embedTitle: `${displayHost(finalUrl.toString())} player`,
+      src: parentSrc,
+      embedTitle: `${displayHost(parentSrc)} player`,
     });
   }
 
@@ -288,6 +362,16 @@ async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: s
   };
 }
 
+function browserPlayerFallback(rawUrl: string, url: URL): WebPlaybackResult | null {
+  if (!mayFrame(url) || !looksLikePlayerPage(url)) return null;
+  const src = url.toString();
+  return makeResolution(rawUrl, src, providerFor(url, "web-player", "Trying the provider's own player inside Cinemax."), "page", {
+    strategy: "embed",
+    src,
+    embedTitle: `${displayHost(src)} player`,
+  });
+}
+
 async function resolveUncached(rawUrl: string, embedderOrigin: string | undefined): Promise<WebPlaybackResult> {
   const original = validatePlaybackUrl(rawUrl);
   // Known providers never reach here (the caller only sends unidentified/direct links).
@@ -300,13 +384,25 @@ async function resolveUncached(rawUrl: string, embedderOrigin: string | undefine
     if (localDirect) {
       // A plain media link the server could not reach: keep the browser attempt
       // (the browser may have network access the server does not).
-      return makeResolution(rawUrl, original.toString(), directMediaAdapter.info, "file", localDirect.playback);
+      return makeResolution(rawUrl, original.toString(), directMediaAdapter.info, localDirect.kind, localDirect.playback);
     }
+    const browserFallback = browserPlayerFallback(rawUrl, original);
+    if (browserFallback) return browserFallback;
     const message = error instanceof SafeFetchError ? error.message : "The link could not be reached.";
     return { ok: false, status: 502, message: `${message} Check the address and try again.` };
   }
 
   if (response.status < 200 || response.status >= 300) {
+    if (localDirect && [401, 403, 429].includes(response.status)) {
+      return makeResolution(rawUrl, response.url, directMediaAdapter.info, localDirect.kind, localDirect.playback);
+    }
+    // Public providers often block server-side probes or return a bot-check
+    // page while their official player remains available in an ordinary browser
+    // frame. Attempt that player only for a URL whose shape suggests media.
+    if ([401, 403, 429, 500, 502, 503, 504].includes(response.status)) {
+      const browserFallback = browserPlayerFallback(rawUrl, original);
+      if (browserFallback) return browserFallback;
+    }
     return { ok: false, status: 502, message: `The link responded with HTTP ${response.status}.` };
   }
 
@@ -330,21 +426,24 @@ async function resolveUncached(rawUrl: string, embedderOrigin: string | undefine
  * playback attempts do not re-fetch the page.
  */
 export async function resolveWebPlayback(rawUrl: string, options: { embedderOrigin?: string } = {}): Promise<WebPlaybackResult> {
-  let key: string;
+  let url: string;
   try {
-    key = validatePlaybackUrl(rawUrl).toString();
+    url = validatePlaybackUrl(rawUrl).toString();
   } catch (error) {
     return { ok: false, status: 422, message: error instanceof Error ? error.message : "That link could not be read." };
   }
-  const cached = cache.get(key);
+  // Framing rules depend on the requesting origin; do not reuse a plan that
+  // was checked against a different Cinemax deployment host.
+  const cacheKey = `${url}\u001f${options.embedderOrigin ?? ""}`;
+  const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < cached.ttl) return cached.result;
 
   let result: WebPlaybackResult;
   try {
-    result = await resolveUncached(key, options.embedderOrigin);
+    result = await resolveUncached(url, options.embedderOrigin);
   } catch (error) {
     result = { ok: false, status: 502, message: error instanceof Error ? error.message : "The link could not be checked." };
   }
-  rememberResult(key, result);
+  rememberResult(cacheKey, result);
   return result;
 }

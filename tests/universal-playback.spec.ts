@@ -63,12 +63,13 @@ test.describe("Universal playback resolution", () => {
 
   test("playback plan classifies direct, HLS, DASH, page-embed, static-page, OG, redirect, and dead links", async ({ request }) => {
     test.skip(!(await fixtureAvailable(request)), "Local playback fixture provider is not running");
-    const cases: Array<{ url: string; strategy: string; engine?: string }> = [
+    const cases: Array<{ url: string; strategy: string; engine?: string; embedPath?: string; embedSettings?: Record<string, string> }> = [
       { url: `${FIXTURE_BASE}/media/clip.webm`, strategy: "direct", engine: "video" },
       { url: `${FIXTURE_BASE}/media/clip.mp4`, strategy: "direct", engine: "video" },
       { url: `${FIXTURE_BASE}/media/hls/index.m3u8`, strategy: "direct", engine: "hls" },
       { url: `${FIXTURE_BASE}/media/dash/manifest.mpd`, strategy: "direct", engine: "dash" },
       { url: `${FIXTURE_BASE}/watch/movie/1058424`, strategy: "embed" },
+      { url: `${FIXTURE_BASE}/movie/315162?color=B72CDD&autoplay=true`, strategy: "embed", embedPath: "/embed/vidy/315162", embedSettings: { color: "B72CDD", autoplay: "true" } },
       { url: `${FIXTURE_BASE}/watch/static-video`, strategy: "direct", engine: "video" },
       { url: `${FIXTURE_BASE}/watch/og-video`, strategy: "direct", engine: "video" },
       { url: `${FIXTURE_BASE}/watch/redirect`, strategy: "direct", engine: "video" },
@@ -81,9 +82,16 @@ test.describe("Universal playback resolution", () => {
       try {
         const res = await request.get(`/api/movies/${created.id}/playback`);
         expect(res.status(), item.url).toBe(200);
-        const { resolution } = (await res.json()) as { resolution: { playback: { strategy: string; engine?: string } } };
+        const { resolution } = (await res.json()) as { resolution: { playback: { strategy: string; engine?: string; src?: string } } };
         expect(resolution.playback.strategy, item.url).toBe(item.strategy);
         if (item.engine) expect(resolution.playback.engine, item.url).toBe(item.engine);
+        if (item.embedPath) {
+          const iframe = new URL(resolution.playback.src!);
+          expect(iframe.pathname, item.url).toBe(item.embedPath);
+          for (const [key, value] of Object.entries(item.embedSettings || {})) {
+            expect(iframe.searchParams.get(key), `${item.url} ${key}`).toBe(value);
+          }
+        }
       } finally {
         await deleteTestMovie(request, created.id);
       }
@@ -107,6 +115,46 @@ test.describe("Universal playback in the browser", () => {
   test.beforeEach(async ({ page, request }) => {
     test.skip(!(await fixtureAvailable(request)), "Local playback fixture provider is not running");
     await preparePage(page);
+  });
+
+  test("a Vidy-shaped /movie page keeps its settings and provider controls, seeks, and closes", async ({ page, request }) => {
+    const source = `${FIXTURE_BASE}/movie/315162?color=B72CDD&autoplay=true`;
+    const created = await createTestMovie(request, "vidy-shaped", source);
+    try {
+      await openPlayer(page, created.id);
+      const iframe = page.locator("iframe.embedded-video");
+      await expect(iframe).toHaveCount(1);
+      await expect(iframe).toHaveAttribute("src", /color=B72CDD/);
+      await expect(iframe).toHaveAttribute("src", /autoplay=true/);
+      const provider = page.frameLocator("iframe.embedded-video");
+      await expect.poll(() => provider.locator("#provider-player").getAttribute("data-color"), { timeout: 12000 }).toBe("B72CDD");
+      await expect.poll(() => provider.locator("#provider-player").getAttribute("data-autoplay"), { timeout: 12000 }).toBe("true");
+      await expect.poll(() => provider.locator("#provider-video").evaluate((video: HTMLVideoElement) => video.currentTime), { timeout: 30000 }).toBeGreaterThan(1);
+      expect(await provider.locator("#provider-video").evaluate((video: HTMLVideoElement) => video.controls)).toBe(true);
+      await provider.locator("#provider-video").evaluate((video: HTMLVideoElement) => { video.currentTime = 8; });
+      await expect.poll(() => provider.locator("#provider-video").evaluate((video: HTMLVideoElement) => video.currentTime), { timeout: 15000 }).toBeGreaterThan(7);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".playback-layer")).toHaveCount(0);
+      await expect(page.locator("iframe.embedded-video")).toHaveCount(0);
+    } finally {
+      await deleteTestMovie(request, created.id);
+    }
+  });
+
+  test("a provider page blocked from server probing is attempted in the browser frame", async ({ page, request }) => {
+    const created = await createTestMovie(request, "browser-frame-fallback", `${FIXTURE_BASE}/movie/315163?color=B72CDD&autoplay=true`);
+    try {
+      await openPlayer(page, created.id);
+      const iframe = page.locator("iframe.embedded-video");
+      await expect(iframe).toHaveAttribute("src", /movie\/315163\?color=B72CDD&autoplay=true/);
+      const provider = page.frameLocator("iframe.embedded-video");
+      await expect.poll(() => provider.locator("#browser-provider-video").evaluate((video: HTMLVideoElement) => video.currentTime), { timeout: 30000 }).toBeGreaterThan(1);
+      expect(await provider.locator("#browser-provider-video").evaluate((video: HTMLVideoElement) => video.controls)).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".playback-layer")).toHaveCount(0);
+    } finally {
+      await deleteTestMovie(request, created.id);
+    }
   });
 
   test("a watch page with its own JavaScript player plays through the page's own player", async ({ page, request }) => {
@@ -243,4 +291,69 @@ test.describe("Universal playback in the browser", () => {
       await deleteTestMovie(request, second.id);
     }
   });
+});
+
+test("the studio saves and reopens a movie URL without losing player query parameters", async ({ page, request }) => {
+  const title = `Admin URL preservation test ${Date.now()}`;
+  const updatedTitle = `${title} updated`;
+  const source = `${FIXTURE_BASE}/movie/315162?color=B72CDD&autoplay=true`;
+  let movieId: number | undefined;
+
+  try {
+    const login = await page.request.post("/api/admin/login", { data: ADMIN });
+    expect(login.ok(), "Admin session for the studio workflow").toBeTruthy();
+    // PGlite is the isolated, in-memory test DB and is less tolerant of many
+    // simultaneous PostgreSQL-wire clients than production PostgreSQL. Read
+    // these unrelated dashboard summaries from the real API sequentially, then
+    // replay those exact responses while the movie list and CRUD remain live.
+    for (const path of ["/api/admin/stats", "/api/admin/slides", "/api/categories", "/api/admin/watchlist"]) {
+      const response = await page.request.get(path);
+      expect(response.ok(), `Read isolated dashboard data: ${path}`).toBeTruthy();
+      const body = await response.text();
+      await page.route(`**${path}`, (route) => route.fulfill({
+        status: response.status(),
+        headers: { "content-type": response.headers()["content-type"] || "application/json" },
+        body,
+      }));
+    }
+    await page.goto("/gate-keeper/dashboard", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Cinemax studio", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "movies", exact: true }).click();
+    await page.getByRole("button", { name: "+ Add", exact: true }).click();
+    await page.locator(".studio-dashboard input.glass-input").first().fill(title);
+    await page.getByPlaceholder("MP4, WebM, HLS, DASH, watch-page link, YouTube, Vimeo, or magnet URI").fill(source);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText("Added", { exact: true })).toBeVisible();
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+
+    const readMovies = async () => {
+      const response = await request.get("/api/movies?limit=500&includeUnavailable=true");
+      expect(response.ok()).toBeTruthy();
+      return await response.json() as Array<{ id: number; title: string; videoUrl: string | null }>;
+    };
+    const saved = (await readMovies()).find((movie) => movie.title === title);
+    expect(saved).toBeDefined();
+    movieId = saved!.id;
+    expect(saved!.videoUrl).toBe(source);
+
+    const row = page.getByText(title, { exact: true }).locator("..").locator("..");
+    await row.locator("button").first().click();
+    await expect(page.getByRole("heading", { name: "Edit Movie", exact: true })).toBeVisible();
+    const videoUrlInput = page.getByPlaceholder("MP4, WebM, HLS, DASH, watch-page link, YouTube, Vimeo, or magnet URI");
+    await expect(videoUrlInput).toHaveValue(source);
+    await page.locator(".studio-dashboard input.glass-input").first().fill(updatedTitle);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText("Updated", { exact: true })).toBeVisible();
+
+    const updated = (await readMovies()).find((movie) => movie.id === movieId);
+    expect(updated?.title).toBe(updatedTitle);
+    expect(updated?.videoUrl).toBe(source);
+  } finally {
+    if (!movieId) {
+      const response = await request.get("/api/movies?limit=500&includeUnavailable=true").catch(() => null);
+      const movies = response?.ok() ? await response.json().catch(() => []) as Array<{ id: number; title: string }> : [];
+      movieId = movies.find((movie) => movie.title === title || movie.title === updatedTitle)?.id;
+    }
+    if (movieId) await deleteTestMovie(request, movieId);
+  }
 });
