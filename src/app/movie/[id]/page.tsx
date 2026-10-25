@@ -14,6 +14,8 @@ import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
 import { DetailSkeleton, RelatedSkeleton } from "@/components/Skeletons";
 import { isOfficialExternal, isUpcomingMovie, matchesCollection, tokens, type CatalogueMovie } from "@/lib/catalogue";
+import { hasNativeShell } from "@/lib/open-external";
+import { isPortraitMobileViewport, requestBrowserImmersive } from "@/lib/playback/immersive";
 
 function subscribeResumeChanges(callback: () => void) {
   window.addEventListener("storage", callback);
@@ -31,6 +33,12 @@ function formatClock(totalSeconds: number): string {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Enter browser fullscreen in the Watch Now gesture before React mounts the player. */
+function requestHandsetImmersiveFullscreen() {
+  if (typeof document === "undefined" || hasNativeShell() || !isPortraitMobileViewport()) return;
+  void requestBrowserImmersive(document.documentElement);
 }
 
 function LoadingState() {
@@ -300,7 +308,10 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
                 {trailerSource && (
                   <CinematicButton
                     variant="secondary"
-                    onClick={() => setPlayingTrailerFor(movie.id)}
+                    onClick={() => {
+                      requestHandsetImmersiveFullscreen();
+                      setPlayingTrailerFor(movie.id);
+                    }}
                     icon={<Icon name="play" filled />}
                   >
                     Watch Official Trailer
@@ -310,7 +321,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
             ) : external ? (
               <CinematicButton
                 onClick={() => {
-                  if (video && playingFor !== movie.id) setPlayingFor(movie.id);
+                  if (!video || playingFor === movie.id) return;
+                  requestHandsetImmersiveFullscreen();
+                  setPlayingFor(movie.id);
                 }}
                 disabled={!video}
                 icon={<Icon name="external" />}
@@ -320,7 +333,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
             ) : (
               <CinematicButton
                 onClick={() => {
-                  if (video && playingFor !== movie.id) setPlayingFor(movie.id);
+                  if (!video || playingFor === movie.id) return;
+                  requestHandsetImmersiveFullscreen();
+                  setPlayingFor(movie.id);
                 }}
                 disabled={!video}
                 icon={<Icon name="play" filled />}

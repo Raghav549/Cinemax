@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import VideoPlayer from "./VideoPlayer";
 import ProviderLanding from "./ProviderLanding";
-import Icon from "./Icon";
 import { hasNativeShell, setNativePlayerFullscreen } from "@/lib/open-external";
+import { unlockPlayerOrientation } from "@/lib/playback/immersive";
 import { resolveShareLink, type LinkResolution } from "@/lib/providers";
 import { needsServerResolution } from "@/lib/playback/classify";
 import type { CatalogueMovie } from "@/lib/catalogue";
@@ -82,16 +82,43 @@ export interface PlaybackTarget {
   videoUrl: string | null;
 }
 
-function EmbedShell({ resolution, title, onClose }: { resolution: LinkResolution; title: string; onClose: () => void }) {
+function EmbedShell({ resolution, title }: { resolution: LinkResolution; title: string }) {
   const plan = resolution.playback;
+  const shellRef = useRef<HTMLDivElement>(null);
 
   // On Android the WebView rotates to landscape/immersive while an embed is
-  // open. The provider's own controls stay in charge inside the frame.
+  // open. The provider's own controls stay in charge inside the full-viewport frame.
   useEffect(() => {
-    if (!hasNativeShell()) return;
-    setNativePlayerFullscreen(true);
+    const nativeShell = hasNativeShell();
+    if (nativeShell) {
+      shellRef.current?.classList.add("is-fullscreen");
+      setNativePlayerFullscreen(true);
+    }
+
+    const exitImmersive = () => {
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      unlockPlayerOrientation();
+      if (nativeShell) {
+        shellRef.current?.classList.remove("is-fullscreen");
+        setNativePlayerFullscreen(false);
+      }
+    };
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) unlockPlayerOrientation();
+    };
+    const onNativeExit = () => {
+      shellRef.current?.classList.remove("is-fullscreen");
+      unlockPlayerOrientation();
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    window.addEventListener("cinemax:request-exit-player-fullscreen", exitImmersive);
+    window.addEventListener("cinemax:native-fullscreen-exit", onNativeExit);
     return () => {
-      setNativePlayerFullscreen(false);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      window.removeEventListener("cinemax:request-exit-player-fullscreen", exitImmersive);
+      window.removeEventListener("cinemax:native-fullscreen-exit", onNativeExit);
+      unlockPlayerOrientation();
+      if (nativeShell) setNativePlayerFullscreen(false);
     };
   }, []);
 
@@ -101,14 +128,7 @@ function EmbedShell({ resolution, title, onClose }: { resolution: LinkResolution
   const src = plan.src.replace(/__CINEMAX_PARENT__/g, encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : ""));
 
   return (
-    <div className="video-player-shell" role="dialog" aria-modal="true" aria-label={`Now playing ${title}`}>
-      <div className="player-topbar">
-        <div className="player-title-wrap">
-          <button className="player-icon-button" type="button" aria-label="Close player" onClick={onClose}><Icon name="chevron-left" /></button>
-          <span className="player-title">{title}</span>
-        </div>
-        <button className="player-icon-button" type="button" aria-label="Close player" onClick={onClose}><Icon name="close" /></button>
-      </div>
+    <div ref={shellRef} className="video-player-shell" role="dialog" aria-modal="true" aria-label={`Now playing ${title}`}>
       <iframe
         className="embedded-video"
         src={src}
@@ -117,7 +137,6 @@ function EmbedShell({ resolution, title, onClose }: { resolution: LinkResolution
         allowFullScreen
         referrerPolicy="strict-origin-when-cross-origin"
       />
-      <p className="embedded-video-hint">Use {resolution.provider.name}’s controls for subtitles and quality · <button type="button" className="embedded-video-link" onClick={onClose}>Back to details</button></p>
     </div>
   );
 }
@@ -232,7 +251,9 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
       window.removeEventListener("keydown", onKey, true);
       if (app) app.inert = false;
       document.body.style.overflow = previousOverflow;
-      // Leaving by route change must also restore portrait orientation.
+      // Leaving by route change must also exit DOM fullscreen and restore portrait orientation.
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      unlockPlayerOrientation();
       setNativePlayerFullscreen(false);
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
@@ -283,7 +304,7 @@ export default function PlaybackOverlay({ movie, onClose, openImmersive = true, 
         engine={resolution.playback.engine}
       />
     ) : resolution.playback.strategy === "embed" ? (
-      <EmbedShell resolution={resolution} title={movie.title} onClose={requestClose} />
+      <EmbedShell resolution={resolution} title={movie.title} />
     ) : (
       <ProviderLanding resolution={resolution} onClose={requestClose} closeLabel="Back to title" />
     )}
