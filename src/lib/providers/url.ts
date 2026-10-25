@@ -103,3 +103,29 @@ export function displayHost(raw: string): string {
     return raw;
   }
 }
+
+/** Query names commonly used by official players; never copy auth/token parameters. */
+export const PLAYER_QUERY_KEYS = new Set([
+  "autoplay", "auto_play", "color", "start", "t", "time", "end", "mute", "muted", "controls",
+  "quality", "speed", "playbackrate", "playback_rate", "lang", "language", "hl", "cc_lang_pref",
+  "cc_load_policy", "subtitles", "captions", "loop", "playsinline", "plays_inline", "fs", "rel",
+  "modestbranding", "disablekb", "dnt", "background", "transparent", "title", "byline", "portrait",
+  "autopause", "preload", "volume", "playlist", "list", "listtype",
+]);
+
+/** Carry only non-sensitive playback settings when a share page exposes a player iframe. */
+export function preservePlayerSettings(targetRaw: string, source: URL): string {
+  try {
+    const target = new URL(targetRaw);
+    for (const [key, value] of source.searchParams) {
+      if (PLAYER_QUERY_KEYS.has(key.toLowerCase())) target.searchParams.set(key, value);
+    }
+    return target.toString();
+  } catch {
+    return targetRaw;
+  }
+}
+
+export function hasPlayerSettings(url: URL): boolean {
+  return [...url.searchParams.keys()].some((key) => PLAYER_QUERY_KEYS.has(key.toLowerCase()));
+}
