@@ -25,6 +25,7 @@ export default function HeroSlider() {
   const [userPaused, setUserPaused] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const [heroVisible, setHeroVisible] = useState(true);
   const reducedMotion = useReducedMotion();
 
   const moviesById = useMemo(() => new Map(movies.map((movie) => [movie.id, movie])), [movies]);
@@ -65,7 +66,9 @@ export default function HeroSlider() {
 
   const current = Math.max(0, Math.min(selection.current, features.length - 1));
   const feature = features[current];
-  const paused = interacting || userPaused || reducedMotion || !pageVisible;
+  // The slideshow also parks itself while the hero is scrolled out of view: a
+  // cross-fade nobody can see should not cost a frame on Android.
+  const paused = interacting || userPaused || reducedMotion || !pageVisible || !heroVisible;
 
   const choose = useCallback(
     (index: number) => {
@@ -83,6 +86,22 @@ export default function HeroSlider() {
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
 
+  // A callback ref keeps the observer attached to whichever hero section is
+  // currently mounted (loading → featured → empty), and disconnects on unmount.
+  const heroObserver = useRef<IntersectionObserver | null>(null);
+  const attachHero = useCallback((node: HTMLElement | null) => {
+    heroObserver.current?.disconnect();
+    heroObserver.current = null;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeroVisible(entry.isIntersecting),
+      { threshold: 0.12 }
+    );
+    observer.observe(node);
+    heroObserver.current = observer;
+  }, []);
+  useEffect(() => () => heroObserver.current?.disconnect(), []);
+
   useEffect(() => {
     if (features.length < 2 || paused) return;
     const timer = window.setInterval(() => {
@@ -90,13 +109,13 @@ export default function HeroSlider() {
         current: (previous.current + 1) % features.length,
         previous: previous.current,
       }));
-    }, 9000);
+    }, 12000);
     return () => window.clearInterval(timer);
   }, [features.length, paused]);
 
   if (loading && !feature)
     return (
-      <section className="hero-card hero-loading" aria-label="Loading featured titles" aria-busy="true">
+      <section className="hero-card hero-loading" aria-label="Loading featured titles" aria-busy="true" ref={attachHero}>
         <div className="hero-loading-atmosphere" />
         <div className="hero-copy">
           <div className="shimmer hero-skeleton-title" />
@@ -108,7 +127,7 @@ export default function HeroSlider() {
 
   if (!feature)
     return (
-      <section className="hero-card hero-empty" aria-label="Cinemax library">
+      <section className="hero-card hero-empty" aria-label="Cinemax library" ref={attachHero}>
         <Artwork src="/cinemax-atmosphere.webp" className="hero-image" kind="backdrop" priority />
         <div className="hero-vignette" />
         <div className="hero-copy">
@@ -136,6 +155,7 @@ export default function HeroSlider() {
   return (
     <section
       className="hero-card"
+      ref={attachHero}
       aria-label="Featured titles"
       aria-roledescription="carousel"
       tabIndex={0}
@@ -177,7 +197,6 @@ export default function HeroSlider() {
           </div>
         ))}
       <div className="hero-vignette" />
-      <div className="hero-colour-reflection" aria-hidden="true" />
       <div className="hero-copy" key={feature.id}>
         <h1 className={`hero-title ${feature.title.length > 28 ? "hero-title-long" : ""}`}>{feature.title}</h1>
         {feature.metadata.length > 0 && (

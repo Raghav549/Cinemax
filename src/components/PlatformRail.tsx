@@ -124,23 +124,25 @@ function PlatformRail({
           }
         }}
       >
-        {PLATFORMS.map((platform) => {
+        {PLATFORMS.map((platform, index) => {
           const count = counts[platform.id] ?? 0;
           const selected = active === platform.id;
           return (
             <button
               key={platform.id}
               type="button"
-              className={`platform-chip ${selected ? "is-selected" : ""} ${count === 0 ? "is-empty" : ""}`}
+              className={`platform-orbit ${selected ? "is-selected" : ""} ${count === 0 ? "is-empty" : ""}`}
               aria-pressed={selected}
               aria-label={`${platform.name}${count > 0 ? `, ${count} ${count === 1 ? "title" : "titles"}` : ", no titles yet"}`}
               onClick={() => onSelect(selected ? null : platform.id)}
             >
-              <span className="platform-chip-face">
-                <PlatformLogo id={platform.id} className="platform-chip-logo" eager />
+              <span className="platform-orbit-disc">
+                {/* Only the discs that are actually on screen at first paint
+                    load eagerly; the rest decode as the row is scrolled. */}
+                <PlatformLogo id={platform.id} className="platform-orbit-logo" eager={index < 6} />
               </span>
-              <span className="platform-chip-name">{platform.name}</span>
-              <span className="platform-chip-count">{count > 0 ? count : "—"}</span>
+              <span className="platform-orbit-name">{platform.name}</span>
+              <span className="platform-orbit-count">{count > 0 ? count : "—"}</span>
             </button>
           );
         })}

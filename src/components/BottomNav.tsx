@@ -210,8 +210,13 @@ export default function BottomNav() {
 
   // One pass per collection: how many titles it holds, and the first piece of
   // real artwork among them (used by the image-backed discovery tiles).
+  //
+  // This is O(collections × titles), so it is deferred until the More panel is
+  // actually opened — the dock itself never needs the counts, and paying for
+  // them on every page mount was pure startup cost.
   const collectionMeta = useMemo(() => {
     const meta = new Map<string, { count: number; image: string | null }>();
+    if (!browserOpen) return meta;
     const slugs = new Set<string>();
     for (const section of CATEGORY_BROWSER_SECTIONS) for (const item of section.items) slugs.add(item.slug);
     for (const category of categories) slugs.add(category.slug);
@@ -226,7 +231,7 @@ export default function BottomNav() {
       meta.set(slug, { count, image });
     }
     return meta;
-  }, [movies, categories]);
+  }, [browserOpen, movies, categories]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();

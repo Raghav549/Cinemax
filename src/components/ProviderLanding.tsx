@@ -56,7 +56,7 @@ export default function ProviderLanding({
       </div>
 
       <div className="provider-page-body">
-        <div className="provider-badge" style={{ background: `linear-gradient(135deg, ${provider.accent}, #1b1230)` }} aria-hidden="true">
+        <div className="provider-badge" style={{ background: `linear-gradient(135deg, ${provider.accent}, #0b0b0c)` }} aria-hidden="true">
           <span>{provider.name.replace(/[^A-Za-z+]/g, "").slice(0, 2).toUpperCase() || "▶"}</span>
         </div>
 
