@@ -10,12 +10,15 @@ import useReducedMotion from "@/hooks/useReducedMotion";
 import { isOfficialExternal, isUpcomingMovie, type CatalogueMovie } from "@/lib/catalogue";
 
 /**
- * Autoplay cadence. The dissolve itself lives in globals.css (.68s opacity plus
- * a 1.05s horizontal drift), so this interval is the *rest* the poster gets
- * once it has fully arrived: short enough to feel responsive, long enough to
- * read the title. Both are far quicker than the old 12s / 1.15s cycle.
+ * Autoplay cadence. The dissolve itself lives in globals.css (a 1.5 s opacity
+ * cross-fade plus a 2.6 s horizontal drift), so this interval is the *rest* the
+ * poster gets once it has fully arrived. Eleven seconds is deliberately slow:
+ * a featured banner is something to look at, not something to chase, and the
+ * longer rest also means the expensive part of a change (two full-bleed layers
+ * compositing) runs roughly a third as often as it did at 6.2 s — which is what
+ * keeps the scroll smooth on a mid-range Android phone.
  */
-const AUTOPLAY_MILLIS = 6200;
+const AUTOPLAY_MILLIS = 11000;
 
 interface Feature {
   id: string;

@@ -132,14 +132,19 @@ The rail no longer uses any card, tile or rectangle. Each platform is one
 * **Logo** — the untouched brand file, `object-fit: contain`, capped at the
   48 px inner box inside 13 px of padding, so nothing is stretched, cropped or
   dimmed (`opacity: 1`, no filter, no overlay) and every mark keeps its own
-  proportions. The disc also carries `aspect-ratio: 1 / 1` plus
-  `box-sizing: border-box`, so the container is a true circle whatever the row
-  does to it.
+  proportions. `z-index: 1` puts the artwork *above* the disc's specular cap and
+  lip: those were absolutely positioned pseudo-elements painting a translucent
+  white wash over the top of every mark, which is what made warm logos look
+  dull and brownish. The mark is centred with `grid-area: 1 / 1` + `place-self:
+  center` + `margin: auto`, so there is no baseline offset in any direction.
+  The disc also carries `aspect-ratio: 1 / 1` plus `box-sizing: border-box`, so
+  the container is a true circle whatever the row does to it.
 * **Name** — below the circle, never inside it. The count sits under the name.
 * **Selection** — the sphere lights from its rim inwards: an inset white ring,
   a 4 px soft halo and a brighter gradient. No blue, no rectangle, no outline.
-* **Empty platform** — the disc drops to 50 % opacity instead of inventing
-  titles.
+* **Empty platform** — the *label* drops to 60 % opacity instead of inventing
+  titles. The disc and the brand artwork always stay at full brightness; a logo
+  is never rendered at reduced opacity.
 
 The same circular language is used for the results header mark (64 px) and the
 "Available on" row on a title page (46 px). The studio picker keeps compact
@@ -147,21 +152,33 @@ rows because it is a form control, not navigation.
 
 ## 5. Android scrollbars, overscroll and scroll containers
 
-Root cause: the app never styled scrollbars, so Chrome/WebView painted its
-default **overlay scrollbar** (a bright white thumb) for the root scroller and
-for every `overflow` container — home, search, watchlist, the More sheet and the
-provider page.
+There are **two different scrollbars** in the app, and only one of them is CSS.
 
-Fix, applied globally in `globals.css`:
+1. **The document scrollbar is a native Android View scrollbar.** The activity
+   hosts a `WebView`; when the document scrolls, the widget draws its own thin
+   light bar along the right edge. No `::-webkit-scrollbar` rule can remove it —
+   which is why hiding CSS scrollbars alone never fixed the white bar on Home,
+   Search, Watchlist, More, Categories or the listing pages. The fix is on the
+   widget: `setVerticalScrollBarEnabled(false)` plus
+   `setHorizontalScrollBarEnabled(false)` and
+   `SCROLLBARS_OUTSIDE_OVERLAY` in `MainActivity.configureWebView()`.
+   Scrolling is untouched — only the indicator is not drawn.
+2. **Page scrollers** (the horizontal rails, the More sheet body, provider
+   pages, studio tables) are CSS scrollbars and are killed in both stylesheets.
 
 ```css
 * { scrollbar-width: none; -ms-overflow-style: none; }
-*::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 *::-webkit-scrollbar-track,
 *::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-corner { background: transparent !important; }
+*::-webkit-scrollbar-corner,
+*::-webkit-scrollbar-button { background: transparent !important; }
+html, body { scrollbar-width: none; }
 html { overscroll-behavior-y: none; }
 ```
+
+The app layer repeats the same rules scoped to `html[data-cinemax-app="android"]`
+(including `*`), so it still holds if the WebView is showing an older deployment.
 
 Only the *painting* of the indicator is removed: every box still scrolls by
 touch, wheel, keyboard and `scrollTo`, no height is fixed, no container is
@@ -178,10 +195,10 @@ suppressed for the page only.
 | `contain: paint` on `.movie-poster` and `.shimmer` | Each poster costs one contained layer instead of a full-page repaint |
 | New `<ScrollActivity>` | Sets `data-cinemax-scrolling` at most twice per gesture; the CSS pauses the dock's dash-offset sweep, the More mark's seven SVG loops and the skeleton sheen *only while the finger moves* |
 | `will-change: transform` on the More mark | Keeps that always-on loop on a composited layer instead of repainting the dock |
-| Hero slideshow parks itself off-screen | An `IntersectionObserver` stops the 6.2 s timer once the hero leaves the viewport |
+| Hero slideshow parks itself off-screen | An `IntersectionObserver` stops the 11 s timer once the hero leaves the viewport |
 | More-panel counts deferred | The O(collections × titles) pass now runs only when the sheet opens, not on every page mount |
 | Platform rail logos load lazily | Only the first six discs load eagerly; the rest decode as the row is scrolled |
-| Hero cross-fade is compositor-only | `.68 s` opacity and `1.05 s` `translate3d` on two full-bleed layers: no keyframe animation, no layout, no paint per frame. The next slide is mounted one beat early so its artwork is already decoded |
+| Hero cross-fade is compositor-only | `1.5 s` opacity and a `2.6 s` `translate3d` drift on two full-bleed layers: no keyframe animation, no layout, no paint per frame. The next slide is mounted one beat early so its artwork is already decoded, and the 11 s cadence means the change itself runs about a third as often as before |
 
 Poster images keep their existing behaviour: `loading="lazy"`,
 `decoding="async"`, `fetchPriority="low"` for non-hero art, explicit
@@ -197,9 +214,21 @@ card downloads the 185 px variant instead of a 500 px one.
   through at the top and bottom edges. The vignette is now a pure-alpha scrim
   that returns to zero on every side: no solid band, no painted copy of the page
   colour.
-* Slides change every **6.2 s** with a **.68 s** opacity cross-fade *combined
-  with* a **1.05 s** horizontal drift: the incoming poster travels in from the
-  right while the outgoing one leaves to the left (2.6 % of the hero width).
+* **Height**: `clamp(680px, 62vw, 980px)` on desktop, `clamp(580px, 76svh,
+  760px)` at ≤ 820 px and `min(82svh, 680px)` with a 540 px floor on phones, so
+  the banner owns the first screen and the copy sits at `bottom: 168px / 132px /
+  92px` respectively. The old values (550–740 px, 440 px on a phone) stopped it
+  well above the fold.
+* **Bottom fade**: the mask has **eleven stops** and only reaches zero at the
+  last pixel, so the artwork keeps its own brightness to ~46 % of the hero and
+  then eases out in ever smaller steps (its alpha is ≥ 50 % to ~82 % of the
+  height and ≥ 10 % to ~97 %). The steepest adjacent-pixel change in that ramp
+  is ~4/255 — below the threshold of a visible edge — and the four scrim layers
+  all return to zero at their own edges. There is no horizon, no band and no
+  black patch.
+* Slides change every **11 s** with a **1.5 s** opacity cross-fade *combined
+  with* a **2.6 s** horizontal drift: the incoming poster travels in from the
+  right while the outgoing one leaves to the left (2.2 % of the hero width).
   The title, description and buttons are keyed to the same slide, so they swap
   in step. Arrows, dots, previews, swipe, keyboard and pause all remain.
 * Pressing a poster lifts it (`translateY(-6px) scale(1.015)`) with a deeper

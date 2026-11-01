@@ -413,6 +413,64 @@ check(/\.movie-row\s*\{[^}]*content-visibility:\s*auto/.test(siteCss), "the site
 check(/html\s*\{[^}]*scroll-behavior:\s*smooth/.test(siteCss), "the site still animates document scrolling");
 check(/\.button-light rect\s*\{[^}]*animation:/.test(siteCss), "the site still runs the flowing button light");
 
+/* ---------------------------------------------------------------- hero shape */
+// The hero contract is shared by both platforms, so it is asserted once against
+// the website stylesheet and once against the mirrored app layer: a tall
+// banner, a many-stop alpha mask (never a dark overlay) and a slow cadence.
+// Slice out the body of every rule whose selector list mentions `selector`.
+// Hero rule bodies never nest, so the first closing brace is the end of the
+// declaration block; a plain scan keeps this readable and free of regex
+// escaping traps.
+const maskBody = (css, selector) => {
+  let body = "";
+  let from = 0;
+  for (;;) {
+    const at = css.indexOf(selector, from);
+    if (at === -1) return body;
+    const open = css.indexOf("{", at);
+    const close = css.indexOf("}", open);
+    if (open === -1 || close === -1) return body;
+    body += css.slice(open + 1, close) + "\n";
+    from = close + 1;
+  }
+};
+const stopCount = (body) => (body.match(/-?\d+(?:\.\d+)?%/g) || []).length;
+
+const cssMask = maskBody(siteCss, ".hero-scene");
+const themeMask = maskBody(themeText, ".hero-scene");
+check(
+  cssMask.includes("-webkit-mask-image") && cssMask.includes("mask-image"),
+  "the hero fades through the artwork's own alpha (mask, not an overlay)"
+);
+check(
+  stopCount(cssMask) >= 24,
+  `the website mask is a multi-stop ramp, not a band (${stopCount(cssMask)} stops across both prefixed gradients)`
+);
+check(
+  stopCount(themeMask) >= 24,
+  `the app mask carries the same ramp (${stopCount(themeMask)} stops)`
+);
+check(
+  /\.hero-card\s*\{[^}]*height:\s*clamp\(680px,\s*62vw,\s*980px\)/.test(siteCss),
+  "the banner is tall enough to run well past the fold"
+);
+check(
+  /height:\s*min\(82svh,\s*680px\)/.test(siteCss) && /min-height:\s*540px/.test(siteCss),
+  "phones get a full-height banner with a floor"
+);
+check(
+  /min\(82svh,\s*680px\)/.test(themeText),
+  "the app layer mirrors the tall phone banner"
+);
+const heroSliderSource = readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "components", "HeroSlider.tsx"),
+  "utf8"
+);
+check(
+  /AUTOPLAY_MILLIS\s*=\s*11000/.test(heroSliderSource),
+  "slides rest for 11 s - a third of the old full-bleed churn"
+);
+
 const rowVisibility = winningValue(sheets, row, "content-visibility");
 check(rowVisibility && rowVisibility.value === "visible", `rails render without content-visibility skipping (${rowVisibility && rowVisibility.value})`);
 const rowIntrinsic = winningValue(sheets, row, "contain-intrinsic-size");
@@ -432,7 +490,7 @@ check(
 );
 const sceneTransition = winningValue(sheets, heroScene, "transition");
 check(
-  sceneTransition && /opacity 0?\.68s/.test(sceneTransition.value) && /transform/.test(sceneTransition.value),
+  sceneTransition && /opacity 1\.5s/.test(sceneTransition.value) && /transform/.test(sceneTransition.value),
   `the hero keeps its own cross-fade and drift, untouched by the scroll layer (${sceneTransition && sceneTransition.value})`
 );
 check(

@@ -601,6 +601,10 @@ public final class CinemaxAppTest {
                 "the WebView is not forced into a single hardware layer (keeps tiled compositing)");
         check(mainActivity.contains("setOffscreenPreRaster(false)"),
                 "offscreen content is not pre-rasterised (memory + raster time)");
+        check(mainActivity.contains("setVerticalScrollBarEnabled(false)"),
+                "the WebView's own document scrollbar is disabled (no white bar on any screen)");
+        check(mainActivity.contains("setHorizontalScrollBarEnabled(false)"),
+                "the WebView's horizontal scrollbar is disabled as well");
         check(mainActivity.contains("setRendererPriorityPolicy"),
                 "the renderer stays at foreground priority while the app is visible");
         check(mainActivity.contains("RENDERER_PRIORITY_WAIVED"),
@@ -626,6 +630,14 @@ public final class CinemaxAppTest {
                 "decorative animations park while the page is scrolling");
         check(theme.contains("touch-action: auto"),
                 "rails keep both pan axes on the compositor");
+        check(theme.contains("::-webkit-scrollbar"),
+                "every page scroller hides its scrollbar (rails, sheets, studio)");
+        check(theme.contains("scrollbar-width: none"),
+                "the standard scrollbar property is hidden too, not just the WebKit one");
+        check(theme.contains("html[data-cinemax-app=\"android\"] .platform-orbit-logo"),
+                "the app layer pins the platform artwork alignment");
+        check(theme.contains("position: relative") && theme.contains("z-index: 1"),
+                "brand artwork paints above the disc's own highlight (never tinted)");
         check(!theme.contains("filter: blur") && !theme.contains("will-change"),
                 "the scroll layer adds no new GPU/repaint hotspots of its own");
         check(!theme.contains("backdrop-filter"), "no backdrop blur is added to the app layer");
