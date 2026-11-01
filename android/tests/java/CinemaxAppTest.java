@@ -505,26 +505,41 @@ public final class CinemaxAppTest {
                 "the logo artwork is intact (both ribbons and both light edges)");
 
         // One brand mark, three renderers: the native splash drawable, the web
-        // component and the asset in the shared logo collection. They are the
-        // same shape serialised differently (absolute here, relative on the
-        // web), so the anchors are compared rather than the strings.
+        // component and the brand asset. They are the same shape serialised
+        // differently (absolute here, relative on the web), so the anchors are
+        // compared rather than the strings.
         File repositoryRoot = projectDirectory.getParentFile();
-        String collectionMark = read(new File(repositoryRoot, "public/platforms/cinemax.svg"));
         String componentMark = read(new File(repositoryRoot, "src/components/Logo.tsx"));
-        String[] anchors = { "42.2", "5.8", "12.8", "22.5", "41.5", "58.2", "51.8", "46.9", "25.7", "32", "17.1" };
-        boolean nativeMatches = true;
-        for (String anchor : anchors) {
-            nativeMatches &= pathDataOf(emblem, 0).contains(anchor);
-        }
-        check(nativeMatches, "the splash emblem is the same folded-ribbon C as the website");
-        check(collectionMark.equals(read(new File(repositoryRoot, "public/brand/cinemax-symbol.svg"))),
-                "the collection copy of the CINEMAX mark is identical to the brand symbol");
-        check(componentMark.contains("M42.2 5.8 12.8 22.5") && collectionMark.contains("M42.2 5.8 12.8 22.5"),
-                "the web component and the collection asset draw the same emblem geometry");
-        check(collectionMark.contains("#70e0ff") && collectionMark.contains("#be65f7"),
-                "the CINEMAX ribbon gradient colours are preserved in the collection asset");
-        check(!componentMark.contains("hbo") && !componentMark.toLowerCase().contains("hbo"),
-                "the CINEMAX mark is this project's own emblem, not the unrelated HBO Cinemax logo");
+        String brandSymbol = read(new File(repositoryRoot, "public/brand/cinemax-symbol.svg"));
+        check(componentMark.contains("M42.2 5.8 12.8 22.5") && brandSymbol.contains("M42.2 5.8 12.8 22.5"),
+                "the web component and the brand asset draw the same emblem geometry");
+        check(brandSymbol.contains("#70e0ff") && brandSymbol.contains("#be65f7"),
+                "the CINEMAX ribbon gradient colours are preserved in the brand asset");
+
+        // CINEMAX is also a streaming platform in its own right: the network's
+        // brand artwork in the shared collection, a registry entry, a disc in the
+        // home rail and a checkbox in the studio - and it is NOT the app logo.
+        String platformRegistry = read(new File(repositoryRoot, "src/lib/platforms.ts"));
+        String platformRail = read(new File(repositoryRoot, "src/components/PlatformRail.tsx"));
+        String platformPicker = read(new File(repositoryRoot, "src/components/PlatformPicker.tsx"));
+        byte[] platformArtwork = java.nio.file.Files.readAllBytes(
+                new File(repositoryRoot, "public/platforms/cinemax.webp").toPath());
+        check(platformRegistry.contains("id: \"cinemax\"") && platformRegistry.contains("\"/platforms/cinemax.webp\""),
+                "CINEMAX is a registered streaming platform with its own artwork");
+        check(platformArtwork.length > 1024 && platformArtwork[0] == 'R' && platformArtwork[1] == 'I'
+                        && platformArtwork[8] == 'W' && platformArtwork[9] == 'E',
+                "the CINEMAX platform logo is a real WebP in the shared platform collection");
+        check(platformArtwork[0] != '<', "the platform logo is brand artwork, not the application's SVG emblem");
+        check(!new File(repositoryRoot, "public/platforms/cinemax.svg").exists(),
+                "the application emblem is no longer shipped as a platform logo");
+        check(new File(repositoryRoot, "public/brand/cinemax-symbol.svg").isFile()
+                        && new File(repositoryRoot, "public/brand/cinemax-app-icon.svg").isFile()
+                        && componentMark.contains("CinemaxEmblem"),
+                "the application logo itself is untouched");
+        check(platformRail.contains("PLATFORMS.map") && platformPicker.contains("PLATFORMS.map"),
+                "the home rail and the studio picker both render the whole platform registry");
+        check(platformRegistry.contains("PLATFORM_TAG_PREFIX = \"platform-\""),
+                "CINEMAX selections persist as platform tokens like every other platform");
 
         // The lockup: the logo plus the CINEMAX wordmark revealed beneath it.
         check(splashView.contains("drawText") && splashView.contains("\"CINEMAX\""),

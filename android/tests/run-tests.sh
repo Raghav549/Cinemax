@@ -138,7 +138,7 @@ fi
 # The app renders these files through <img src="/platforms/…"> from the same
 # registry the website uses, so a missing, boxed or recoloured asset is just as
 # broken on a phone as it is in a browser. Same script, same pins.
-step "4/5  Brand artwork (18 platforms + the CINEMAX mark)"
+step "4/5  Brand artwork (19 platforms, CINEMAX included)"
 if ! command -v node >/dev/null 2>&1; then
   if [ "$REQUIRE_JSDOM" = "1" ]; then
     result 1 "node is required for the artwork layer but is not installed"

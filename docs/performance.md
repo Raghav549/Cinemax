@@ -31,7 +31,7 @@ the toolchain the Android test stage already uses.
 * `CatalogueProvider` + `WatchlistProvider` (the real providers),
 * a `HomeLike` component that consumes the catalogue and feeds `MovieRow`,
 * the real `MovieRow` with **200** cards, and the real `PlatformRail` with all
-  18 platform marks,
+  19 platform marks,
 * a `WatchProbe` that subscribes to the watchlist context - i.e. every save
   button on a page.
 
@@ -57,19 +57,19 @@ read commit durations; the development build is slower, so the two modes are
 used for different questions (counts vs. relative cost) and are never mixed
 inside a comparison.
 
-## Results (200 cards, 18 platform marks)
+## Results (200 cards, 19 platform marks)
 
 Production React build:
 
 | measurement | value |
 | --- | --- |
-| mount, 200 cards + 18 marks | **29.8 ms** |
+| mount, 200 cards + 19 marks | **29.8 ms** |
 | 60 scroll events on the poster track | **3.9 ms** total |
 | re-renders on an unchanged revalidation | **0** |
 | React development warnings during the run | **0** |
-| `<img>` elements emitted | 218 - 212 `loading="lazy"`, 6 `eager` (above the fold) |
-| images with intrinsic `width`/`height` | 200 of 200 posters (the 18 brand marks are boxed by CSS) |
-| images with `decoding="async"` | 218 of 218 |
+| `<img>` elements emitted | 238 - 213 `loading="lazy"`, 25 `eager` (the first six rail discs and every studio-picker mark) |
+| images with intrinsic `width`/`height` | 200 of 200 posters (the 19 brand marks are boxed by CSS) |
+| images with `decoding="async"` | 238 of 238 |
 
 Development React build, median of 3 runs, commit durations attributed to the
 step that caused them:
@@ -133,7 +133,7 @@ All four are kept, each with the concrete reason recorded next to it:
 | file | element | why not `next/image` |
 | --- | --- | --- |
 | `src/components/Artwork.tsx` | posters/backdrops | admins point titles at any licensed image host; the optimizer only serves hosts listed in `images.remotePatterns` at build time. The element already does what the optimizer would: `srcSet` at real widths (185-780), `sizes` per layout, intrinsic `width`/`height`, lazy/eager + `fetchPriority` and async decode. |
-| `src/components/PlatformLogo.tsx` | 18 brand marks | 16 of the 19 marks are SVG, which `next/image` refuses without `dangerouslyAllowSVG`; the rest are WebP. A 1-2 KB local file through the optimizer is an extra request and re-encode for zero saving. |
+| `src/components/PlatformLogo.tsx` | the 19 brand marks | 16 of the 19 marks are SVG, which `next/image` refuses without `dangerouslyAllowSVG`; the rest are WebP. A 1-2 KB local file through the optimizer is an extra request and re-encode for zero saving. |
 | `src/components/BottomNav.tsx` | CINEMAX nav mark | same as above: a 991 B in-repo SVG, already sized 20x20. |
 | `src/components/ProviderLanding.tsx` | oEmbed thumbnail | the host is only known at runtime, from the provider's own oEmbed response. |
 

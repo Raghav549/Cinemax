@@ -31,6 +31,7 @@ they are used here only to say where a title in the library can be streamed.
 | Discovery+ | `discovery-plus` | `discovery-plus.webp` | `tv-logo/tv-logos` → `misc/media/discovery-plus.png` (512x325, trimmed, WebP q92) | full colour |
 | YouTube | `youtube` | `youtube.svg` | `selfhst/icons` → `svg/youtube.svg` | red play mark |
 | aha | `aha` | `aha.webp` | `tv-logo/tv-logos` → `misc/media/aha.png` (512x271, trimmed, WebP q92) | full colour |
+| CINEMAX | `cinemax` | `cinemax.webp` | `tv-logo/tv-logos` → `countries/united-states/cinemax-us.png` (512x178, resized 524 px wide, WebP q92) | black wordmark on the amber field |
 
 ### Preparation
 
@@ -50,7 +51,7 @@ the following on every file before it was committed:
 3. **Rasters** — the two PNG-sourced brands are trimmed, padded with transparent
    pixels and encoded as WebP at quality 92 with a full alpha channel.
 
-Total payload: **≈112 KB for all eighteen platforms**, no runtime requests, no
+Total payload: **≈87 KB for all nineteen platforms**, no runtime requests, no
 new dependency (only the already-installed `sharp` dev tool was used to prepare
 files), and the `<img>` tags are `loading="lazy"` (`eager` only for the rail and
 the studio picker) with `decoding="async"` and fixed boxes so nothing shifts
@@ -70,6 +71,13 @@ collection against `src/lib/platforms.ts`:
   all, which also makes it safe inside the Android WebView;
 * each raster keeps a real alpha channel and at least 192 px, so nothing is
   soft on a 3x phone screen;
+`npm run verify:platforms` (`scripts/verify-platform-registry.mjs`) then compiles
+the real registry and calls it: nineteen unique platforms in order, a CINEMAX
+entry that resolves to its own artwork, and the save/read path
+(`withPlatformTags` → `platform-cinemax` → `platformsFromTags` →
+`/category/platform-cinemax`) round-tripping for CINEMAX exactly as it does for
+Netflix.
+
 * **identity pins**: a SHA-1 of the file's path geometry is compared against the
   value recorded for that brand, and so is a SHA-1 of its colour tokens. A
   swapped-in or recoloured (greyed, tinted, filtered) export therefore fails
@@ -98,16 +106,26 @@ single treatment it is used as published (Netflix, Hulu, Tubi, ZEE5, Paramount+,
 YouTube, Discovery+, aha). Hulu's green and Tubi's purple are brand colours, not
 design accents.
 
-### The nineteenth mark: CINEMAX itself
+### CINEMAX as a streaming platform
 
-The collection is nineteen logos, but the last one is not a download. CINEMAX's
-primary identity already lives in the repository as vector artwork — the
-`<CinemaxEmblem>` lockup in `src/components/Logo.tsx` with
-`public/brand/cinemax-symbol.svg` and `public/brand/cinemax-app-icon.svg`
-beside it — and it is reused exactly as it is. No second CINEMAX logo was drawn
-and no raster was invented, because the brand identity is not part of the
-download-in-logos task and must not fork. The verify script asserts those three
-files are present so the identity cannot go missing unnoticed.
+CINEMAX is listed like every other platform: one registry entry in
+`src/lib/platforms.ts`, one file in the shared collection
+(`public/platforms/cinemax.webp`), one disc in the home rail, one checkbox in the
+studio's platform picker, and its own `platform-cinemax` token in the existing
+`movies.category` field. The artwork is the CINEMAX network's own brand mark
+(black wordmark on the amber field) taken from `tv-logo/tv-logos`, not a redraw.
+
+It is deliberately **not** the application's logo. This project's own identity -
+the `<CinemaxEmblem>` lockup in `src/components/Logo.tsx`,
+`public/brand/cinemax-symbol.svg`, `public/brand/cinemax-app-icon.svg`, the
+native splash emblem and the favicon - is untouched and is never shipped as a
+platform logo. `scripts/verify-platform-logos.mjs` asserts both halves: the
+application files are still present, and the platform artwork is not a copy of
+them (the old emblem-as-platform-logo file was removed for exactly that reason).
+
+Because the disc is only 74 px wide, the rectangular banner artwork is not
+cropped or re-framed: it keeps its published proportions and is fitted into the
+48 px inner box of the disc like every other wordmark.
 
 ### Brand-status notes
 
@@ -118,12 +136,13 @@ files are present so the identity cannot go missing unnoticed.
   `max` wordmark of that same monochrome era rather than a different brand's
   mark. Renaming the platform would change stored `category` tokens, which is
   out of scope; if the name is ever migrated, the logo swap is one file.
-* **Rasters.** Discovery+ and aha have no official vector published in any
-  source reachable from this environment, so both are the official marks as
-  512 px transparent raster exports (`tv-logo/tv-logos`), trimmed to their ink
-  box, padded 1.2 % and encoded as WebP quality 92 with a full alpha channel —
-  12.4 KB and 10.4 KB, both well above the 192 px a 4x 48 px disc needs, and
-  neither carries a matte, box or background.
+* **Rasters.** Discovery+, aha and CINEMAX have no official vector published in
+  any source reachable from this environment, so all three are the official
+  marks as transparent raster exports (`tv-logo/tv-logos`), kept on their
+  published alpha canvas and encoded as WebP quality 92 with a full alpha
+  channel — 12.4 KB, 10.4 KB and 15.2 KB, all well above the 192 px a 4x 48 px
+  disc needs. The CINEMAX banner has transparent corners, so no white or boxed
+  rectangle appears inside the circular disc.
 * **Unverified upstream.** No official brand portal (Netflix's Tudum press
   assets, Prime Video's brand guidelines, Disney's press site, …) is reachable
   from the build sandbox, which only allows GitHub, npm and PyPI. Every file is
@@ -174,7 +193,8 @@ fades the card into the background instead of a box drawn around it.
 
 Platforms are stored as `platform-<id>` tokens inside the existing
 `movies.category` comma-separated field, and filtered through the existing
-`matchesCollection` / `?category=` paths. No table, column, migration,
+`matchesCollection` / `?category=` paths. CINEMAX uses the same mechanism and
+the same column — nothing special-cases it. No table, column, migration,
 relationship or existing record was created or rewritten. See the header
 comment in `src/lib/platforms.ts`. Legacy rows without platform tokens fall back
 to the platform names already present in `videoUrl`, `trailerUrl`,

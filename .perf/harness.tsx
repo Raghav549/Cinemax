@@ -9,11 +9,16 @@
  * Counters sit in component bodies so they stay accurate in a production build
  * (React's <Profiler> is a no-op there).
  */
-import { createElement, Profiler, useMemo, type ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+declare const __dirname: string;
+import { createElement, Profiler, useMemo, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import MovieRow from "../src/components/MovieRow";
 import PlatformRail from "../src/components/PlatformRail";
+import PlatformPicker from "../src/components/PlatformPicker";
 import CatalogueProvider, { useCatalogue } from "../src/components/CatalogueProvider";
 import WatchlistProvider, { useWatchlist } from "../src/components/WatchlistProvider";
 import type { CatalogueMovie } from "../src/lib/catalogue";
@@ -51,6 +56,18 @@ function HomeLike() {
   );
 }
 
+/** The studio's platform picker, driven exactly as the dashboard drives it. */
+function StudioProbe() {
+  count("studioPicker");
+  const [selected, setSelected] = useState<readonly string[]>([]);
+  return createElement(
+    "div",
+    null,
+    createElement(PlatformPicker, { value: selected, onChange: (next: string[]) => setSelected(next) }),
+    createElement("span", { "data-picked": selected.join(",") })
+  );
+}
+
 /** One watchlist consumer, i.e. every save button on the page. */
 function WatchProbe() {
   count("watchlistConsumer");
@@ -69,6 +86,7 @@ function App() {
     null,
     createElement(WatchlistProvider, null,
       createElement(WatchProbe),
+      createElement(StudioProbe),
       createElement(Profiler, {
         id: "home",
         onRender: (_id: string, phase: string, actualDuration: number) => {
@@ -124,7 +142,42 @@ async function run() {
   const afterEditedRefetch = Object.fromEntries(renders);
   const editedTitleShown = [...host.querySelectorAll(".movie-card")].some((card) => card.textContent?.includes("Edited title"));
 
+  // --- the platform section and the studio picker, as rendered --------------
+  const railDiscs = [...host.querySelectorAll(".platform-orbit")];
+  const railPlatforms = railDiscs.map((button) => ({
+    name: button.querySelector(".platform-orbit-name")?.textContent ?? "",
+    logo: (button.querySelector("img") as HTMLImageElement | null)?.getAttribute("src") ?? "",
+    disc: Boolean(button.querySelector(".platform-orbit-disc")),
+  }));
+  const cinemaxDisc = railDiscs.find((button) => button.querySelector(".platform-orbit-name")?.textContent === "CINEMAX");
+
+  const pickButtons = [...host.querySelectorAll(".platform-pick")];
+  const cinemaxPick = pickButtons.find((button) => button.textContent?.includes("CINEMAX")) as HTMLButtonElement | undefined;
+  const pickedBefore = host.querySelector("[data-picked]")?.getAttribute("data-picked") ?? "";
+  const cinemaxPickState = {
+    pressedBefore: cinemaxPick?.getAttribute("aria-pressed") ?? null,
+    hasCheckIcon: Boolean(cinemaxPick?.querySelector(".platform-pick-check")),
+    logo: cinemaxPick?.querySelector("img")?.getAttribute("src") ?? null,
+  };
+  cinemaxPick?.click();
+  flushSync(() => {});
+  const pickedAfter = host.querySelector("[data-picked]")?.getAttribute("data-picked") ?? "";
+
   window.__perf = {
+    platforms: {
+      railDiscs: railDiscs.length,
+      railPlatforms,
+      cinemaxDiscLogo: cinemaxDisc?.querySelector("img")?.getAttribute("src") ?? null,
+      cinemaxDiscRadiusRule: (() => {
+        const css = readFileSync(join(__dirname, "..", "src", "app", "globals.css"), "utf8");
+        const rule = css.slice(css.indexOf(".platform-orbit-disc {"), css.indexOf("}", css.indexOf(".platform-orbit-disc {")));
+        return /border-radius:\s*50%/.test(rule) && /aspect-ratio:\s*1\s*\/\s*1/.test(rule);
+      })(),
+      pickerChecks: pickButtons.length,
+      cinemaxPickState,
+      pickedBefore,
+      pickedAfter,
+    },
     mountMs: Number(mountMs.toFixed(2)),
     scrollMs: Number(scrollMs.toFixed(2)),
     noopRefetchMs: Number(noopMs.toFixed(2)),
