@@ -129,9 +129,12 @@ The rail no longer uses any card, tile or rectangle. Each platform is one
 * **Disc** — a 74 px perfect circle (`border-radius: 50%`) painted with one
   radial specular cap over a three-stop near-black vertical gradient, an inset
   top rim, an inset underside shade and one drop shadow. No blur filter.
-* **Logo** — the untouched brand file, `object-fit: contain`, capped at
-  44 × 34 px inside 15 px of padding, so nothing is stretched and every mark
-  keeps its own proportions.
+* **Logo** — the untouched brand file, `object-fit: contain`, capped at the
+  48 px inner box inside 13 px of padding, so nothing is stretched, cropped or
+  dimmed (`opacity: 1`, no filter, no overlay) and every mark keeps its own
+  proportions. The disc also carries `aspect-ratio: 1 / 1` plus
+  `box-sizing: border-box`, so the container is a true circle whatever the row
+  does to it.
 * **Name** — below the circle, never inside it. The count sits under the name.
 * **Selection** — the sphere lights from its rim inwards: an inset white ring,
   a 4 px soft halo and a brighter gradient. No blue, no rectangle, no outline.
@@ -175,10 +178,10 @@ suppressed for the page only.
 | `contain: paint` on `.movie-poster` and `.shimmer` | Each poster costs one contained layer instead of a full-page repaint |
 | New `<ScrollActivity>` | Sets `data-cinemax-scrolling` at most twice per gesture; the CSS pauses the dock's dash-offset sweep, the More mark's seven SVG loops and the skeleton sheen *only while the finger moves* |
 | `will-change: transform` on the More mark | Keeps that always-on loop on a composited layer instead of repainting the dock |
-| Hero slideshow parks itself off-screen | An `IntersectionObserver` stops the 12 s timer once the hero leaves the viewport |
+| Hero slideshow parks itself off-screen | An `IntersectionObserver` stops the 6.2 s timer once the hero leaves the viewport |
 | More-panel counts deferred | The O(collections × titles) pass now runs only when the sheet opens, not on every page mount |
 | Platform rail logos load lazily | Only the first six discs load eagerly; the rest decode as the row is scrolled |
-| Hero cross-fade is `opacity` only | One property on the compositor, no transform, no second keyframe animation |
+| Hero cross-fade is compositor-only | `.68 s` opacity and `1.05 s` `translate3d` on two full-bleed layers: no keyframe animation, no layout, no paint per frame. The next slide is mounted one beat early so its artwork is already decoded |
 
 Poster images keep their existing behaviour: `loading="lazy"`,
 `decoding="async"`, `fetchPriority="low"` for non-hero art, explicit
@@ -187,11 +190,18 @@ card downloads the 185 px variant instead of a 500 px one.
 
 ## 7. Hero and touch interaction
 
-* The hero's gradient "plate" behind the artwork is gone (`background: var(--bg)`),
-  and the vignette now dissolves the poster into the page on all four sides.
-* Slides change every **12 s** (was 9 s) with a **1.15 s** compositor-friendly
-  cross-fade; the outgoing still fades as the incoming one arrives, so there is
-  no flicker or jump. Manual arrows, dots, previews, swipe and pause all remain.
+* The hero paints **nothing**: the section is `background: transparent`, the
+  image fallback is transparent, and there is no border, radius or shadow. The
+  poster dissolves into the page through its own alpha (`mask-image`), so the
+  page background — including the faint light above the fold — really shows
+  through at the top and bottom edges. The vignette is now a pure-alpha scrim
+  that returns to zero on every side: no solid band, no painted copy of the page
+  colour.
+* Slides change every **6.2 s** with a **.68 s** opacity cross-fade *combined
+  with* a **1.05 s** horizontal drift: the incoming poster travels in from the
+  right while the outgoing one leaves to the left (2.6 % of the hero width).
+  The title, description and buttons are keyed to the same slide, so they swap
+  in step. Arrows, dots, previews, swipe, keyboard and pause all remain.
 * Pressing a poster lifts it (`translateY(-6px) scale(1.015)`) with a deeper
   shadow. The lift hangs off the link's `:active` state, so the watchlist and
   trailer buttons are unaffected; an `@supports not selector(:has(*))` fallback

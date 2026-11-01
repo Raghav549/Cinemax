@@ -135,15 +135,19 @@ public final class CinemaxAppTest {
         check(!hostileScript.contains("\n"), "no raw newline can split the generated literal");
         write(new File(outputDirectory, "injection-script-hostile.js"), hostileScript);
 
-        // The real media layers must carry the premium presentation rules.
-        check(theme.contains("#050507"), "the theme uses the deep-black Cinemax background");
-        check(theme.contains("radial-gradient"), "the theme adds colourful cinematic lighting");
+        // The app layer is the website's design system on a phone: the same deep
+        // black, plus the Android-only deltas. These assertions describe that
+        // contract, not a private palette.
+        check(theme.contains("--bg: #020202"), "the app canvas is the website's deep black, not charcoal");
+        check(!theme.contains("#050507"), "no charcoal surface survives in the app layer");
+        check(theme.contains("radial-gradient"), "the app layer keeps its depth details");
         check(theme.contains("--cinemax-inset-top"), "the theme consumes the native status-bar inset");
         check(theme.contains(".bottom-nav"), "the theme restyles the bottom navigation");
-        check(theme.contains(".movie-poster"), "the theme restyles the movie cards");
+        check(theme.contains(".platform-orbit-disc"), "the theme guarantees a circular platform container");
+        check(theme.contains("aspect-ratio: 1 / 1"), "the platform circle is 1:1 in the app too");
         check(theme.contains(".hero-title"), "the theme restyles the hero");
-        check(theme.contains(".player-progress-fill"), "the theme restyles the player");
-        check(theme.contains(".glass-card"), "the studio surfaces keep the same palette");
+        check(theme.contains(".hero-card"), "the theme keeps the hero section itself transparent");
+        check(theme.contains(".hero-scene"), "the theme owns the hero transition on Android");
         check(theme.contains(".splash-screen"), "the theme suppresses the in-page web intro");
         check(theme.contains("prefers-reduced-motion"), "the theme still honours reduced motion");
         check(theme.contains("@media (min-width: 820px)"), "the theme scales up for tablets");
@@ -549,8 +553,8 @@ public final class CinemaxAppTest {
         check(splashView.contains("setContentDescription") && splashView.contains("splash_lockup_desc"),
                 "the splash exposes an accessibility label");
         check(windowBackground.contains("@drawable/cinemax_emblem")
-                        && windowBackground.contains("#050507") && !windowBackground.contains("5E96FF"),
-                "the launch window is deep near-black with the centred logo (no colour flash)");
+                        && windowBackground.contains("#020202") && !windowBackground.contains("5E96FF"),
+                "the launch window is the page's own ink with the centred logo (no colour flash)");
         String windowLogoWidth = attribute(windowBackground, "android:width");
         check(windowLogoWidth.equals(Math.round(SplashMotion.LAUNCH_LOGO_DP) + "dp"),
                 "the launch window draws the logo at " + windowLogoWidth

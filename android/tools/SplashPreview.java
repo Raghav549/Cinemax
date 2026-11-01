@@ -64,11 +64,11 @@ public final class SplashPreview {
     /* The palette is deliberately duplicated from CinemaxSplashView: the preview
      * has to show the same colours, and reading them from the view source would
      * mean parsing Java. Any change there belongs here too. */
-    private static final int INK = 0xFF050507;
+    private static final int INK = 0xFF020202;
     private static final int WASH_BLUE = 0x335E96FF;
-    private static final int WASH_VIOLET = 0x147C4DFF;
+    private static final int WASH_VIOLET = 0x12FFFFFF;
     private static final int WASH_PINK = 0x17EF76CB;
-    private static final int[] GLOW_COLOURS = {0x6BD8F0FF, 0x475E96FF, 0x2E7C4DFF, 0x17EF76CB, 0x08EF76CB, 0x00050507};
+    private static final int[] GLOW_COLOURS = {0x6BFFFFFF, 0x47EDEDED, 0x2ED8D8D8, 0x17EF76CB, 0x08EF76CB, 0x00020202};
     private static final float[] GLOW_STOPS = {0f, 0.22f, 0.48f, 0.70f, 0.88f, 1f};
     private static final int[] DEPTH_COLOURS = {0xB8000000, 0x52000000, 0x00000000};
     private static final float[] DEPTH_STOPS = {0f, 0.45f, 1f};

@@ -276,8 +276,8 @@ def main() -> int:
             return found
 
         window_values = attribute_values(parse_axml(read_entry(apk, window_entry)))
-        check(any(value == "0xff050507" for value in window_values),
-              "the launch window paints the deep near-black Cinemax canvas")
+        check(any(value == "0xff020202" for value in window_values),
+              "the launch window paints the page's own deep-black canvas")
         check(not any(value in ("0xff5e96ff", "0xffef76cb", "0xff7c4dff") for value in window_values),
               "the launch window no longer flashes the coloured splash gradient")
         check(any(value.startswith("@0x") for value in window_values),

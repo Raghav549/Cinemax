@@ -547,7 +547,10 @@ public class MainActivity extends Activity {
         settings.setUserAgentString(settings.getUserAgentString()
                 + " CinemaxAndroid/" + CinemaxBridge.APP_VERSION);
 
-        web.setBackgroundColor(Color.parseColor("#050507"));
+        // The WebView's own canvas, visible for the first frames of a load and while
+        // a page is transparent at its edges. It must be the page's ink (#020202),
+        // not a lighter charcoal, or the app and the website differ at the seams.
+        web.setBackgroundColor(Color.parseColor("#020202"));
         // Deliberately NO setLayerType() here. Forcing LAYER_TYPE_HARDWARE on a
         // WebView takes it out of Chromium's own tiled/scanline compositing and
         // into a single GPU texture that has to be re-uploaded as the page
