@@ -7,11 +7,14 @@ import MovieCard from "@/components/MovieCard";
 import MovieRow from "@/components/MovieRow";
 import ContinueWatchingRow from "@/components/ContinueWatchingRow";
 import { useCatalogue } from "@/components/CatalogueProvider";
-import { FILTERS, matchesCollection, isPlayableMovie } from "@/lib/catalogue";
+import { matchesCollection, isPlayableMovie, isUpcomingMovie } from "@/lib/catalogue";
+import { PLATFORM_BY_ID, movieIsOnPlatform, type PlatformId } from "@/lib/platforms";
 import { RowSkeletons } from "@/components/Skeletons";
 import EmptyState from "@/components/EmptyState";
 import Icon, { collectionIcon } from "@/components/Icon";
 import Logo from "@/components/Logo";
+import PlatformRail from "@/components/PlatformRail";
+import PlatformLogo from "@/components/PlatformLogo";
 
 const HOME_RAILS = [
   { id: "trending", slug: "trending", name: "Trending" },
@@ -32,17 +35,8 @@ const HOME_RAILS = [
 ];
 
 export default function HomePage() {
-  const { movies, categories, loading } = useCatalogue();
-  const [filter, setFilter] = useState("all");
-
-  const filters = useMemo(() => {
-    const known = new Set(FILTERS.map((item) => item.value));
-    const extras = categories
-      .filter((item) => !known.has(item.slug))
-      .slice(0, 8)
-      .map((item) => ({ label: item.name, value: item.slug }));
-    return [...FILTERS, ...extras];
-  }, [categories]);
+  const { movies, loading } = useCatalogue();
+  const [platform, setPlatform] = useState<PlatformId | null>(null);
 
   const rows = useMemo(() => {
     return HOME_RAILS.map((rail) => ({
@@ -51,52 +45,82 @@ export default function HomePage() {
     })).filter((row) => row.movies.length > 0);
   }, [movies]);
 
+  // A platform only reports titles that are available now: announced releases
+  // are still "upcoming" and are listed by the Coming Soon collection instead.
+  // The same predicate drives the rail, its counts and /category/platform-*.
+  const availableOn = useMemo(
+    () => (movie: (typeof movies)[number], id: PlatformId) =>
+      movieIsOnPlatform(movie, id) && !isUpcomingMovie(movie),
+    []
+  );
+
+  const platformCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const movie of movies) {
+      // One pass per movie keeps this O(titles) rather than O(titles x platforms).
+      for (const [id, item] of PLATFORM_BY_ID) {
+        if (availableOn(movie, id as PlatformId)) counts[item.id] = (counts[item.id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [movies, availableOn]);
+
   const playableMovies = useMemo(() => movies.filter((movie) => isPlayableMovie(movie)), [movies]);
-  const filtered = useMemo(() => movies.filter((movie) => matchesCollection(movie, filter)), [movies, filter]);
+
+  const platformMovies = useMemo(
+    () => (platform ? movies.filter((movie) => availableOn(movie, platform)) : []),
+    [movies, platform, availableOn]
+  );
+
+  const activePlatform = platform ? PLATFORM_BY_ID.get(platform) : undefined;
 
   return (
     <main className="home-shell" id="main-content" tabIndex={-1}>
       <HeroSlider />
       <div className="home-content">
         {(movies.length > 0 || loading) && (
-          <div className="browse-bar">
-            <div className="filter-chips hide-scrollbar" role="group" aria-label="Filter the catalogue">
-              {filters.map((chip) => (
-                <button
-                  className="filter-chip"
-                  type="button"
-                  key={chip.value}
-                  aria-pressed={filter === chip.value}
-                  onClick={() => setFilter(chip.value)}
-                >
-                  {chip.value === "all" && <Icon name="sparkles" />}
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            <Link className="browse-all" href="/categories" aria-label="Explore all collections">
-              <Icon name="explore" />
-            </Link>
-          </div>
+          <PlatformRail active={platform} counts={platformCounts} onSelect={setPlatform} />
         )}
-        {filter !== "all" ? (
-          <section className="filtered-results" aria-label="Filtered titles">
-            <div className="filtered-summary">
-              <h2>{filters.find((item) => item.value === filter)?.label}</h2>
-              <span role="status">
-                {filtered.length} {filtered.length === 1 ? "title" : "titles"}
+        {platform && activePlatform ? (
+          <section className="platform-results" aria-label={`${activePlatform.name} titles`}>
+            <div className="platform-results-head">
+              <span className="platform-results-mark">
+                <PlatformLogo id={activePlatform.id} eager />
               </span>
+              <div className="platform-results-copy">
+                <h2>{activePlatform.name}</h2>
+                <span role="status">
+                  {loading
+                    ? "Loading titles…"
+                    : `${platformMovies.length} ${platformMovies.length === 1 ? "title" : "titles"} in the library`}
+                </span>
+              </div>
+              <button className="platform-results-reset" type="button" onClick={() => setPlatform(null)}>
+                <Icon name="close" />
+                <span>Show everything</span>
+              </button>
             </div>
             {loading ? (
               <RowSkeletons />
-            ) : filtered.length ? (
+            ) : platformMovies.length ? (
               <div className="movie-grid" role="list">
-                {filtered.map((movie) => (
+                {platformMovies.map((movie) => (
                   <MovieCard key={movie.id} movie={movie} />
                 ))}
               </div>
             ) : (
-              <EmptyState title="No titles here yet" description="Try another collection." icon={collectionIcon(filter)} />
+              <EmptyState
+                title={`Nothing on ${activePlatform.name} yet`}
+                description="Titles become available here as soon as the studio lists this platform for them."
+                icon="film"
+              >
+                <button className="cinematic-button button-secondary platform-empty-reset" type="button" onClick={() => setPlatform(null)}>
+                  <span className="button-content">
+                    <Icon name="arrow-left" />
+                    <span>Back to the library</span>
+                  </span>
+                </button>
+              </EmptyState>
             )}
           </section>
         ) : (
@@ -106,8 +130,14 @@ export default function HomePage() {
               <RowSkeletons />
             ) : rows.length ? (
               rows.map((row) => <MovieRow key={row.id} title={row.name} category={row.slug} movies={row.movies} />)
+            ) : playableMovies.length > 0 ? (
+              <MovieRow title="Movies" category="movies" movies={playableMovies} />
             ) : (
-              playableMovies.length > 0 && <MovieRow title="Movies" category="movies" movies={playableMovies} />
+              <EmptyState
+                title="Your library is ready"
+                description="Titles added in the studio appear here."
+                icon={collectionIcon("movies")}
+              />
             )}
           </>
         )}

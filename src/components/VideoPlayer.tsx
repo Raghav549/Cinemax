@@ -767,8 +767,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
             <svg className="player-buffering-ring" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
               <defs>
                 <linearGradient id="cinemax-buffer-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#4FD8FF" />
-                  <stop offset=".5" stopColor="#7C4DFF" />
+                  <stop offset="0" stopColor="#FFFFFF" />
+                  <stop offset=".5" stopColor="#B7B6C1" />
                   <stop offset="1" stopColor="#FF4FA3" />
                 </linearGradient>
               </defs>
