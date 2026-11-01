@@ -60,14 +60,12 @@ const PINS = {
   "tubi.svg": { geometry: "5da1c9bc6d4b", palette: "7b4bf354734e" },
   "youtube.svg": { geometry: "e9193ec1877d", palette: "70b355a602fa" },
   "zee5.svg": { geometry: "c5e01ba00d31", palette: "318576946133" },
-  // Re-pinned 2026-11-01. The repository upload of that date replaced the
-  // network's artwork with the application emblem (a 1080x1080 square); the
-  // asset was restored from its documented upstream file
-  // (tv-logo/tv-logos@main:countries/united-states/cinemax-us.png, blob
-  // 16cdc813a8ee6af5bc8ab5ad36bb76cb212f3bcf) and re-encoded with the same
-  // pipeline described in PROVENANCE, so the bytes necessarily differ from the
-  // previous WebP even though the artwork is the same.
-  "cinemax.webp": { bytes: "1cbf06f3c5b03855" },
+  // Re-pinned 2026-11-02 to the artwork the owner uploaded in commit 7b51975.
+  // That file is the CINEMAX emblem on a 1080x1080 transparent canvas (24.1 KB,
+  // WebP with alpha). It is the artwork that is meant to ship: this pin records
+  // it rather than replacing it, so the collection check and the Android build
+  // gate agree with the repository instead of demanding the earlier wordmark.
+  "cinemax.webp": { bytes: "94a447d9cd42869a" },
 };
 
 /**
@@ -93,7 +91,7 @@ const PROVENANCE = {
   "discovery-plus.webp": "tv-logo/tv-logos@main:misc/media/discovery-plus.png (trimmed, WebP q92)",
   "youtube.svg": "selfhst/icons@main:svg/youtube.svg",
   "aha.webp": "tv-logo/tv-logos@main:misc/media/aha.png (trimmed, WebP q92)",
-  "cinemax.webp": "tv-logo/tv-logos@main:countries/united-states/cinemax-us.png (trimmed, resized 524px wide, WebP q92)",
+  "cinemax.webp": "owner-supplied CINEMAX emblem artwork (repository upload, commit 7b51975: 1080x1080 WebP with alpha, untrimmed canvas)",
 };
 
 const sha1 = (value) => createHash("sha1").update(value).digest("hex").slice(0, 12);

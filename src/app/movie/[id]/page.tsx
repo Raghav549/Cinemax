@@ -8,6 +8,8 @@ import { useWatchlist } from "@/components/WatchlistProvider";
 import MovieRow from "@/components/MovieRow";
 import DetailTrailerBackdrop from "@/components/DetailTrailerBackdrop";
 import PlaybackOverlay, { resolvePlaybackSource } from "@/components/PlaybackOverlay";
+import { needsServerResolution } from "@/lib/playback/classify";
+import { prefetchPlaybackPlan } from "@/lib/playback/plan-cache";
 import CinematicButton, { CinematicLink } from "@/components/CinematicButton";
 import EmptyState from "@/components/EmptyState";
 import Icon from "@/components/Icon";
@@ -65,7 +67,7 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const autoplay = searchParams.get("play") === "1";
-  const { movies: catalogue } = useCatalogue();
+  const { movies: catalogue, loading: catalogueLoading } = useCatalogue();
   const { savedIds, pendingIds, toggle } = useWatchlist();
   const [detail, setDetail] = useState<{ id: string; movie: CatalogueMovie | null; error: boolean }>({
     id: "",
@@ -94,6 +96,19 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
     [movie]
   );
   const inWatchlist = movie ? savedIds.has(movie.id) : false;
+
+  /**
+   * Start the playback-plan request when the viewer shows intent to play, so the
+   * server has already inspected the provider page by the time the player
+   * mounts. Cheap: the plan is cached per title and shared with the overlay.
+   */
+  const warmPlayback = useCallback(() => {
+    if (!movie || upcoming || !movie.videoUrl) return;
+    if (!needsServerResolution(movie.videoUrl)) return;
+    prefetchPlaybackPlan(movie.id);
+  }, [movie, upcoming]);
+
+
 
   const notify = useCallback(
     (text: string) => {
@@ -133,6 +148,10 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   }, [resumeSnapshot]);
 
   useEffect(() => {
+    // The catalogue feed already carries this title's full public record, so a
+    // detail view opened from it does not need a second identical request. Only
+    // a title missing from the feed (a direct link, a deep link) is fetched.
+    if (indexedMovie || catalogueLoading) return;
     const controller = new AbortController();
     fetch(`/api/movies/${id}`, { signal: controller.signal })
       .then(async (response) => {
@@ -147,7 +166,7 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
         if (!controller.signal.aborted) setDetail({ id, movie: null, error: true });
       });
     return () => controller.abort();
-  }, [id, retry]);
+  }, [id, retry, indexedMovie, catalogueLoading]);
 
   useEffect(() => {
     if (!autoplay) {
@@ -156,8 +175,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
     }
     if (!movie || !video || upcoming || handledAutoplay.current === id) return;
     handledAutoplay.current = id;
+    warmPlayback();
     setPlayingFor(movie.id);
-  }, [autoplay, id, movie, upcoming, video]);
+  }, [autoplay, id, movie, upcoming, video, warmPlayback]);
 
   useEffect(() => {
     // The first *content* collection token: platform tags are availability
@@ -352,6 +372,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
                   requestHandsetImmersiveFullscreen();
                   setPlayingFor(movie.id);
                 }}
+                onPointerEnter={warmPlayback}
+                onFocus={warmPlayback}
+                onTouchStart={warmPlayback}
                 disabled={!video}
                 icon={<Icon name="external" />}
               >
@@ -364,6 +387,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
                   requestHandsetImmersiveFullscreen();
                   setPlayingFor(movie.id);
                 }}
+                onPointerEnter={warmPlayback}
+                onFocus={warmPlayback}
+                onTouchStart={warmPlayback}
                 disabled={!video}
                 icon={<Icon name="play" filled />}
               >

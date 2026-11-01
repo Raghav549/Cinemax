@@ -4,7 +4,7 @@ The Cinemax Android app is a thin, native shell around the existing production
 deployment. It does **not** fork, replace or duplicate anything: the same Next.js
 app, the same API routes, the same PostgreSQL database, the same studio/admin
 panel, the same authentication and the same playback pipeline run inside the app,
-served from **`https://cinemax-orpin.vercel.app`**.
+served from **`https://cinemaxtv.space`**.
 
 ```
 android/
@@ -92,10 +92,10 @@ file manager/browser you use). Requirements: **Android 7.0 (API 24) or newer**,
 
 | Concern | Behaviour |
 | --- | --- |
-| Content origin | `https://cinemax-orpin.vercel.app` only – never localhost, never an emulator host, never a dev server. The URL is compiled into `classes.dex` and asserted by the tests. |
-| In-app navigation | The production host and its `*.vercel.app` aliases stay in the WebView, so tabs, filters, search, details, watchlist, studio login, cookies and the whole player behave exactly as in a browser. |
+| Content origin | `https://cinemaxtv.space` only – never localhost, never an emulator host, never a dev server. The URL is compiled into `classes.dex` and asserted by the tests. The previous deployment hostname (`cinemax-orpin.vercel.app`) is still accepted by the navigation policy so an earlier share link opens in the app. |
+| In-app navigation | The official host (and its `www` form), the previous deployment hostname and its `*.vercel.app` aliases stay in the WebView, so tabs, filters, search, details, watchlist, studio login, cookies and the whole player behave exactly as in a browser. |
 | External links | Any other domain, plus `mailto:`, `tel:`, `sms:`, `market:`, `intent:` and unknown schemes open in the matching system app. A lookalike host such as `evil-vercel.app.attacker.com` is sent out, not loaded. |
-| Deep links | `https://cinemax-orpin.vercel.app/...` opens inside the app (`autoVerify`, see below). Re-opening from the launcher keeps the page you were on. |
+| Deep links | `https://cinemaxtv.space/...` opens inside the app (`autoVerify`, see below). Re-opening from the launcher keeps the page you were on. |
 | Back button | Fullscreen video → leave fullscreen; error screen → dismiss; otherwise WebView history → then "Press back again to exit". |
 | Rotation | The activity handles configuration changes itself, so rotating (or the player switching to landscape) never reloads the page. |
 | Edge to edge | API 30+ draws behind transparent status/navigation bars; the real insets are measured natively and published to the page as CSS variables, so the existing layout clears the status bar, gesture bar, cutout and rounded corners. Themed brand gradient shows in the very top and bottom strips. |
@@ -268,7 +268,7 @@ they are the final gate:
    blue-to-pink band sweeping across the logo, the glow settling. Nothing else
    may appear: no rings, orbit lines, dots, streaks, taglines or spinners. It
    must cross-fade onto the home page with no black flash and no visible pause.
-   Confirm the hero, rails and every poster load from `cinemax-orpin.vercel.app`
+   Confirm the hero, rails and every poster load from `cinemaxtv.space`
    (no local content).
 3. Confirm the launch is continuous: the launcher window shows the same logo at
    the same size, and the reveal starts from it without a blink or a jump.
@@ -319,7 +319,7 @@ they are the final gate:
   checklist can confirm 60 fps on real hardware.
 * The sandbox also has **no network route to the production deployment**, so the
   live hand-over to the real home page (the part that depends on
-  `cinemax-orpin.vercel.app` answering) could not be exercised. The URL is
+  `cinemaxtv.space` answering) could not be exercised. The URL is
   compiled into the APK and asserted by the tests.
 * Playback of any licence-restricted source still depends on the deployment's
   own configuration (`TORRENT_*` gateway) exactly as on the web; the app adds

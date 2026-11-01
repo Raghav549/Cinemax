@@ -8,6 +8,7 @@ import { hasNativeShell, setNativePlayerFullscreen } from "@/lib/open-external";
 import { unlockPlayerOrientation } from "@/lib/playback/immersive";
 import { resolveShareLink, type LinkResolution } from "@/lib/providers";
 import { needsServerResolution } from "@/lib/playback/classify";
+import { playbackPlan } from "@/lib/playback/plan-cache";
 import type { CatalogueMovie } from "@/lib/catalogue";
 
 /**
@@ -39,28 +40,27 @@ export function resolvePlaybackSource(videoUrl: string | null | undefined): Link
 
 /**
  * Fetches the server-side playback plan for a catalogue title whose stored source
- * is a web link (watch page, unidentified CDN URL). The request is aborted when
- * the overlay closes, so a late answer can never start playback afterwards.
+ * is a web link (watch page, unidentified CDN URL). The plan is shared through
+ * `plan-cache`, so a request already started when the play button was pressed is
+ * reused here instead of being repeated, and a late answer can never start
+ * playback after the overlay has closed.
  */
 function useServerPlayback(movieId: number, enabled: boolean) {
   const key = enabled ? String(movieId) : "";
   const [state, setState] = useState<{ key: string; resolution: LinkResolution | null; error: string }>({ key: "", resolution: null, error: "" });
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
-    fetch(`/api/movies/${movieId}/playback`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as { resolution?: LinkResolution; error?: string } | null;
-        if (!response.ok || !body?.resolution) {
-          throw new Error(body?.error || "This title’s playback link could not be checked.");
-        }
+    let cancelled = false;
+    playbackPlan(movieId)
+      .then((body) => {
+        if (cancelled || !body.resolution) return;
         setState({ key, resolution: body.resolution, error: "" });
       })
       .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (cancelled) return;
         setState({ key, resolution: null, error: error instanceof Error ? error.message : "The playback link could not be checked." });
       });
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [enabled, key, movieId]);
   const ready = enabled && state.key === key;
   return {

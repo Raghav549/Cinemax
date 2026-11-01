@@ -22,9 +22,9 @@ export const dynamic = "force-dynamic";
  *
  *   /api/share/card/<id>   → 1200x630 JPEG-friendly PNG
  *
- * Used by og:image, twitter:image, the website share sheet (the browser attaches
- * it as a real image file) and the Android shell (which downloads it into the
- * app cache and hands it to the share sheet as a content URI).
+ * Used by og:image and twitter:image — that is the card a receiving app renders
+ * from a shared link — and by the Android shell, which caches it and can attach
+ * it to a share as a content URI.
  *
  * If the title cannot be read — database unavailable, id unknown — a generic
  * CINEMAX card is rendered instead of a broken image. It never invents a title,

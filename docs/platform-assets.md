@@ -31,7 +31,8 @@ they are used here only to say where a title in the library can be streamed.
 | Discovery+ | `discovery-plus` | `discovery-plus.webp` | `tv-logo/tv-logos` → `misc/media/discovery-plus.png` (512x325, trimmed, WebP q92) | full colour |
 | YouTube | `youtube` | `youtube.svg` | `selfhst/icons` → `svg/youtube.svg` | red play mark |
 | aha | `aha` | `aha.webp` | `tv-logo/tv-logos` → `misc/media/aha.png` (512x271, trimmed, WebP q92) | full colour |
-| CINEMAX | `cinemax` | `cinemax.webp` | `tv-logo/tv-logos` → `countries/united-states/cinemax-us.png` (512x178, trimmed, resized 524 px wide, WebP q92) | black wordmark on the amber field |
+| CINEMAX | `cinemax` | `cinemax.webp` | owner-supplied upload in commit `7b51975` (1080x1080 WebP with alpha, untrimmed canvas, 24.1 KB) | the CINEMAX emblem, kept exactly as uploaded |
+
 
 
 > **Restored 2026-11-01.** An upload replaced this file with a 1080×1080 square

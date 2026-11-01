@@ -194,8 +194,12 @@ def main() -> int:
     production_filter = [f for f in filters if f.attr("autoVerify") == "true"]
     check(len(production_filter) == 1, "the production deep link is verified automatically")
     check(
-        any(d.attr("host") == "cinemax-orpin.vercel.app" and d.attr("scheme") == "https" for d in data),
-        "deep links target the production host over https",
+        any(d.attr("host") == "cinemaxtv.space" and d.attr("scheme") == "https" for d in data),
+        "deep links target the official host over https",
+    )
+    check(
+        any(d.attr("host") == "www.cinemaxtv.space" and d.attr("scheme") == "https" for d in data),
+        "the www form of the official host is a deep link too",
     )
     permissions = {element.attr("name") for element in manifest.find_all("uses-permission")}
     check("android.permission.INTERNET" in permissions, "only the needed permissions are requested (INTERNET)")

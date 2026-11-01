@@ -128,8 +128,11 @@ The Cinemax `/api/stream/{movieId}` Node route is the public playback endpoint a
 | `npm run verify:api`| End-to-end check of every admin/public API route (see below)        |
 | `npm run verify:logos` | Brand-artwork integrity (19 platforms, pinned originals)        |
 | `npm run verify:platforms` | Platform registry, save/read path and tokens              |
-| `npm run verify:share` | Sharing rules: payload, trailer classification, native bridge, Web Share and clipboard fallbacks |
+| `npm run verify:share` | Sharing rules: one link, one card, no deployment hostname, native bridge and Web Share |
 | `npm run verify:legal` | The five legal documents' rendered HTML (run after `npm run build`) |
+| `npm run verify:promo` | The first-visit app promotion and the APK it hands out (package id, version, signature) |
+| `npm run measure:playback` | Playback-resolver timings against a local fixture provider |
+| `npm run measure:player` | Time from "play" to the player element, cold vs. warmed on intent |
 | `npm run licenses`  | Dependency licence report (`-- --json` or `-- --csv`)              |
 
 ### Verifying a deployment
@@ -179,31 +182,50 @@ npm run licenses                        # dependency licence report
 ## Sharing a title
 
 The Share button on a title screen, and the share control on `/share/<id>`, run
-one code path (`src/lib/share.ts`):
+one code path (`src/lib/share.ts`). A share carries **one** link and **one** card:
+the link is the destination (`https://cinemaxtv.space/share/<id>`, never a
+deployment hostname), the receiving app renders the card from that page's Open
+Graph tags, and the message text is the title's description — not a second copy
+of the title, not a raw address, not a trailer URL.
 
-* inside the Android app it calls the native bridge, which downloads the
-  generated card (and the trailer, when the record points at a real video file)
-  into the app cache and opens Android's own `Intent.createChooser` sheet — every
-  installed app that accepts a share is listed, nothing is hardcoded;
-* in a browser it uses the Web Share API, attaching the generated card as a file
-  (plus the video where one exists), and copies the link when sharing is not
-  available;
+* inside the Android app it calls the native bridge, which opens Android's own
+  `Intent.createChooser` sheet — every installed app that accepts a share is
+  listed, nothing is hardcoded. The generated card is attached as a
+  `content://` URI when it is already cached, and the sheet never waits for a
+  download (a fresh card gets 1.5 s and then finishes in the background);
+* in a browser it uses the Web Share API and copies description + link when
+  sharing is not available; nothing is downloaded before the sheet opens;
 * the link opens `/share/<id>`, which shows the title's own poster, backdrop,
   name, type, year, genre and synopsis, a playable trailer when the record has a
   video file, and an explicit link to the trailer's host otherwise. A still image
   is never presented as playing video;
 * `/api/share/card/<id>` renders the 1200×630 preview card used as
-  `og:image`/`twitter:image` and as the shared image.
+  `og:image`/`twitter:image` (cached `max-age=3600, s-maxage=86400`).
 
-`npm run verify:share` exercises those rules (payload, trailer classification,
-bridge precedence, Web Share, cancellation and clipboard fallback) without a
-browser or a device.
+`npm run verify:share` exercises those rules (payload, official origin, bridge
+precedence, Web Share, cancellation and clipboard fallback) without a browser or
+a device.
+
+## First-visit app promotion and the download
+
+First-time visitors to the website are offered the Android app once: a card in
+the corner of the page ("Get this app & enjoy it") with a **Download Android
+app** button and **Continue on website**. It never blocks the page, never
+downloads anything by itself, and a dismissal is remembered on the device
+(`localStorage` plus a 180-day cookie — no database). Android gets the download;
+desktop and unsupported devices get an availability note. Inside the app it does
+not appear at all.
+
+`/download/android` answers with `public/downloads/Cinemax-1.1.0.apk` directly —
+`application/vnd.android.package-archive`, `attachment; filename=…`, no redirect.
+`npm run verify:promo` reads the package id, version and signature out of that
+file and fails if it disagrees with the site.
 
 ## Android app
 
 The repository also ships a real, installable Android app
 (`android/dist/Cinemax-1.1.0.apk`, package `com.cinemax.app`). It is a native
-shell around this same deployment — `https://cinemax-orpin.vercel.app` — so the
+shell around this same deployment — `https://cinemaxtv.space` — so the
 existing web app, API routes, PostgreSQL data, studio/admin panel, authentication
 and playback all run unchanged. The app adds a native splash, app icon, adaptive
 + legacy launcher icons, edge-to-edge inset handling, back-button behaviour,

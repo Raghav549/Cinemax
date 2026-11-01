@@ -27,11 +27,55 @@ import { privateHostsAllowed, SafeFetchError, safeGet, validatePlaybackUrl, type
 const PAGE_MAX_BYTES = 2 * 1024 * 1024;
 const PROBE_MAX_BYTES = 64 * 1024;
 const FRAME_PROBE_MAX_BYTES = 16 * 1024;
+/**
+ * How long the whole inspection may take before the player is shown the
+ * provider's own page instead. Opening the same link in a browser tab is
+ * instant, so the in-app path must never spend longer than a browser would:
+ * a page plus one round of probes, not the sum of every probe's timeout.
+ */
+const DEFAULT_DEADLINE_MS = 6 * 1000;
 const RESULT_TTL_MS = 5 * 60 * 1000;
 const FAILURE_TTL_MS = 30 * 1000;
 const CACHE_LIMIT = 300;
 const MAX_MEDIA_CANDIDATES = 6;
 const MAX_IFRAME_CANDIDATES = 4;
+
+/** The inspection budget, in milliseconds (overridable for the test fixtures). */
+export function resolutionDeadlineMs(): number {
+  const configured = Number(process.env.CINEMAX_PLAYBACK_DEADLINE_MS ?? "");
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_DEADLINE_MS;
+}
+
+/** What is left of the budget, capped per attempt and never below a usable floor. */
+function probeTimeout(deadline: number, cap: number): number {
+  return Math.max(500, Math.min(cap, deadline - Date.now()));
+}
+
+/**
+ * Tries candidates in document order, two at a time.
+ *
+ * Reading in order keeps the page's own preference (its first published player
+ * or source wins), while the look-ahead window means a candidate that fails
+ * does not cost a full round trip before the next one starts. A page whose
+ * first candidate is good still sends one probe; a page whose first four are
+ * dead no longer waits for four timeouts in a row.
+ */
+async function firstInOrder<T, R>(items: T[], task: (item: T) => Promise<R | null>, window = 2): Promise<R | null> {
+  const started: Array<Promise<R | null>> = [];
+  let next = 0;
+  const launch = () => {
+    const pending = task(items[next]).catch(() => null);
+    next += 1;
+    started.push(pending);
+  };
+  while (next < items.length && started.length < window) launch();
+  for (let index = 0; index < items.length; index += 1) {
+    const value = await started[index];
+    if (value) return value;
+    if (next < items.length) launch();
+  }
+  return null;
+}
 
 /** Words a page only uses when it actually contains a player. */
 const PLAYER_HINT = /<video\b|<iframe\b|\bplayer\b|\bhls\b|\bdash\b|\.m3u8|\.mpd\b|videojs|jwplayer|plyr|artplayer/i;
@@ -230,9 +274,9 @@ function manifestRank(url: string): number {
   return 2;
 }
 
-async function probeFrame(url: string, embedderOrigin: string | undefined): Promise<boolean> {
+async function probeFrame(url: string, embedderOrigin: string | undefined, timeoutMs: number): Promise<boolean> {
   try {
-    const response = await safeGet(url, { maxBytes: FRAME_PROBE_MAX_BYTES, timeoutMs: 6000 });
+    const response = await safeGet(url, { maxBytes: FRAME_PROBE_MAX_BYTES, timeoutMs });
     // Some providers return an auth, bot-check, or rate-limit page to a
     // server-side probe while serving the real player to a normal browser.
     // Let the browser's own frame attempt decide in those cases, but never
@@ -244,7 +288,7 @@ async function probeFrame(url: string, embedderOrigin: string | undefined): Prom
   }
 }
 
-async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: string | undefined): Promise<WebPlaybackResult> {
+async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: string | undefined, deadline: number): Promise<WebPlaybackResult> {
   const finalUrl = new URL(page.url);
   const originalUrl = validatePlaybackUrl(rawUrl);
   const html = page.body.toString("utf8");
@@ -255,6 +299,7 @@ async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: s
   // discard valid provider embeds from otherwise unknown hosts. Preserve the
   // provider's own URL and its settings rather than rewriting it to a guessed
   // endpoint. Known DRM/subscription services still stay on their official app.
+  const frameCandidates: Array<{ src: string; provider: ProviderInfo; knownEmbed: boolean; kind: LinkResolution["kind"]; embedTitle: string }> = [];
   for (const iframe of extractIframes(html, finalUrl.toString()).slice(0, MAX_IFRAME_CANDIDATES)) {
     const iframeSrc = preservePlayerSettings(iframe, originalUrl);
     let iframeUrl: URL;
@@ -270,47 +315,75 @@ async function resolvePage(page: SafeResponse, rawUrl: string, embedderOrigin: s
     // If a page publishes a direct media URL in an iframe, keep it on the
     // native media path rather than wrapping a raw MP4/manifest in another
     // frame. The URL is page-published, and the direct adapter owns MIME/engine
-    // selection (including HLS/DASH).
+    // selection (including HLS/DASH). No network is needed to know this.
     if (strict.ok && strict.playback.strategy === "direct") {
       return makeResolution(rawUrl, finalUrl.toString(), strict.provider, strict.kind, {
         ...strict.playback,
         src: iframeUrl.toString(),
       });
     }
-    if (!await probeFrame(iframeUrl.toString(), embedderOrigin)) continue;
-
     const knownEmbed = strict.ok && strict.playback.strategy === "embed" && strict.provider.id !== "web";
-    const provider = knownEmbed
-      ? strict.provider
-      : providerFor(iframeUrl, "web-embed", "This provider's own embedded player plays inside Cinemax.");
-    const embedTitle = knownEmbed && strict.ok && strict.playback.strategy === "embed"
-      ? strict.playback.embedTitle
-      : `${displayHost(iframeUrl.toString())} player`;
-    return makeResolution(rawUrl, finalUrl.toString(), provider, knownEmbed && strict.ok ? strict.kind : "page", {
-      strategy: "embed",
+    frameCandidates.push({
       src: iframeUrl.toString(),
-      embedTitle,
+      provider: knownEmbed ? strict.provider : providerFor(iframeUrl, "web-embed", "This provider's own embedded player plays inside Cinemax."),
+      knownEmbed,
+      kind: knownEmbed && strict.ok ? strict.kind : "page",
+      embedTitle: knownEmbed && strict.ok && strict.playback.strategy === "embed"
+        ? strict.playback.embedTitle
+        : `${displayHost(iframeUrl.toString())} player`,
     });
   }
 
-  // 3. Media the page publishes that answers as real media.
-  let corsBlocked: { engine: DirectEngine; src: string; provider: ProviderInfo } | null = null;
-  for (const candidate of extractMediaCandidates(html, finalUrl.toString())) {
-    let probe: SafeResponse;
-    try {
-      probe = await safeGet(candidate, { maxBytes: PROBE_MAX_BYTES, timeoutMs: 8000, range: "bytes=0-65535" });
-    } catch {
-      continue;
-    }
-    if (probe.status < 200 || probe.status >= 300) continue;
-    const engine = classifyMedia(contentTypeOf(probe.headers), probe.body);
-    if (!engine) continue;
-    const provider = providerFor(new URL(probe.url), "web-media", MEDIA_PROVIDER_TAGLINE);
-    if (engine === "video" || corsAllows(probe.headers, embedderOrigin)) {
-      return makeResolution(rawUrl, finalUrl.toString(), provider, engine === "video" ? "file" : "stream", { strategy: "direct", src: probe.url, engine });
-    }
-    corsBlocked ??= { engine, src: probe.url, provider };
+  // Probe the published frames together rather than one after another: three
+  // frames that refuse to be shown used to cost three round trips before the
+  // fourth, working one was even tried.
+  const firstFrame = frameCandidates.length
+    ? await firstInOrder(frameCandidates, async (candidate) =>
+        await probeFrame(candidate.src, embedderOrigin, probeTimeout(deadline, 6000)) ? candidate : null,
+        MAX_IFRAME_CANDIDATES)
+    : null;
+  if (firstFrame) {
+    return makeResolution(rawUrl, finalUrl.toString(), firstFrame.provider, firstFrame.kind, {
+      strategy: "embed",
+      src: firstFrame.src,
+      embedTitle: firstFrame.embedTitle,
+    });
   }
+
+  // 3. Media the page publishes that answers as real media. The probes run
+  // together and are read in document order: a page whose first candidate is
+  // good answers on that candidate's latency alone, and a page whose first five
+  // are dead no longer waits for five timeouts in a row.
+  const mediaCandidates = extractMediaCandidates(html, finalUrl.toString());
+  const media = await firstInOrder(
+    mediaCandidates,
+    async (candidate) => {
+      try {
+        const probe = await safeGet(candidate, { maxBytes: PROBE_MAX_BYTES, timeoutMs: probeTimeout(deadline, 8000), range: "bytes=0-65535" });
+        if (probe.status < 200 || probe.status >= 300) return null;
+        const engine = classifyMedia(contentTypeOf(probe.headers), probe.body);
+        if (!engine) return null;
+        const provider = providerFor(new URL(probe.url), "web-media", MEDIA_PROVIDER_TAGLINE);
+        return { engine, probe, provider };
+      } catch {
+        return null;
+      }
+    },
+  );
+  let corsBlocked: { engine: DirectEngine; src: string; provider: ProviderInfo } | null = null;
+  let mediaResolution: WebPlaybackResult | null = null;
+  if (media) {
+    if (media.engine === "video" || corsAllows(media.probe.headers, embedderOrigin)) {
+      mediaResolution = makeResolution(rawUrl, finalUrl.toString(), media.provider, media.engine === "video" ? "file" : "stream", {
+        strategy: "direct",
+        src: media.probe.url,
+        engine: media.engine,
+      });
+    } else {
+      corsBlocked = { engine: media.engine, src: media.probe.url, provider: media.provider };
+    }
+  }
+  if (mediaResolution) return mediaResolution;
 
   // 4. The page's own player, framed with its own controls. Admin-entered
   // `/movie/{id}` and player/watch URLs are valid source candidates even when
@@ -373,13 +446,14 @@ function browserPlayerFallback(rawUrl: string, url: URL): WebPlaybackResult | nu
 }
 
 async function resolveUncached(rawUrl: string, embedderOrigin: string | undefined): Promise<WebPlaybackResult> {
+  const deadline = Date.now() + resolutionDeadlineMs();
   const original = validatePlaybackUrl(rawUrl);
   // Known providers never reach here (the caller only sends unidentified/direct links).
   const localDirect = directMediaAdapter.parse(original);
 
   let response: SafeResponse;
   try {
-    response = await safeGet(original, { maxBytes: PAGE_MAX_BYTES, timeoutMs: 10000 });
+    response = await safeGet(original, { maxBytes: PAGE_MAX_BYTES, timeoutMs: probeTimeout(deadline, 10000) });
   } catch (error) {
     if (localDirect) {
       // A plain media link the server could not reach: keep the browser attempt
@@ -415,7 +489,7 @@ async function resolveUncached(rawUrl: string, embedderOrigin: string | undefine
   }
 
   if (isHtml(contentType, response.body)) {
-    return resolvePage(response, rawUrl, embedderOrigin);
+    return resolvePage(response, rawUrl, embedderOrigin, deadline);
   }
 
   return { ok: false, status: 415, message: "That link is not a video, a stream or a web page Cinemax can play." };

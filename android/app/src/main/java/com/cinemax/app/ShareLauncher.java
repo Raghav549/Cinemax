@@ -13,7 +13,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * The native share sheet for a title.
@@ -24,12 +26,21 @@ import java.util.ArrayList;
  * shortcut: the chooser lists whatever is installed, and every entry receives a
  * real {@code ACTION_SEND} intent.
  *
- * Artwork and trailer are downloaded into the app cache first, because a share
- * must carry bytes another app can read — a network URL in EXTRA_STREAM is not a
- * share on Android. They are exposed through {@link ShareFileProvider} as
- * {@code content://} URIs with a read grant, which is the only form Android 7+
- * accepts. A download that fails never blocks the share: the text and link are
- * still sent, and the sheet still opens.
+ * The card image is attached as a real file, because a share must carry bytes
+ * another app can read — a network URL in EXTRA_STREAM is not a share on
+ * Android. It is exposed through {@link ShareFileProvider} as a
+ * {@code content://} URI with a read grant, which is the only form Android 7+
+ * accepts.
+ *
+ * The sheet is never made to wait for the network. A card that is already in the
+ * cache (from an earlier share of the same title) is attached instantly; a card
+ * that still has to be downloaded gets {@link #ATTACH_BUDGET_MS} and then the
+ * sheet opens with the text and the link, which the receiving app unfurls into
+ * the same CINEMAX card from the page's Open Graph metadata. The download keeps
+ * running in the background and is attached on the next share. Before this, the
+ * chooser waited for a multi-hundred-kilobyte image (and sometimes a trailer) to
+ * arrive, which on a phone network looked exactly like a share button that did
+ * nothing.
  */
 final class ShareLauncher {
 
@@ -42,6 +53,8 @@ final class ShareLauncher {
     private static final int MAX_VIDEO_BYTES = 24 * 1024 * 1024;
     /** Files from earlier shares are swept once they are older than this. */
     private static final long STALE_EXPORT_MILLIS = 60L * 60L * 1000L;
+    /** How long the chooser waits for a not-yet-cached attachment. */
+    private static final long ATTACH_BUDGET_MS = 1500L;
 
     private ShareLauncher() {
     }
@@ -68,12 +81,10 @@ final class ShareLauncher {
         Thread worker = new Thread(new Runnable() {
             @Override
             public void run() {
-                File image = fetchable(imageUrl)
-                        ? download(activity, imageUrl, "card", MAX_IMAGE_BYTES)
-                        : null;
-                File video = fetchable(videoUrl)
-                        ? download(activity, videoUrl, "trailer", MAX_VIDEO_BYTES)
-                        : null;
+                // Nothing here blocks the page: the bridge call has already
+                // returned, and the chooser is opened from this worker.
+                File image = downloadWithin(activity, imageUrl, "card", MAX_IMAGE_BYTES, ATTACH_BUDGET_MS);
+                File video = downloadWithin(activity, videoUrl, "trailer", MAX_VIDEO_BYTES, Math.max(400L, ATTACH_BUDGET_MS / 2));
                 final File imageFile = image;
                 final File videoFile = video;
                 activity.runOnUiThread(new Runnable() {
@@ -86,6 +97,69 @@ final class ShareLauncher {
         }, THREAD_NAME);
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * Returns the attachment, without ever letting a slow network hold the share
+     * sheet: an already-cached file is returned immediately, a fresh download is
+     * given `budgetMs` and then abandoned to the background (its bytes stay in
+     * the cache for the next share of the same title).
+     */
+    private static File downloadWithin(final Activity activity, final String address, final String prefix,
+                                       final int maxBytes, final long budgetMs) {
+        if (!fetchable(address)) {
+            return null;
+        }
+        File cached = cachedAttachment(activity, address);
+        if (cached != null) {
+            return cached;
+        }
+        final File[] slot = new File[1];
+        Thread fetcher = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                slot[0] = download(activity, address, prefix, maxBytes);
+            }
+        }, THREAD_NAME + "-fetch");
+        fetcher.setDaemon(true);
+        fetcher.start();
+        try {
+            fetcher.join(budgetMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        return slot[0];
+    }
+
+    /** A card from an earlier share of this exact URL, if it is still fresh. */
+    private static File cachedAttachment(Activity activity, String address) {
+        File[] files = ShareFileProvider.directory(activity).listFiles();
+        if (files == null) {
+            return null;
+        }
+        String prefix = keyFor(address) + ".";
+        long cutoff = System.currentTimeMillis() - STALE_EXPORT_MILLIS;
+        for (File file : files) {
+            if (file.getName().startsWith(prefix) && file.lastModified() >= cutoff) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    /** Stable, filesystem-safe name for one attachment URL. */
+    private static String keyFor(String address) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            byte[] bytes = digest.digest(address.getBytes("UTF-8"));
+            StringBuilder builder = new StringBuilder("asset-");
+            for (int i = 0; i < 8; i++) {
+                builder.append(String.format(Locale.US, "%02x", bytes[i]));
+            }
+            return builder.toString();
+        } catch (Exception unavailable) {
+            return "asset-" + Integer.toHexString(address.hashCode());
+        }
     }
 
     /** Builds the chooser. Runs on the UI thread; the files already exist. */
@@ -201,7 +275,9 @@ final class ShareLauncher {
         try {
             File directory = ShareFileProvider.directory(activity);
             sweep(directory);
-            target = File.createTempFile(prefix + "-", ".part", directory);
+            // Deterministic name: a second share of the same title finds the
+            // bytes already downloaded and opens the sheet instantly.
+            target = new File(directory, keyFor(address) + ".part");
 
             URL url = new URL(address);
             connection = (HttpURLConnection) url.openConnection();
