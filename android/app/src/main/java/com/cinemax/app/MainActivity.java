@@ -558,8 +558,16 @@ public class MainActivity extends Activity {
         // GPU memory in Android WebView apps. The default (no forced layer)
         // keeps Chromium's fast path, including its dedicated render surface.
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        web.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        // The document scrollbar in an Android WebView is a *native View*
+        // scrollbar drawn by the widget, not by CSS: no `::-webkit-scrollbar`
+        // rule can remove it. It is the thin light bar that appeared along the
+        // right edge on every screen (home, search, watchlist, More, category
+        // lists) whenever the page moved. Disabling both axes on the WebView is
+        // the platform-level fix; scrolling itself is unaffected.
+        web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
+        web.setScrollbarFadingEnabled(true);
+        web.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
         web.setWebViewClient(new CinemaxWebViewClient(this));
         chromeClient = new CinemaxChromeClient(this);
         web.setWebChromeClient(chromeClient);
