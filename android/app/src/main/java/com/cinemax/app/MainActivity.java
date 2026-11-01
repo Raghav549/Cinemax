@@ -309,6 +309,13 @@ public class MainActivity extends Activity {
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             Uri data = intent.getData();
             String scheme = data.getScheme();
+            // Website-only documents (licensing, copyright, attributions,
+            // disclaimer, privacy) are not part of the app: a deep link to one
+            // opens the home surface instead of a document this app does not
+            // ship.
+            if (NavigationPolicy.isWebsiteOnlyPath(data.getPath())) {
+                return HOME_URL;
+            }
             if (NavigationPolicy.isProductionUrl(scheme, data.getHost())) {
                 return data.toString();
             }
@@ -785,6 +792,39 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
             Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * The visitor reached a document that only exists on the website.
+     *
+     * The app never renders it and never hands it to a browser: the navigation
+     * is simply cancelled and the visitor stays where they were. If the current
+     * page is itself one of those documents (a restored WebView, an odd
+     * redirect), the home surface is loaded instead so no blank screen remains.
+     */
+    public void onWebsiteOnlyRouteBlocked() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, R.string.website_only_page, Toast.LENGTH_SHORT).show();
+                String current = web == null ? null : web.getUrl();
+                if (current == null || NavigationPolicy.isWebsiteOnlyPath(Uri.parse(current).getPath())) {
+                    loadUrl(HOME_URL);
+                }
+            }
+        });
+    }
+
+    /**
+     * Native share sheet for a title, called by the page through the bridge.
+     *
+     * Everything about *what* is shared is decided by the website
+     * (src/lib/share.ts); this method only turns that into an Android
+     * ACTION_SEND intent and lets the system list every installed app that can
+     * receive it. Downloads happen off the UI thread in ShareLauncher.
+     */
+    public void shareTitle(String title, String text, String url, String imageUrl, String videoUrl) {
+        ShareLauncher.share(this, title, text, url, imageUrl, videoUrl);
     }
 
     public void showToast(final String message) {

@@ -74,6 +74,54 @@ public final class NavigationPolicy {
         return PRODUCTION_HOST.equals(normalizedHost) || normalizedHost.endsWith(VERCEL_SUFFIX);
     }
 
+    /**
+     * Website-only documents: licensing, copyright, attributions, disclaimer and
+     * privacy. They are part of the website (discovery, legal record) and are
+     * deliberately not part of this app, so the app neither renders them nor
+     * hands them to a browser: a request for one is cancelled and the visitor
+     * stays on the page they were reading.
+     */
+    private static final String[] WEBSITE_ONLY_ROOTS = {
+            "/license",
+            "/copyright",
+            "/attributions",
+            "/disclaimer",
+            "/privacy",
+    };
+
+    /**
+     * True when the path belongs to a website-only document.
+     *
+     * Matched per path segment, so "/license" and "/license/" are the document
+     * itself while "/licenses-of-movies" or "/share/license" are not.
+     */
+    public static boolean isWebsiteOnlyPath(String path) {
+        if (path == null || path.isEmpty()) {
+            return false;
+        }
+        String candidate = path.trim().toLowerCase();
+        int query = candidate.indexOf('?');
+        if (query >= 0) {
+            candidate = candidate.substring(0, query);
+        }
+        int fragment = candidate.indexOf('#');
+        if (fragment >= 0) {
+            candidate = candidate.substring(0, fragment);
+        }
+        if (!candidate.startsWith("/")) {
+            candidate = "/" + candidate;
+        }
+        while (candidate.length() > 1 && candidate.endsWith("/")) {
+            candidate = candidate.substring(0, candidate.length() - 1);
+        }
+        for (String root : WEBSITE_ONLY_ROOTS) {
+            if (candidate.equals(root)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** True for one of the canonical production entry points. */
     public static boolean isProductionUrl(String scheme, String host) {
         return ("https".equals(normalize(scheme)) || "http".equals(normalize(scheme)))

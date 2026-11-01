@@ -39,6 +39,13 @@ public class CinemaxWebViewClient extends WebViewClient {
             activity.openExternal(uri.toString());
             return true;
         }
+        if (NavigationPolicy.isWebsiteOnlyPath(uri.getPath())) {
+            // Licensing, copyright, attributions, disclaimer and privacy are
+            // website documents. They are cancelled here rather than rendered,
+            // and no external browser is opened on the visitor's behalf.
+            activity.onWebsiteOnlyRouteBlocked();
+            return true;
+        }
         return false;
     }
 
