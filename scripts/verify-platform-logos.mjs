@@ -60,7 +60,14 @@ const PINS = {
   "tubi.svg": { geometry: "5da1c9bc6d4b", palette: "7b4bf354734e" },
   "youtube.svg": { geometry: "e9193ec1877d", palette: "70b355a602fa" },
   "zee5.svg": { geometry: "c5e01ba00d31", palette: "318576946133" },
-  "cinemax.webp": { bytes: "5a605b48623d1e2a" },
+  // Re-pinned 2026-11-01. The repository upload of that date replaced the
+  // network's artwork with the application emblem (a 1080x1080 square); the
+  // asset was restored from its documented upstream file
+  // (tv-logo/tv-logos@main:countries/united-states/cinemax-us.png, blob
+  // 16cdc813a8ee6af5bc8ab5ad36bb76cb212f3bcf) and re-encoded with the same
+  // pipeline described in PROVENANCE, so the bytes necessarily differ from the
+  // previous WebP even though the artwork is the same.
+  "cinemax.webp": { bytes: "1cbf06f3c5b03855" },
 };
 
 /**
@@ -86,7 +93,7 @@ const PROVENANCE = {
   "discovery-plus.webp": "tv-logo/tv-logos@main:misc/media/discovery-plus.png (trimmed, WebP q92)",
   "youtube.svg": "selfhst/icons@main:svg/youtube.svg",
   "aha.webp": "tv-logo/tv-logos@main:misc/media/aha.png (trimmed, WebP q92)",
-  "cinemax.webp": "tv-logo/tv-logos@main:countries/united-states/cinemax-us.png (resized 524px wide, WebP q92)",
+  "cinemax.webp": "tv-logo/tv-logos@main:countries/united-states/cinemax-us.png (trimmed, resized 524px wide, WebP q92)",
 };
 
 const sha1 = (value) => createHash("sha1").update(value).digest("hex").slice(0, 12);

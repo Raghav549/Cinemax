@@ -294,11 +294,21 @@ def main() -> int:
         b"Lcom/cinemax/app/AppTheme;",
         b"Lcom/cinemax/app/CinemaxSplashView;",
         b"Lcom/cinemax/app/SplashMotion;",
+        b"Lcom/cinemax/app/ShareLauncher;",
+        b"Lcom/cinemax/app/ShareFileProvider;",
     ):
         check(descriptor in dex, f"{descriptor.decode()} is in classes.dex")
     check(b"cinemax-orpin.vercel.app" in dex, "the production URL is compiled into the APK")
     check(b"CinemaxNative" in dex, "the JavaScript bridge name is present")
     check(b"__cinemaxInsets" in dex, "the inset hand-off to the page is present")
+
+    # Sharing: the intents are the platform's own (no app list baked in), and the
+    # files the sheet receives come from the declared provider, not a file:// URI.
+    check(b"android.intent.action.SEND" in dex and b"android.intent.action.SEND_MULTIPLE" in dex,
+          "the share intents are ACTION_SEND / ACTION_SEND_MULTIPLE")
+    check(b"android.intent.extra.STREAM" in dex, "shares attach real streams (EXTRA_STREAM)")
+    check(b"cinemax.app.share.files" in dex, "the share files are served by the content provider")
+    check(b"file://" not in dex, "no file:// URI is built for a share (Android 7 forbids it)")
 
     section("dex integrity (what ART parses at install time)")
     header = dex_header(dex)

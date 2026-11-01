@@ -42,5 +42,17 @@
                 <data android:scheme="https" android:host="cinemax-orpin.vercel.app" />
             </intent-filter>
         </activity>
+
+        <!--
+            Exposes the image/trailer attached to a share as a content:// URI.
+            Android 7+ refuses file:// URIs between apps, and the share sheet
+            needs bytes another app can read. Not exported: only an app that has
+            been granted a read permission by the chooser can read a file.
+        -->
+        <provider
+            android:name="com.cinemax.app.ShareFileProvider"
+            android:authorities="com.cinemax.app.share.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

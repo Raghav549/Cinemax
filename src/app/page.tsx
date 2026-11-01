@@ -149,6 +149,15 @@ export default function HomePage() {
             <Link href="/gate-keeper">Studio</Link>
           </div>
           <span>© {new Date().getFullYear()} Cinemax</span>
+          {/* Website-only documents. The Android shell hides this row, so the
+              legal section is not surfaced inside the application. */}
+          <nav className="site-footer-legal" aria-label="Legal and attribution">
+            <Link href="/license">License</Link>
+            <Link href="/copyright">Copyright</Link>
+            <Link href="/attributions">Attributions</Link>
+            <Link href="/disclaimer">Disclaimer</Link>
+            <Link href="/privacy">Privacy</Link>
+          </nav>
         </footer>
       </div>
     </main>

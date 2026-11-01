@@ -471,3 +471,15 @@ html[data-cinemax-app="android"] .hero-preview-track {
     transform: none;
   }
 }
+
+/* 5. Website-only documents.
+   The licensing / copyright / attribution / disclaimer / privacy pages are part
+   of the website and are not shipped in this app. Their footer navigation is
+   removed here as well as being cancelled at the navigation layer, so a link to
+   one can never be presented in the app at all. Nothing else in the footer
+   changes. */
+html[data-cinemax-app="android"] .site-footer-legal,
+html[data-cinemax-app="android"] .legal-page,
+html[data-cinemax-app="android"] .legal-inline-nav {
+  display: none !important;
+}

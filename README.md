@@ -126,6 +126,11 @@ The Cinemax `/api/stream/{movieId}` Node route is the public playback endpoint a
 | `npm run test:ui:report` | Open the latest browser-check report                          |
 | `npm run db:push`   | Push Drizzle schema to database                                    |
 | `npm run verify:api`| End-to-end check of every admin/public API route (see below)        |
+| `npm run verify:logos` | Brand-artwork integrity (19 platforms, pinned originals)        |
+| `npm run verify:platforms` | Platform registry, save/read path and tokens              |
+| `npm run verify:share` | Sharing rules: payload, trailer classification, native bridge, Web Share and clipboard fallbacks |
+| `npm run verify:legal` | The five legal documents' rendered HTML (run after `npm run build`) |
+| `npm run licenses`  | Dependency licence report (`-- --json` or `-- --csv`)              |
 
 ### Verifying a deployment
 
@@ -144,6 +149,55 @@ BASE_URL=https://your-app.vercel.app ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run 
 ```
 
 It prints one line per check and exits non-zero if anything fails.
+
+## Legal documents (website only)
+
+Five long-form documents live on the website:
+
+| Route | Document |
+| ----- | -------- |
+| `/license` | Licensing & attribution — all nineteen platform marks, their owners, software, fonts, artwork and the "no affiliation" disclaimer |
+| `/copyright` | Copyright & intellectual property |
+| `/attributions` | Third-party attributions — dependency licences and what each is used for |
+| `/disclaimer` | Content & trademark disclaimer |
+| `/privacy` | Privacy and content usage — the real storage keys, cookies, third-party hosts and Android permissions |
+
+They share one chrome (`src/components/LegalDocument.tsx`), one content source
+(`src/lib/legal.ts`) and one stylesheet block in `src/app/globals.css`. They are
+reached from the footer of the home page and from each other.
+
+**They are website-only.** The Android app cancels those five paths
+(`NavigationPolicy.isWebsiteOnlyPath`), removes the footer row
+(`app-theme.css`) and sends a deep link to one of them to the home surface, so
+the legal section cannot appear inside the app.
+
+```bash
+npm run build && npm run verify:legal   # checks the rendered HTML of all five
+npm run licenses                        # dependency licence report
+```
+
+## Sharing a title
+
+The Share button on a title screen, and the share control on `/share/<id>`, run
+one code path (`src/lib/share.ts`):
+
+* inside the Android app it calls the native bridge, which downloads the
+  generated card (and the trailer, when the record points at a real video file)
+  into the app cache and opens Android's own `Intent.createChooser` sheet — every
+  installed app that accepts a share is listed, nothing is hardcoded;
+* in a browser it uses the Web Share API, attaching the generated card as a file
+  (plus the video where one exists), and copies the link when sharing is not
+  available;
+* the link opens `/share/<id>`, which shows the title's own poster, backdrop,
+  name, type, year, genre and synopsis, a playable trailer when the record has a
+  video file, and an explicit link to the trailer's host otherwise. A still image
+  is never presented as playing video;
+* `/api/share/card/<id>` renders the 1200×630 preview card used as
+  `og:image`/`twitter:image` and as the shared image.
+
+`npm run verify:share` exercises those rules (payload, trailer classification,
+bridge precedence, Web Share, cancellation and clipboard fallback) without a
+browser or a device.
 
 ## Android app
 

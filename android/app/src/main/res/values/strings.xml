@@ -7,6 +7,9 @@
     <string name="error_open_browser">Open in browser</string>
     <string name="backexit_hint">Press back again to exit</string>
     <string name="no_app_for_link">No app can open that link</string>
+    <string name="share_chooser_title">Share this title</string>
+    <string name="share_unavailable">No app can receive this share</string>
+    <string name="website_only_page">That page is on the Cinemax website only</string>
     <string name="error_reload_body">Cinemax had to restart the page. Tap Try again.</string>
     <string name="error_reload_hint">Page reloaded</string>
     <!--

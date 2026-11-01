@@ -8,7 +8,16 @@ import AppChrome from "@/components/AppChrome";
 const manrope = localFont({ src: "./fonts/manrope.woff2", display: "swap", variable: "--font-manrope", weight: "200 800" });
 const outfit = localFont({ src: "./fonts/outfit.woff2", display: "swap", variable: "--font-outfit", weight: "100 900" });
 
+/**
+ * Canonical origin for every relative metadata URL (Open Graph images, share
+ * links, canonicals). The deployment host is the default; `NEXT_PUBLIC_SITE_URL`
+ * overrides it, so a preview deployment still declares the production URL that
+ * people actually share.
+ */
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://cinemax-orpin.vercel.app").replace(/\/$/, "");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: { default: "Cinemax — Movies & Series", template: "%s · Cinemax" },
   description: "Discover movies, series and anime. Save your favourites and pick up where you left off on Cinemax.",
   manifest: "/manifest.json",

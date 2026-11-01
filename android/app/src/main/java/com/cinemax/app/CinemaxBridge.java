@@ -83,6 +83,19 @@ public class CinemaxBridge {
         });
     }
 
+    /**
+     * Opens the native Android share sheet for a title.
+     *
+     * The page passes the title, a line of text, the link, the generated preview
+     * image and (only when the record points at a real video file) the trailer.
+     * Android chooses the receiving apps through ACTION_SEND / createChooser, so
+     * the list is whatever is installed — never a list baked into the app.
+     */
+    @JavascriptInterface
+    public void share(final String title, final String text, final String url, final String imageUrl, final String videoUrl) {
+        activity.shareTitle(title, text, url, imageUrl, videoUrl);
+    }
+
     @JavascriptInterface
     public void toast(final String message) {
         activity.showToast(message);

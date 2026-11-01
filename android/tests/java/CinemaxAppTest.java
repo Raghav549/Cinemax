@@ -48,6 +48,8 @@ public final class CinemaxAppTest {
         injectionChecks(outputDirectory);
         splashChecks();
         scrollPerformanceChecks();
+        sharingChecks();
+        websiteOnlyDocumentChecks();
 
         System.out.println();
         System.out.println("checks: " + checks + ", failures: " + failures);
@@ -695,6 +697,104 @@ public final class CinemaxAppTest {
                 "no blocking scroll listener was introduced");
     }
 
+    // ------------------------------------------------------------ sharing
+
+    private static void sharingChecks() throws Exception {
+        section("native sharing");
+
+        String bridge = source("app/src/main/java/com/cinemax/app/CinemaxBridge.java");
+        String launcher = source("app/src/main/java/com/cinemax/app/ShareLauncher.java");
+        String provider = source("app/src/main/java/com/cinemax/app/ShareFileProvider.java");
+        String activity = source("app/src/main/java/com/cinemax/app/MainActivity.java");
+        String manifest = read(new File(projectDirectory, "app/src/main/AndroidManifest.xml"));
+
+        check(bridge.contains("public void share(") && bridge.contains("@JavascriptInterface"),
+                "the page can ask the app to share through the bridge");
+        check(activity.contains("ShareLauncher.share("),
+                "the bridge hands the request to the native share launcher");
+        check(launcher.contains("Intent.createChooser"),
+                "the share sheet is Android's own chooser (createChooser)");
+        check(launcher.contains("Intent.ACTION_SEND_MULTIPLE") && launcher.contains("Intent.ACTION_SEND"),
+                "one attachment and several attachments are both sent as ACTION_SEND intents");
+        check(launcher.contains("Intent.EXTRA_STREAM") && launcher.contains("Intent.EXTRA_TEXT"),
+                "the receiving app gets both the file and the text");
+        check(launcher.contains("FLAG_GRANT_READ_URI_PERMISSION") && launcher.contains("setClipData"),
+                "read permission for the shared file travels with the intent");
+        check(!launcher.contains("queryIntentActivities") && !launcher.contains("getPackageName()"),
+                "no hardcoded or hand-built list of share targets");
+        check(launcher.contains("new Thread(") && launcher.contains("runOnUiThread"),
+                "downloads happen off the UI thread and the chooser opens on it");
+        check(launcher.contains("MAX_VIDEO_BYTES") && launcher.contains("return null;"),
+                "an oversized or failed download degrades to a text share instead of blocking it");
+
+        check(provider.contains("extends ContentProvider"),
+                "attachments are exposed through a content provider");
+        check(provider.contains("getCanonicalFile") && provider.contains("getParentFile().equals(dir)"),
+                "the provider refuses any path outside the share cache");
+        check(provider.contains("MODE_READ_ONLY"), "shared files are read-only");
+
+        check(manifest.contains("com.cinemax.app.ShareFileProvider"),
+                "the provider is declared in the manifest");
+        check(manifest.contains("android:grantUriPermissions=\"true\""),
+                "URI permission grants are allowed for the provider");
+        check(!manifest.contains("READ_EXTERNAL_STORAGE") && !manifest.contains("WRITE_EXTERNAL_STORAGE"),
+                "sharing adds no storage permission");
+    }
+
+    // ------------------------------------------- website-only documents
+
+    private static void websiteOnlyDocumentChecks() throws Exception {
+        section("website-only legal documents");
+
+        check(NavigationPolicy.isWebsiteOnlyPath("/license"), "/license is a website-only document");
+        check(NavigationPolicy.isWebsiteOnlyPath("/copyright"), "/copyright is a website-only document");
+        check(NavigationPolicy.isWebsiteOnlyPath("/attributions"), "/attributions is a website-only document");
+        check(NavigationPolicy.isWebsiteOnlyPath("/disclaimer"), "/disclaimer is a website-only document");
+        check(NavigationPolicy.isWebsiteOnlyPath("/privacy"), "/privacy is a website-only document");
+        check(NavigationPolicy.isWebsiteOnlyPath("/LICENSE/"), "matching ignores case and a trailing slash");
+        check(NavigationPolicy.isWebsiteOnlyPath("/privacy?from=footer"), "a query string does not defeat the check");
+        check(!NavigationPolicy.isWebsiteOnlyPath("/licensing"), "a path that merely starts the same way is not blocked");
+        check(!NavigationPolicy.isWebsiteOnlyPath("/share/license"), "only the document root is website-only");
+        check(!NavigationPolicy.isWebsiteOnlyPath("/movie/12"), "title pages are untouched");
+        check(!NavigationPolicy.isWebsiteOnlyPath("/"), "the home surface is untouched");
+        check(!NavigationPolicy.isWebsiteOnlyPath(null), "a missing path is not a website-only document");
+
+        String client = source("app/src/main/java/com/cinemax/app/CinemaxWebViewClient.java");
+        String activity = source("app/src/main/java/com/cinemax/app/MainActivity.java");
+        String theme = read(asset("app-theme.css"));
+
+        check(client.contains("isWebsiteOnlyPath"), "in-app navigation cancels those documents");
+        check(client.contains("onWebsiteOnlyRouteBlocked"), "the visitor is told the page lives on the website");
+        check(activity.contains("isWebsiteOnlyPath(data.getPath())"),
+                "a deep link to one of those documents opens the home surface");
+        check(theme.contains(".site-footer-legal"), "the footer's legal navigation is removed inside the app");
+        check(theme.contains("[data-cinemax-app=\"android\"] .legal-page"),
+                "a legal document cannot be shown inside the app even if reached");
+
+        // The app's own code and assets must not link to those routes at all.
+        // NavigationPolicy is excluded on purpose: naming the paths it cancels is
+        // its entire job.
+        String[] ownSources = {
+                "app/src/main/java/com/cinemax/app/MainActivity.java",
+                "app/src/main/java/com/cinemax/app/CinemaxBridge.java",
+                "app/src/main/java/com/cinemax/app/CinemaxWebViewClient.java",
+                "app/src/main/java/com/cinemax/app/ShareLauncher.java",
+                "app/src/main/java/com/cinemax/app/ShareFileProvider.java",
+                "app/src/main/java/com/cinemax/app/CinemaxChromeClient.java",
+                "app/src/main/assets/cinemax/app-shell.js",
+        };
+        boolean linksToLegal = false;
+        for (String relative : ownSources) {
+            String code = source(relative);
+            for (String route : new String[]{"/license", "/copyright", "/attributions", "/disclaimer", "/privacy"}) {
+                if (code.contains("\"" + route + "\"") || code.contains("'" + route + "'")) {
+                    linksToLegal = true;
+                }
+            }
+        }
+        check(!linksToLegal, "no app source or shell asset links to a website-only document");
+    }
+
     // ---------------------------------------------------------------- utils
 
     private static void section(String name) {
@@ -719,6 +819,11 @@ public final class CinemaxAppTest {
 
     private static File asset(String name) {
         return new File(new File(projectDirectory, "app/src/main/assets/cinemax"), name);
+    }
+
+    /** Source of one app file with comments stripped, so prose never passes a check. */
+    private static String source(String relativePath) throws Exception {
+        return withoutComments(read(new File(projectDirectory, relativePath)));
     }
 
     /** Value of `name="..."` in a resource file, or "" when it is not there. */

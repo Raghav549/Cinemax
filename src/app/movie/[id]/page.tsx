@@ -17,6 +17,7 @@ import { hasNativeShell } from "@/lib/open-external";
 import { catalogueTokens, platformsForMovie } from "@/lib/platforms";
 import PlatformLogo from "@/components/PlatformLogo";
 import { isPortraitMobileViewport, requestBrowserImmersive } from "@/lib/playback/immersive";
+import { shareTitle, type ShareOutcome } from "@/lib/share";
 
 function subscribeResumeChanges(callback: () => void) {
   window.addEventListener("storage", callback);
@@ -78,6 +79,7 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   const [trailerMuted, setTrailerMuted] = useState(true);
   const [notice, setNotice] = useState<{ id: string; text: string }>({ id: "", text: "" });
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handledAutoplay = useRef<string | null>(null);
 
@@ -200,19 +202,37 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   const relatedLoading =
     !!movie && catalogueTokens(movie.category).length > 0 && relatedRead.id !== id && related.length === 0;
 
+  /**
+   * Sharing from the title screen.
+   *
+   * The button and its placement are unchanged; what it sends is now the whole
+   * title rather than a bare link: name, type, year, genre, the generated card
+   * image, and the trailer when the record points at a real video file. Inside
+   * the Android app the same call goes to the native share sheet through the
+   * bridge; in a browser it uses the Web Share API and falls back to copying the
+   * link. See src/lib/share.ts for the rules and the fallbacks.
+   */
   const shareMovie = async () => {
-    if (!movie) return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("play");
+    if (!movie || sharing) return;
+    setSharing(true);
+    let outcome: ShareOutcome = "failed";
     try {
-      if (navigator.share) await navigator.share({ title: movie.title, text: `${movie.title} on Cinemax`, url: url.toString() });
-      else {
-        await navigator.clipboard.writeText(url.toString());
-        notify("Link copied");
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name !== "AbortError") notify("This browser couldn’t share the link.");
+      outcome = await shareTitle({
+        id: movie.id,
+        title: movie.title,
+        year: movie.year,
+        genre: movie.genre,
+        type: movie.type,
+        description: movie.description,
+        posterUrl: movie.posterUrl,
+        trailerUrl: movie.trailerUrl,
+      });
+    } finally {
+      setSharing(false);
     }
+    if (outcome === "copied") notify("Link copied");
+    else if (outcome === "unavailable") notify("This browser couldn’t share the link.");
+    else if (outcome === "failed") notify("Sharing didn’t open. Please try again.");
   };
 
   if (loading) return <LoadingState />;
@@ -371,7 +391,13 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
                 <Icon name={trailerMuted ? "volume-x" : "volume-2"} />
               </button>
             )}
-            <button className="icon-button detail-share" type="button" aria-label="Share this title" onClick={() => void shareMovie()}>
+            <button
+              className="icon-button detail-share"
+              type="button"
+              aria-label="Share this title"
+              onClick={() => void shareMovie()}
+              disabled={sharing}
+            >
               <Icon name="share" />
             </button>
           </div>
