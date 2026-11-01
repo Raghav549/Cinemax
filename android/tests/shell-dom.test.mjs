@@ -219,13 +219,15 @@ check(themeText.includes("cinemax-app=\"android\""), "theme CSS is loaded from t
 check(themeText.length > 2000, "theme CSS is the full app stylesheet");
 check(themeText.includes("--cinemax-inset-top"), "theme reads the native inset variables");
 check(/background:\s*transparent/.test(themeText), "body background defers to the deep app canvas");
-check(themeText.includes("radial-gradient"), "cinematic gradient details remain available");
-check(themeText.includes("#4fd8ff") || themeText.includes("#4FD8FF"), "brand gradient colours are present");
+check(themeText.includes("--bg: #020202"), "the app canvas is the website's deep black, not a private charcoal");
+check(!themeText.includes("#050507"), "no charcoal surface survives in the app layer");
+check(themeText.includes("radial-gradient"), "depth details remain available");
 check(themeText.includes(".bottom-nav"), "bottom navigation restyled");
-check(themeText.includes(".movie-poster"), "movie cards restyled");
+check(themeText.includes(".platform-orbit-disc"), "platform containers are guaranteed circular in the app");
+check(themeText.includes("aspect-ratio: 1 / 1"), "platform discs are 1:1 in the app");
 check(themeText.includes(".hero-"), "hero restyled");
-check(themeText.includes(".player-progress-fill"), "player progress restyled");
-check(themeText.includes(".studio-login"), "studio login restyled with the same palette");
+check(/html\[data-cinemax-app="android"\] \.hero-card \{[^}]*background:\s*transparent/.test(themeText), "the hero section paints nothing in the app");
+check(themeText.includes("data-previous"), "the app layer knows about the outgoing hero scene");
 check(themeText.includes("safe-top") && themeText.includes("safe-bottom"), "safe-area handling is themed");
 
 console.log("\n== runtime behaviour");
@@ -430,8 +432,8 @@ check(
 );
 const sceneTransition = winningValue(sheets, heroScene, "transition");
 check(
-  sceneTransition && /opacity .65s ease/.test(sceneTransition.value),
-  `the hero keeps its own cross-fade, untouched by the scroll layer (${sceneTransition && sceneTransition.value})`
+  sceneTransition && /opacity 0?\.68s/.test(sceneTransition.value) && /transform/.test(sceneTransition.value),
+  `the hero keeps its own cross-fade and drift, untouched by the scroll layer (${sceneTransition && sceneTransition.value})`
 );
 check(
   !/data-cinemax-scrolling[^{]*\.hero-scene/.test(themeText),

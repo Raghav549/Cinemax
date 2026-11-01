@@ -75,23 +75,27 @@ public final class CinemaxSplashView extends View {
     public static final int MODE_HOLD = 1;
 
     /** Deep near-black canvas; the lights are drawn on top of it. */
-    private static final int INK = 0xFF050507;
+    private static final int INK = 0xFF020202;
 
-    /** The three restrained brand lights of the background wash. */
-    private static final int WASH_BLUE = 0x335E96FF;
-    private static final int WASH_BLUE_OUT = 0x005E96FF;
-    private static final int WASH_VIOLET = 0x147C4DFF;
-    private static final int WASH_VIOLET_OUT = 0x007C4DFF;
+    /**
+     * The wash is the product's own specular light now: two soft white pools and
+     * one pink pool, the same three lights the web splash uses. Nothing here is
+     * blue or violet any more.
+     */
+    private static final int WASH_BLUE = 0x29FFFFFF;
+    private static final int WASH_BLUE_OUT = 0x00FFFFFF;
+    private static final int WASH_VIOLET = 0x12FFFFFF;
+    private static final int WASH_VIOLET_OUT = 0x00FFFFFF;
     private static final int WASH_PINK = 0x17EF76CB;
     private static final int WASH_PINK_OUT = 0x00EF76CB;
     /** A very soft vertical base so the colour field never meets bare ink. */
-    private static final int BASE_TOP = 0x24122A6B;
-    private static final int BASE_MID = 0x0F16123A;
-    private static final int BASE_BOTTOM = 0x1C3A1140;
+    private static final int BASE_TOP = 0x240A0A0A;
+    private static final int BASE_MID = 0x0F070707;
+    private static final int BASE_BOTTOM = 0x1C050505;
 
-    /** Glow: a cool core easing through brand blue and violet into pink. */
+    /** Glow: a white-hot core easing through silver into the one pink accent. */
     private static final int[] GLOW_COLOURS = {
-            0x6BD8F0FF, 0x475E96FF, 0x2E7C4DFF, 0x17EF76CB, 0x08EF76CB, 0x00050507,
+            0x6BFFFFFF, 0x47EDEDED, 0x2ED8D8D8, 0x17EF76CB, 0x08EF76CB, 0x00020202,
     };
     private static final float[] GLOW_STOPS = {0f, 0.22f, 0.48f, 0.70f, 0.88f, 1f};
 
@@ -99,9 +103,9 @@ public final class CinemaxSplashView extends View {
     private static final int[] DEPTH_COLOURS = {0xB8000000, 0x52000000, 0x00000000};
     private static final float[] DEPTH_STOPS = {0f, 0.45f, 1f};
 
-    /** The sweep: pink trailing edge, white-hot core, blue leading edge. */
+    /** The sweep: pink trailing edge, white-hot core, silver leading edge. */
     private static final int[] SWEEP_COLOURS = {
-            0x00FF7AC8, 0x99FF7AC8, 0xE6FFFFFF, 0xB35EA8FF, 0x005EA8FF,
+            0x00EF76CB, 0x99EF76CB, 0xE6FFFFFF, 0xB3E4E4E4, 0x00E4E4E4,
     };
     private static final float[] SWEEP_STOPS = {0f, 0.26f, 0.52f, 0.78f, 1f};
     private static final float SWEEP_ANGLE_DEGREES = -20f;

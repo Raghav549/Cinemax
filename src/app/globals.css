@@ -270,24 +270,52 @@ html[data-cinemax-intro="seen"] .splash-screen { display: none; }
 .related-skeleton-bar-b { width: min(30%, 160px); height: 10px; border-radius: 5px; }
 
 /* Artwork-first full-bleed feature. */
-.hero-card { position: relative; isolation: isolate; height: clamp(550px, 46vw, 740px); margin-top: calc(-88px - var(--safe-top)); overflow: hidden; background: var(--bg); border: 0; outline: 0; box-shadow: none; touch-action: pan-y pinch-zoom; }
+/* The hero is not a card: the section paints nothing at all, so the poster sits
+   directly on the page background. `background: transparent` is deliberate —
+   repainting the section in another near-black is exactly the "transparency
+   illusion" this must not be. */
+.hero-card { position: relative; isolation: isolate; height: clamp(550px, 46vw, 740px); margin-top: calc(-88px - var(--safe-top)); overflow: hidden; background: transparent; border: 0; outline: 0; box-shadow: none; touch-action: pan-y pinch-zoom; }
 .hero-card:focus-visible { outline-offset: -5px; }
 .hero-scene, .hero-image-fallback { position: absolute; z-index: -3; inset: 0; }
-/* One slow cross-fade, driven by the compositor: the outgoing still fades as
-   the incoming one arrives, so a slide change is a dissolve rather than a
-   swap. No transform and no second keyframe animation, so nothing here can
-   stutter the page while it is being scrolled. */
-.hero-scene { opacity: 0; transition: opacity 1.15s cubic-bezier(.33, 0, .2, 1); }
-.hero-scene[data-active="true"] { opacity: 1; }
+/* Cross-fade *plus* a short horizontal drift, both on the compositor. The
+   incoming poster travels in from the right while it fades up and the outgoing
+   one leaves to the left, so a slide change never reads as a hard swap. The
+   transform only ever runs on the two (three incl. the prefetched next) full
+   bleed layers, so no layout, paint or style work happens per frame. */
+.hero-scene {
+  opacity: 0;
+  transform: translate3d(2.6%, 0, 0);
+  transition: opacity .68s cubic-bezier(.33, 0, .2, 1), transform 1.05s cubic-bezier(.22, .61, .24, 1);
+  /* Real transparency: the artwork's own alpha ramps out at the top and bottom
+     edges (a mask, not a second dark rectangle painted over it), so the page
+     background — including the faint light above the fold — shows through and
+     the poster dissolves into the page with no seam. */
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, #000 8%, #000 58%, rgba(0, 0, 0, .62) 82%, rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, #000 8%, #000 58%, rgba(0, 0, 0, .62) 82%, rgba(0, 0, 0, 0) 100%);
+}
+.hero-scene[data-previous="true"] { transform: translate3d(-2.6%, 0, 0); }
+.hero-scene[data-active="true"] { opacity: 1; transform: translate3d(0, 0, 0); }
 .hero-image, .hero-scene .artwork-placeholder { display: block; width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; object-fit: cover; object-position: center 35%; }
-.hero-empty > .hero-image { position: absolute; z-index: -3; inset: 0; }
-.hero-image-fallback { background: var(--bg); }
-.hero-loading-atmosphere { background: radial-gradient(ellipse at 78% 26%, rgba(255, 255, 255, .05), transparent 46%), radial-gradient(ellipse at 68% 62%, rgba(255, 255, 255, .018), transparent 56%), linear-gradient(135deg, #020202, #050505 62%, #070707); }
+.hero-empty > .hero-image { position: absolute; z-index: -3; inset: 0; -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, #000 8%, #000 58%, rgba(0, 0, 0, .62) 82%, rgba(0, 0, 0, 0) 100%); mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, #000 8%, #000 58%, rgba(0, 0, 0, .62) 82%, rgba(0, 0, 0, 0) 100%); }
+.hero-image-fallback { background: transparent; }
+.hero-loading-atmosphere { background: radial-gradient(ellipse at 78% 26%, rgba(255, 255, 255, .055), transparent 46%), radial-gradient(ellipse at 68% 62%, rgba(255, 255, 255, .02), transparent 56%); }
 /* The poster is not framed: it dissolves into the page on all four sides, so
    there is no visible boundary around the hero artwork. */
-.hero-vignette { position: absolute; z-index: -1; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(2, 2, 2, .96) 0%, rgba(2, 2, 2, .7) 24%, rgba(2, 2, 2, .12) 62%, rgba(2, 2, 2, 0) 100%), linear-gradient(0deg, var(--bg) 0%, rgba(2, 2, 2, .88) 12%, rgba(2, 2, 2, .22) 38%, rgba(2, 2, 2, 0) 58%, rgba(2, 2, 2, 0) 82%, rgba(2, 2, 2, .55) 100%), radial-gradient(130% 100% at 70% 0%, transparent 38%, rgba(2, 2, 2, .55) 100%); }
+/* Scrim only. Every stop is pure alpha that returns to zero at the edges, so
+   this darkens the poster behind the copy for readability without painting a
+   solid band (or a copy of the page colour) anywhere in the hero. */
+.hero-vignette {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .52) 26%, rgba(0, 0, 0, .12) 62%, rgba(0, 0, 0, 0) 84%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, .46) 20%, rgba(0, 0, 0, .2) 40%, rgba(0, 0, 0, 0) 60%),
+    radial-gradient(130% 100% at 72% 0%, transparent 42%, rgba(0, 0, 0, .42) 100%);
+}
 
-.hero-copy { position: absolute; left: max(var(--gutter), calc((100vw - var(--content-width)) / 2)); bottom: 142px; width: min(650px, 57%); animation: hero-copy-in .9s cubic-bezier(.33, 0, .2, 1) both; }
+.hero-copy { position: absolute; left: max(var(--gutter), calc((100vw - var(--content-width)) / 2)); bottom: 142px; width: min(650px, 57%); animation: hero-copy-in .58s cubic-bezier(.33, 0, .2, 1) both; }
 .hero-title { max-width: 680px; color: #f9f9f9; font-family: var(--font-outfit), sans-serif; font-size: clamp(53px, 6.25vw, 94px); font-weight: 630; line-height: 1.015; letter-spacing: -.045em; text-wrap: balance; text-transform: uppercase; text-shadow: 0 4px 28px rgba(0,0,0,.22); overflow-wrap: anywhere; }
 .hero-title-long { font-size: clamp(44px, 4.6vw, 70px); }
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 0; margin-top: 19px; color: #d1d1d1; font-size: 13px; font-weight: 550; }
@@ -702,7 +730,7 @@ html:fullscreen, html:fullscreen body { width: 100%; height: 100%; min-height: 1
   .hero-card, .detail-backdrop { margin-top: calc(-72px - var(--safe-top)); }
   .hero-card { height: min(440px, 52svh); min-height: 350px; }
   .hero-image { object-position: 64% 20%; }
-  .hero-vignette { background: linear-gradient(0deg, var(--bg), rgba(2, 2, 2, .94) 13%, rgba(2, 2, 2, .6) 36%, rgba(2, 2, 2, .06) 74%), linear-gradient(90deg, rgba(2, 2, 2, .2), transparent 62%), radial-gradient(120% 70% at 60% 0%, transparent 40%, rgba(2, 2, 2, .5) 100%); }
+  .hero-vignette { background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, .5) 16%, rgba(0, 0, 0, .34) 36%, rgba(0, 0, 0, 0) 66%), linear-gradient(90deg, rgba(0, 0, 0, .24), transparent 62%), radial-gradient(120% 70% at 60% 0%, transparent 42%, rgba(0, 0, 0, .42) 100%); }
   .hero-copy { right: 20px; bottom: 56px; left: 20px; width: auto; }
   .hero-title { max-width: 420px; font-size: clamp(30px, 8.2vw, 46px); line-height: 1.08; letter-spacing: -.03em; }
   .hero-title-long { font-size: clamp(26px, 7vw, 38px); }
@@ -1147,8 +1175,14 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
   display: grid;
   place-items: center;
   width: 74px;
+  /* `aspect-ratio` plus an equal width/height makes the circle 1:1 by
+     construction, whatever the flex row or the font does to it. */
   height: 74px;
-  padding: 15px;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+  /* 74 − 2×13 leaves a 48 px square for the mark: enough for a tall icon and
+     for a wide wordmark without ever touching the rim. */
+  padding: 13px;
   overflow: hidden;
   border-radius: 50%;
   background:
@@ -1179,9 +1213,11 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
   border-bottom: 1px solid rgba(255, 255, 255, .06);
   pointer-events: none;
 }
-.platform-orbit-logo { width: auto; height: auto; max-width: 44px; max-height: 34px; opacity: .95; transition: opacity .2s ease; }
+/* The official mark fills its disc inside a contained box: never stretched,
+   never cropped, never dimmed by an overlay. */
+.platform-orbit-logo { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; opacity: 1; filter: none; transition: transform .24s var(--ease); }
 .platform-orbit:hover .platform-orbit-disc { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -12px 18px -14px rgba(0, 0, 0, .95), inset 0 0 0 1px rgba(255, 255, 255, .12), 0 14px 26px -12px rgba(0, 0, 0, 1); }
-.platform-orbit:hover .platform-orbit-logo { opacity: 1; }
+.platform-orbit:hover .platform-orbit-logo { transform: scale(1.05); }
 .platform-orbit:active .platform-orbit-disc { transform: scale(.955); }
 .platform-orbit:focus-visible { outline: none; }
 .platform-orbit:focus-visible .platform-orbit-disc { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .5), 0 0 0 3px rgba(255, 255, 255, .22); }
@@ -1319,7 +1355,7 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
   .platform-rail-title { font-size: 20px; }
   .platform-rail-actions .platform-arrow { display: none; }
   .platform-orbit { width: 80px; }
-  .platform-orbit-disc { width: 66px; height: 66px; padding: 13px; }
+  .platform-orbit-disc { width: 66px; height: 66px; aspect-ratio: 1 / 1; padding: 11px; }
   .platform-orbit-logo { max-width: 38px; max-height: 30px; }
   .platform-results-head { flex-wrap: wrap; gap: 12px; }
   .platform-results-reset { margin-left: 0; }
@@ -1341,7 +1377,7 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
 }
 @media (max-width: 370px) {
   .platform-orbit { width: 68px; }
-  .platform-orbit-disc { width: 60px; height: 60px; padding: 12px; }
+  .platform-orbit-disc { width: 60px; height: 60px; aspect-ratio: 1 / 1; padding: 10px; }
   .platform-orbit-logo { max-width: 34px; max-height: 26px; }
   .collection-tile { flex-basis: 62vw; }
   .platform-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1349,6 +1385,10 @@ html[data-cinemax-sheet-open="true"] body { overflow: hidden; }
 /* Decorative gloss motion respects the reduced-motion contract. */
 @media (prefers-reduced-motion: reduce) {
   .collection-tile-gloss { opacity: .4; }
+  /* The hero still changes slides, it just changes them without travelling. */
+  .hero-scene { transform: none; transition: opacity .28s linear; }
+  .hero-scene[data-active="true"], .hero-scene[data-previous="true"] { transform: none; }
+  .hero-copy { animation: none; }
 }
 
 /* ============================================================================

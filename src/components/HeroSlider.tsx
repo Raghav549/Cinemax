@@ -9,6 +9,14 @@ import Logo from "./Logo";
 import useReducedMotion from "@/hooks/useReducedMotion";
 import { isOfficialExternal, isUpcomingMovie, type CatalogueMovie } from "@/lib/catalogue";
 
+/**
+ * Autoplay cadence. The dissolve itself lives in globals.css (.68s opacity plus
+ * a 1.05s horizontal drift), so this interval is the *rest* the poster gets
+ * once it has fully arrived: short enough to feel responsive, long enough to
+ * read the title. Both are far quicker than the old 12s / 1.15s cycle.
+ */
+const AUTOPLAY_MILLIS = 6200;
+
 interface Feature {
   id: string;
   title: string;
@@ -109,7 +117,7 @@ export default function HeroSlider() {
         current: (previous.current + 1) % features.length,
         previous: previous.current,
       }));
-    }, 12000);
+    }, AUTOPLAY_MILLIS);
     return () => window.clearInterval(timer);
   }, [features.length, paused]);
 
@@ -190,9 +198,25 @@ export default function HeroSlider() {
     >
       <div className="hero-image-fallback" aria-hidden="true" />
       {features
-        .filter((_, index) => index === current || index === selection.previous)
+        .filter((_, index) => {
+          // active + outgoing + the one that is about to arrive. Mounting the
+          // next slide one beat early means its artwork is already decoded and
+          // positioned when it becomes active - no blank frame, no flash, and
+          // the incoming poster can actually travel in.
+          if (features.length < 2) return index === current;
+          const next = (current + 1) % features.length;
+          return index === current || index === selection.previous || index === next;
+        })
         .map((item) => (
-          <div className="hero-scene" key={item.id} data-active={item.id === feature.id} aria-hidden="true">
+          <div
+            className="hero-scene"
+            key={item.id}
+            data-active={item.id === feature.id || undefined}
+            data-previous={
+              item.id !== feature.id && item.id === features[selection.previous]?.id ? "true" : undefined
+            }
+            aria-hidden="true"
+          >
             <Artwork src={item.imageUrl} className="hero-image" kind="backdrop" priority={item.id === feature.id} />
           </div>
         ))}

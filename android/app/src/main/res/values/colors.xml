@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Near-black foundations; accent/logo colours remain unchanged. -->
-    <color name="cinemax_ink">#050507</color>
-    <color name="cinemax_ink_soft">#08080C</color>
-    <color name="cinemax_plum">#2A1157</color>
-    <color name="cinemax_violet">#7C4DFF</color>
-    <color name="cinemax_iris">#8B5CF6</color>
-    <color name="cinemax_magenta">#FF4FA3</color>
-    <color name="cinemax_cyan">#4FD8FF</color>
-    <color name="cinemax_text">#F7F4FF</color>
-    <color name="cinemax_text_soft">#C7BCE8</color>
-    <color name="cinemax_text_dim">#9C90C4</color>
+    <!--
+    The website's own tokens (src/app/globals.css :root), so the native window,
+    the WebView canvas and the page never disagree about what black is.
+    The logo gradient and the Play/Explore buttons live in the web layer.
+  -->
+    <color name="cinemax_ink">#020202</color>
+    <color name="cinemax_ink_soft">#030303</color>
+    <color name="cinemax_plum">#0A0A0A</color>
+    <color name="cinemax_violet">#FFFFFF</color>
+    <color name="cinemax_iris">#E6E6E6</color>
+    <color name="cinemax_magenta">#EF76CB</color>
+    <color name="cinemax_cyan">#EAEAEA</color>
+    <color name="cinemax_text">#F6F6F6</color>
+    <color name="cinemax_text_soft">#B7B7B7</color>
+    <color name="cinemax_text_dim">#909090</color>
     <color name="cinemax_transparent">#00000000</color>
 </resources>
