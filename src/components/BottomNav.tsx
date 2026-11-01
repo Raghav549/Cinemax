@@ -398,6 +398,10 @@ export default function BottomNav() {
               >
                 <span className="nav-menu-icon" aria-hidden="true">
                   {item.id === "home" ? (
+                    // The project's own SVG mark, 991 B, already sized 20x20 and
+                    // served from /public: `next/image` will not optimize SVG
+                    // without `dangerouslyAllowSVG`, and an optimizer round trip
+                    // for a local kilobyte file would only add a request.
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src="/brand/cinemax-symbol.svg"

@@ -19,6 +19,14 @@ test-results/
 # Android build artefacts (toolchain cache and intermediates)
 android/.toolchain/
 android/build/
+# The debug signing key is generated on demand by `android/build.sh --debug`;
+# the release keystore stays committed so builds keep one signing identity.
+android/keystore/cinemax-debug.keystore
+
+# Generated output of the render-cost harness (.perf/run.mjs)
+.perf/.bundle.cjs
+.perf/last-run.json
+.perf/last-run.dev.json
 
 # Python bytecode from the verification scripts
 __pycache__/

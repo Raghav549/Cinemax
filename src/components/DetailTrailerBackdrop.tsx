@@ -27,8 +27,6 @@ function DetailTrailerBackdropComponent({
   const trailerKey = `${movie.id}:${movie.trailerUrl ?? ""}`;
   const [erroredKey, setErroredKey] = useState<string | null>(null);
   const hasError = erroredKey === trailerKey;
-  const [playingKey, setPlayingKey] = useState<string | null>(null);
-  const isPlaying = playingKey === trailerKey;
   const videoRef = useRef<HTMLVideoElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -46,7 +44,7 @@ function DetailTrailerBackdropComponent({
     video.muted = muted;
 
     if (active) {
-      video.play().then(() => setPlayingKey(trailerKey)).catch(() => {
+      video.play().catch(() => {
         // Autoplay may be restricted or media failed
       });
     } else {
@@ -150,7 +148,6 @@ function DetailTrailerBackdropComponent({
               loop
               preload="auto"
               className="detail-trailer-media"
-              onPlaying={() => setPlayingKey(trailerKey)}
               onError={() => {
                 setErroredKey(trailerKey);
               }}
@@ -163,7 +160,6 @@ function DetailTrailerBackdropComponent({
               className="detail-trailer-media"
               allow="autoplay; encrypted-media"
               tabIndex={-1}
-              onLoad={() => setPlayingKey(trailerKey)}
               onError={() => {
                 setErroredKey(trailerKey);
               }}

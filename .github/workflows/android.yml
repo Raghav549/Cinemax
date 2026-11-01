@@ -9,7 +9,8 @@ name: Android CI
 # does on a developer machine:
 #
 #   bash android/build.sh              -> android/dist/Cinemax-1.1.0.apk
-#   bash android/tests/run-tests.sh    -> JVM + JS + DOM + APK checks
+#   bash android/build.sh --debug      -> android/dist/Cinemax-1.1.0-debug.apk
+#   bash android/tests/run-tests.sh    -> JVM + JS + DOM + artwork + APK checks
 #
 # The finished APK is uploaded as a downloadable artifact.
 
@@ -59,7 +60,27 @@ jobs:
       - name: Install the test dependency used by the DOM layer (jsdom)
         run: bash android/tests/install-test-deps.sh
 
-      - name: Build, sign and verify the APK
+      # The debug variant is built first on purpose: android/build.sh wipes
+      # android/build/ each run, so the release build below must be the last one
+      # to touch it (the test log and the splash preview are written afterwards).
+      - name: Build and sign the debuggable variant
+        run: bash android/build.sh --debug
+
+      - name: Verify the debuggable variant
+        run: |
+          apk=android/dist/Cinemax-1.1.0-debug.apk
+          [ -f "$apk" ] || { echo "::error::no debug APK was produced"; exit 1; }
+          android/.toolchain/bin/aapt2 dump badging "$apk" >/tmp/debug-badging.txt 2>/dev/null || true
+          grep -q "^package: name='com.cinemax.app'" /tmp/debug-badging.txt \
+            || { echo "::error::the debug APK lost the application id"; cat /tmp/debug-badging.txt; exit 1; }
+          grep -q "versionCode='2' versionName='1.1.0'" /tmp/debug-badging.txt \
+            || { echo "::error::the debug APK lost the version"; cat /tmp/debug-badging.txt; exit 1; }
+          grep -q "^application-debuggable" /tmp/debug-badging.txt \
+            || { echo "::error::the debug APK is not debuggable"; cat /tmp/debug-badging.txt; exit 1; }
+          android/.toolchain/jdk/bin/java -jar android/.toolchain/lib/apksigner.jar verify "$apk"
+          echo "debug APK: $(wc -c <"$apk") bytes, debuggable, same id/version as release"
+
+      - name: Build, sign and verify the release APK
         run: bash android/build.sh
 
       - name: Run the Android test suite
@@ -77,9 +98,24 @@ jobs:
             grep -E "^[[:space:]]*(SKIP|FAIL)\b" "$log"
             exit 1
           fi
+          # Every layer must report its own summary. Counting them is not enough
+          # (the count moves whenever a layer is added), so each layer is named
+          # and the totals are checked for the expected order: JVM, DOM, brand
+          # artwork, APK. A missing summary fails the build instead of silently
+          # shrinking the suite.
           layers="$(grep -c "checks: " "$log")"
-          if [ "$layers" -ne 3 ]; then
-            echo "::error::expected a JVM, a DOM and an APK check summary - found $layers"
+          if [ "$layers" -ne 4 ]; then
+            echo "::error::expected a JVM, a DOM, a brand-artwork and an APK check summary - found $layers"
+            grep "checks: " "$log" || true
+            exit 1
+          fi
+          for evidence in "PASS unit checks" "PASS DOM behaviour" "PASS brand artwork" "PASS APK structure"; do
+            grep -q "$evidence" "$log" \
+              || { echo "::error::missing test-layer evidence: $evidence"; exit 1; }
+          done
+          if grep -qE "failures: [1-9]" "$log"; then
+            echo "::error::a layer reported failures"
+            grep -E "failures: [1-9]" "$log"
             exit 1
           fi
           {
@@ -106,8 +142,58 @@ jobs:
             android/dist/Cinemax-1.1.0.apk
             android/dist/Cinemax-latest.apk
             android/dist/Cinemax-1.1.0.apk.sha256
+            android/dist/Cinemax-1.1.0-debug.apk
+            android/dist/Cinemax-latest-debug.apk
             android/build/test-suite.log
             android/build/splash-preview.log
             android/build/preview/*.png
           if-no-files-found: error
           retention-days: 90
+
+  # The website and the app share one codebase: the APK hosts the deployed web
+  # app inside a WebView, so a broken typecheck, lint error or production build
+  # breaks the app just as surely as a broken APK. This job proves the web side
+  # on the same commit. It needs no database: the build is static/prerendered and
+  # the data layer only connects at request time.
+  web:
+    name: Lint, typecheck and production web build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Clean dependency installation
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+
+      - name: Verify the brand artwork collection
+        run: npm run verify:logos
+
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Report the client bundle
+        run: |
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, os
+          files = sorted(glob.glob(".next/static/chunks/**/*.js", recursive=True))
+          total = sum(os.path.getsize(f) for f in files)
+          print("### Client JavaScript")
+          print(f"- {len(files)} chunks, {total/1024:.0f} KB uncompressed on disk")
+          for f in sorted(files, key=os.path.getsize, reverse=True)[:5]:
+              print(f"- {os.path.getsize(f)/1024:.0f} KB `{os.path.basename(f)}`")
+          PY

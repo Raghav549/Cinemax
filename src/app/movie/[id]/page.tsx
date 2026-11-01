@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { useCatalogue } from "@/components/CatalogueProvider";
 import { useWatchlist } from "@/components/WatchlistProvider";
 import MovieRow from "@/components/MovieRow";
-import Artwork from "@/components/Artwork";
 import DetailTrailerBackdrop from "@/components/DetailTrailerBackdrop";
 import PlaybackOverlay, { resolvePlaybackSource } from "@/components/PlaybackOverlay";
 import CinematicButton, { CinematicLink } from "@/components/CinematicButton";

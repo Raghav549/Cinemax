@@ -189,3 +189,13 @@ and playback are retained.
 
 See [the redesign and verification notes](docs/prism-redesign.md) for the design
 system, interaction fixes, browser-check setup, and deployment caveats.
+
+## Performance
+
+Render cost is measured, not assumed. `node .perf/run.mjs` mounts the real
+catalogue/watchlist providers, a 200-card poster rail and the 18 platform marks
+in jsdom against a production React build, replays a scroll gesture and a
+catalogue revalidation, and reports commit costs, re-render counts and the image
+attributes actually emitted (`--dev` reads `<Profiler>` durations). See
+[the render-cost harness](docs/performance.md) for the method, the numbers and
+the limits, and [the round 6 report](docs/round6-report.md) for what was fixed.

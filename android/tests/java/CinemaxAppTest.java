@@ -504,6 +504,28 @@ public final class CinemaxAppTest {
         check(pathDataOf(emblem, 0).length() > 40 && pathDataOf(emblem, 3).length() > 20,
                 "the logo artwork is intact (both ribbons and both light edges)");
 
+        // One brand mark, three renderers: the native splash drawable, the web
+        // component and the asset in the shared logo collection. They are the
+        // same shape serialised differently (absolute here, relative on the
+        // web), so the anchors are compared rather than the strings.
+        File repositoryRoot = projectDirectory.getParentFile();
+        String collectionMark = read(new File(repositoryRoot, "public/platforms/cinemax.svg"));
+        String componentMark = read(new File(repositoryRoot, "src/components/Logo.tsx"));
+        String[] anchors = { "42.2", "5.8", "12.8", "22.5", "41.5", "58.2", "51.8", "46.9", "25.7", "32", "17.1" };
+        boolean nativeMatches = true;
+        for (String anchor : anchors) {
+            nativeMatches &= pathDataOf(emblem, 0).contains(anchor);
+        }
+        check(nativeMatches, "the splash emblem is the same folded-ribbon C as the website");
+        check(collectionMark.equals(read(new File(repositoryRoot, "public/brand/cinemax-symbol.svg"))),
+                "the collection copy of the CINEMAX mark is identical to the brand symbol");
+        check(componentMark.contains("M42.2 5.8 12.8 22.5") && collectionMark.contains("M42.2 5.8 12.8 22.5"),
+                "the web component and the collection asset draw the same emblem geometry");
+        check(collectionMark.contains("#70e0ff") && collectionMark.contains("#be65f7"),
+                "the CINEMAX ribbon gradient colours are preserved in the collection asset");
+        check(!componentMark.contains("hbo") && !componentMark.toLowerCase().contains("hbo"),
+                "the CINEMAX mark is this project's own emblem, not the unrelated HBO Cinemax logo");
+
         // The lockup: the logo plus the CINEMAX wordmark revealed beneath it.
         check(splashView.contains("drawText") && splashView.contains("\"CINEMAX\""),
                 "the reveal draws the CINEMAX wordmark beneath the logo");

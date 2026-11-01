@@ -39,9 +39,18 @@ for argument in "$@"; do
 done
 
 FAILED=0
-step() { printf '\n\033[1;36m==> %s\033[0m\n' "$1"; }
+
+# Colour only when a human is watching. CI pipes this output through tee into a
+# log and then greps it for "PASS <layer>", so escape sequences must not be
+# interleaved with the words being matched. NO_COLOR is honoured too.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_STEP='\033[1;36m'; C_PASS='\033[1;32m'; C_FAIL='\033[1;31m'; C_OFF='\033[0m'
+else
+  C_STEP=''; C_PASS=''; C_FAIL=''; C_OFF=''
+fi
+step() { printf "\n${C_STEP}==> %s${C_OFF}\n" "$1"; }
 note() { printf '    %s\n' "$1"; }
-result() { if [ "$1" = "0" ]; then printf '    \033[1;32mPASS\033[0m %s\n' "$2"; else printf '    \033[1;31mFAIL\033[0m %s\n' "$2"; FAILED=1; fi; }
+result() { if [ "$1" = "0" ]; then printf "    ${C_PASS}PASS${C_OFF} %s\n" "$2"; else printf "    ${C_FAIL}FAIL${C_OFF} %s\n" "$2"; FAILED=1; fi; }
 
 [ -d "$CACHE" ] || bash "$PROJECT/tools/fetch-toolchain.sh"
 
@@ -129,7 +138,7 @@ fi
 # The app renders these files through <img src="/platforms/…"> from the same
 # registry the website uses, so a missing, boxed or recoloured asset is just as
 # broken on a phone as it is in a browser. Same script, same pins.
-step "4/5  Brand artwork (18 platforms + the CINEMAX lockup)"
+step "4/5  Brand artwork (18 platforms + the CINEMAX mark)"
 if ! command -v node >/dev/null 2>&1; then
   if [ "$REQUIRE_JSDOM" = "1" ]; then
     result 1 "node is required for the artwork layer but is not installed"
@@ -148,9 +157,9 @@ result $? "APK structure"
 
 step "Summary"
 if [ "$FAILED" = "0" ]; then
-  printf '    \033[1;32mAll Android checks passed.\033[0m\n'
+  printf "    ${C_PASS}All Android checks passed.${C_OFF}\n"
   printf '    APK: %s\n' "$APK"
 else
-  printf '    \033[1;31mOne or more checks failed (see above).\033[0m\n'
+  printf "    ${C_FAIL}One or more checks failed (see above).${C_OFF}\n"
 fi
 exit "$FAILED"

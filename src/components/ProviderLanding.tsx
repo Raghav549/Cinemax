@@ -67,8 +67,12 @@ export default function ProviderLanding({
         {metadata?.thumbnailUrl && (
           // Thumbnail comes from the provider's own oEmbed response, never from
           // scraping arbitrary pages. Missing artwork simply stays hidden.
+          // `next/image` cannot be used: the host is discovered at runtime from
+          // that response and is not known when the build pins
+          // `images.remotePatterns`. It is a single, below-the-fold image, so it
+          // is loaded lazily and decoded off the main thread like the rest.
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="provider-thumbnail" src={metadata.thumbnailUrl} alt="" />
+          <img className="provider-thumbnail" src={metadata.thumbnailUrl} alt="" loading="lazy" decoding="async" />
         )}
 
         <p className="provider-message">{message}</p>

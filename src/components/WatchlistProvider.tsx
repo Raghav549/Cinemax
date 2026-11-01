@@ -33,12 +33,21 @@ export default function WatchlistProvider({ children }: { children: ReactNode })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // `toggle` needs the catalogue only to append a freshly saved title. Reading it
+  // through a ref (instead of depending on it) keeps `toggle` stable across
+  // catalogue refreshes, so the context value stops changing and the dozens of
+  // save buttons on a page do not re-render for data they do not show.
+  const catalogueRef = useRef(catalogue);
   const locks = useRef(new Set<number>());
   const queue = useRef<Promise<void>>(Promise.resolve());
   const readVersion = useRef(0);
   const initialRead = useRef<Promise<void> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(false);
+
+  useEffect(() => {
+    catalogueRef.current = catalogue;
+  }, [catalogue]);
 
   const apply = useCallback((list: SavedMovie[]) => {
     setMovies(list);
@@ -105,7 +114,7 @@ export default function WatchlistProvider({ children }: { children: ReactNode })
       // Update only after the API confirms the mutation. No invented catalogue records.
       if (!data.added) setMovies((previous) => previous.filter((movie) => movie.id !== movieId));
       else {
-        const movie = catalogue.find((item) => item.id === movieId);
+        const movie = catalogueRef.current.find((item) => item.id === movieId);
         if (movie) setMovies((previous) => previous.some((item) => item.id === movieId) ? previous : [...previous, movie]);
       }
       notify(data.added ? "Added to your watchlist" : "Removed from your watchlist");
@@ -125,7 +134,7 @@ export default function WatchlistProvider({ children }: { children: ReactNode })
     const result = queue.current.then(execute, execute);
     queue.current = result.then(() => undefined, () => undefined);
     return result;
-  }, [apply, catalogue, notify]);
+  }, [apply, notify]);
 
   const value = useMemo(() => ({ movies, savedIds, pendingIds, loading, error, toggle, refresh }), [movies, savedIds, pendingIds, loading, error, toggle, refresh]);
   return <Context.Provider value={value}>{children}<div className={`app-toast ${notice ? "is-visible" : ""}`} role="status" aria-live="polite">{notice && <><Icon name="bookmark" /><span>{notice}</span></>}</div></Context.Provider>;
