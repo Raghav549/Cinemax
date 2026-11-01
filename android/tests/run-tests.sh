@@ -15,7 +15,8 @@
 #   1. JVM unit checks   : navigation policy + injection escaping (no device)
 #   2. JavaScript syntax : node --check on the generated injection script
 #   3. DOM behaviour     : the real injected layer executed against a DOM fixture
-#   4. APK structure     : manifest, resources, icons, dex, signature, alignment
+#   4. Brand artwork     : the eighteen platform logos the WebView renders
+#   5. APK structure     : manifest, resources, icons, dex, signature, alignment
 #
 # These tests run without an emulator. Installing the APK on a device is still
 # the final gate for WebView rendering, and is documented in android/README.md.
@@ -68,7 +69,7 @@ fi
 mkdir -p "$WORK/classes" "$WORK/out"
 
 # ---------------------------------------------------------- 1. JVM unit tests
-step "1/4  JVM unit checks (navigation policy, injection escaping)"
+step "1/5  JVM unit checks (navigation policy, injection escaping)"
 (
   cd "$PROJECT"
   # The generated R class (from aapt2) is part of the app sources.
@@ -89,7 +90,7 @@ INJECTION="$WORK/out/injection-script.js"
 SHELL_SCRIPT="$WORK/out/shell-script.js"
 
 # ------------------------------------------------------ 2. JavaScript syntax
-step "2/4  JavaScript syntax of the injected layer"
+step "2/5  JavaScript syntax of the injected layer"
 if ! command -v node >/dev/null 2>&1; then
   if [ "$REQUIRE_JSDOM" = "1" ]; then
     result 1 "node is required for this layer but is not installed"
@@ -108,7 +109,7 @@ else
 fi
 
 # ---------------------------------------------------------- 3. DOM behaviour
-step "3/4  DOM behaviour of the injected app layer"
+step "3/5  DOM behaviour of the injected app layer"
 if ! command -v node >/dev/null 2>&1; then
   if [ "$REQUIRE_JSDOM" = "1" ]; then
     result 1 "node is required for this layer but is not installed"
@@ -124,8 +125,24 @@ else
   result $? "DOM behaviour"
 fi
 
-# ----------------------------------------------------------- 4. APK structure
-step "4/4  APK structure, dex content, signature and alignment"
+# ------------------------------------------------------------ 4. brand artwork
+# The app renders these files through <img src="/platforms/…"> from the same
+# registry the website uses, so a missing, boxed or recoloured asset is just as
+# broken on a phone as it is in a browser. Same script, same pins.
+step "4/5  Brand artwork (18 platforms + the CINEMAX lockup)"
+if ! command -v node >/dev/null 2>&1; then
+  if [ "$REQUIRE_JSDOM" = "1" ]; then
+    result 1 "node is required for the artwork layer but is not installed"
+  else
+    note "node is not installed - layer skipped"
+  fi
+else
+  node "$REPO/scripts/verify-platform-logos.mjs"
+  result $? "brand artwork"
+fi
+
+# ----------------------------------------------------------- 5. APK structure
+step "5/5  APK structure, dex content, signature and alignment"
 python3 "$SCRIPT_DIR/apk_check.py" "$APK" "$CACHE"
 result $? "APK structure"
 
