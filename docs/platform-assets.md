@@ -15,10 +15,10 @@ they are used here only to say where a title in the library can be streamed.
 | --- | --- | --- | --- | --- |
 | Netflix | `netflix` | `netflix.svg` | `selfhst/icons` → `svg/netflix.svg` | red **N** mark |
 | Prime Video | `prime-video` | `prime-video.svg` | `CarlesRojas/ha-diorama` → `src/tiles/apps/prime-video-dark.svg` | white wordmark + blue smile |
-| JioHotstar | `jiohotstar` | `jiohotstar.svg` | `Delta-Icons/android` → `resources/vectors/jio_hotstar.svg` | app icon |
+| JioHotstar | `jiohotstar` | `jiohotstar.svg` | `ackinc/webext-movie-ratings` → `platformWordmarks/jiohotstar.svg` | white wordmark (hexastar + outlined lettering), recoloured to pure `#fff` |
 | Disney+ | `disney-plus` | `disney-plus.svg` | `CarlesRojas/ha-diorama` → `src/tiles/apps/disney-plus-dark.svg` | light wordmark for dark UI |
 | Max | `max` | `max.svg` | `selfhst/icons` → `svg/max-light.svg` | white `max` wordmark |
-| Apple TV+ | `apple-tv-plus` | `apple-tv-plus.svg` | `selfhst/icons` → `svg/apple-tv-light.svg` | light |
+| Apple TV+ | `apple-tv-plus` | `apple-tv-plus.svg` | `homarr-labs/dashboard-icons` → `svg/apple-tv-plus.svg` | white ` tv+` lockup |
 | Sony LIV | `sony-liv` | `sony-liv.svg` | `Dant5/clean-home-tizen` → `app/assets/icons/sonyliv.svg` | white |
 | JioCinema | `jiocinema` | `jiocinema.svg` | `DevanshiJodhani/Jio-Cinema` → `public/images/jiocinema-logo.svg` | full colour |
 | Crunchyroll | `crunchyroll` | `crunchyroll.svg` | `selfhst/icons` → `svg/crunchyroll.svg` | orange mark |
@@ -28,9 +28,9 @@ they are used here only to say where a title in the library can be streamed.
 | Paramount+ | `paramount-plus` | `paramount-plus.svg` | `CarlesRojas/ha-diorama` → `src/tiles/apps/paramount-plus.svg` | blue mountain |
 | Peacock | `peacock` | `peacock.svg` | `CarlesRojas/ha-diorama` → `src/tiles/apps/peacock-dark.svg` | white wordmark + colour feathers |
 | MUBI | `mubi` | `mubi.svg` | `homarr-labs/dashboard-icons` → `svg/mubi-dark.svg` | white wordmark |
-| Discovery+ | `discovery-plus` | `discovery-plus.webp` | `tv-logo/tv-logos` → `misc/media/discovery-plus.png` (converted) | full colour |
+| Discovery+ | `discovery-plus` | `discovery-plus.webp` | `tv-logo/tv-logos` → `misc/media/discovery-plus.png` (512x325, trimmed, WebP q92) | full colour |
 | YouTube | `youtube` | `youtube.svg` | `selfhst/icons` → `svg/youtube.svg` | red play mark |
-| aha | `aha` | `aha.webp` | `tv-logo/tv-logos` → `misc/media/aha.png` (converted) | full colour |
+| aha | `aha` | `aha.webp` | `tv-logo/tv-logos` → `misc/media/aha.png` (512x271, trimmed, WebP q92) | full colour |
 
 ### Preparation
 
@@ -56,6 +56,39 @@ files), and the `<img>` tags are `loading="lazy"` (`eager` only for the rail and
 the studio picker) with `decoding="async"` and fixed boxes so nothing shifts
 while they decode.
 
+### Verification
+
+Provenance is not taken on trust. `npm run verify:logos`
+(`scripts/verify-platform-logos.mjs`) runs before a release and checks the whole
+collection against `src/lib/platforms.ts`:
+
+* every id resolves to a file that exists, and no orphan artwork sits in the
+  directory;
+* each SVG is one self-contained document with a `viewBox`, and carries no
+  `<script>`, `on*` handler, `<image>` bitmap, external `href`/`xlink:href` or
+  remote `@import` — an `<img>` must be able to render it with no network at
+  all, which also makes it safe inside the Android WebView;
+* each raster keeps a real alpha channel and at least 192 px, so nothing is
+  soft on a 3x phone screen;
+* **identity pins**: a SHA-1 of the file's path geometry is compared against the
+  value recorded for that brand, and so is a SHA-1 of its colour tokens. A
+  swapped-in or recoloured (greyed, tinted, filtered) export therefore fails
+  the build instead of quietly shipping. Pins live in the script; if a brand
+  legitimately publishes a new mark, the pin is updated in the same commit.
+
+Checking every shipped file's path geometry against the upstream repositories
+reproduced the table above byte-for-byte (SVGs compared by identical `d` data and
+identical colour tokens; rasters by file hash) and corrected two entries:
+
+* **JioHotstar** had been recorded as a Delta-Icons app icon; the shipped file is
+  the horizontal wordmark from `ackinc/webext-movie-ratings`, matched by
+  identical path data.
+* **Apple TV+** had been the `apple tv` lockup from `selfhst/icons` — the Apple TV
+  *app* mark, with **no plus sign**, so it read as the wrong brand. It is now the
+  real ` tv+` wordmark from `homarr-labs/dashboard-icons`, one monochrome path
+  (geometry and viewBox untouched) filled with the brand's own white for the dark
+  surfaces.
+
 ### Dark-background variants
 
 The rail, the details page and the studio all sit on near-black surfaces, so
@@ -64,6 +97,40 @@ Disney+, Max, Peacock, MUBI, Apple TV+, Sony LIV). Where a logo only exists in a
 single treatment it is used as published (Netflix, Hulu, Tubi, ZEE5, Paramount+,
 YouTube, Discovery+, aha). Hulu's green and Tubi's purple are brand colours, not
 design accents.
+
+### The nineteenth mark: CINEMAX itself
+
+The collection is nineteen logos, but the last one is not a download. CINEMAX's
+primary identity already lives in the repository as vector artwork — the
+`<CinemaxEmblem>` lockup in `src/components/Logo.tsx` with
+`public/brand/cinemax-symbol.svg` and `public/brand/cinemax-app-icon.svg`
+beside it — and it is reused exactly as it is. No second CINEMAX logo was drawn
+and no raster was invented, because the brand identity is not part of the
+download-in-logos task and must not fork. The verify script asserts those three
+files are present so the identity cannot go missing unnoticed.
+
+### Brand-status notes
+
+* **Max.** Warner Bros. Discovery retired the blue Max identity during 2025 and
+  reverted the service to **HBO Max** (the monochrome lockup is
+  `selfhst/icons:svg/hbo-max-light.svg`). The platform is still listed as
+  `max` in this application's catalogue, so the shipped artwork is the white
+  `max` wordmark of that same monochrome era rather than a different brand's
+  mark. Renaming the platform would change stored `category` tokens, which is
+  out of scope; if the name is ever migrated, the logo swap is one file.
+* **Rasters.** Discovery+ and aha have no official vector published in any
+  source reachable from this environment, so both are the official marks as
+  512 px transparent raster exports (`tv-logo/tv-logos`), trimmed to their ink
+  box, padded 1.2 % and encoded as WebP quality 92 with a full alpha channel —
+  12.4 KB and 10.4 KB, both well above the 192 px a 4x 48 px disc needs, and
+  neither carries a matte, box or background.
+* **Unverified upstream.** No official brand portal (Netflix's Tudum press
+  assets, Prime Video's brand guidelines, Disney's press site, …) is reachable
+  from the build sandbox, which only allows GitHub, npm and PyPI. Every file is
+  therefore a byte-for-byte copy of a third-party curation of the official
+  artwork, matched by geometry against that upstream — not a redraw — and is
+  documented above with the exact repository and path so it can be re-checked
+  against a brand portal where one is available.
 
 ## 2. Glossy-black surface system
 
