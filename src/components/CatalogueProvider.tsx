@@ -20,6 +20,30 @@ interface Catalogue {
 const initial: Catalogue = { movies: [], categories: [], slides: [], loading: true, error: "" };
 const Context = createContext<Catalogue & { refresh: () => void } | null>(null);
 
+/**
+ * Reuses the previous objects for records the API returned unchanged, and the
+ * previous array when *everything* is unchanged.
+ *
+ * A revalidation (tab focus after 30s) gets freshly decoded objects from
+ * `fetch`, so without this every poster card on the page would be reconciled
+ * even though nothing about the library changed. Identity is what lets the
+ * memoised rows and cards skip that work, so it must be preserved exactly when
+ * the data is the same.
+ */
+function reconcile<T>(previous: T[], next: T[]): T[] {
+  if (previous === next) return previous;
+  if (previous.length !== next.length) return next;
+  let identical = true;
+  const merged = next.map((item, index) => {
+    const current = previous[index];
+    if (current === item) return current;
+    if (JSON.stringify(current) === JSON.stringify(item)) return current;
+    identical = false;
+    return item;
+  });
+  return identical ? previous : merged;
+}
+
 async function readList<T>(url: string, signal: AbortSignal): Promise<T[]> {
   // `no-store`: the admin panel is the source of truth, so a browser/HTTP cache
   // must never resurrect a movie or slide the admin has deleted.
@@ -53,12 +77,18 @@ export default function CatalogueProvider({ children }: { children: ReactNode })
       ]);
       if (signal.aborted) return;
       lastLoadedAt.current = Date.now();
-      setCatalogue({
-        movies: movies.status === "fulfilled" ? movies.value : [],
-        categories: categories.status === "fulfilled" ? categories.value : [],
-        slides: slides.status === "fulfilled" ? slides.value : [],
-        loading: false,
-        error: movies.status === "rejected" ? "The library is temporarily unavailable. Please try again." : "",
+      const error = movies.status === "rejected" ? "The library is temporarily unavailable. Please try again." : "";
+      setCatalogue((previous) => {
+        const nextMovies = reconcile(previous.movies, movies.status === "fulfilled" ? movies.value : []);
+        const nextCategories = reconcile(previous.categories, categories.status === "fulfilled" ? categories.value : []);
+        const nextSlides = reconcile(previous.slides, slides.status === "fulfilled" ? slides.value : []);
+        // Nothing changed: keep the previous state object so the context value
+        // keeps its identity and no consumer re-renders for it.
+        if (nextMovies === previous.movies && nextCategories === previous.categories
+          && nextSlides === previous.slides && !previous.loading && previous.error === error) {
+          return previous;
+        }
+        return { movies: nextMovies, categories: nextCategories, slides: nextSlides, loading: false, error };
       });
     };
     const refreshFromEvent = () => { void load(); };

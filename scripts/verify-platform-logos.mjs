@@ -93,6 +93,9 @@ const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex").sli
 let checks = 0;
 let failures = 0;
 
+/** The nineteenth logo: this project's own mark, in the shared collection. */
+const CINEMAX_ASSET = "cinemax.svg";
+
 function check(ok, label, detail = "") {
   checks += 1;
   if (!ok) {
@@ -223,6 +226,10 @@ for (const { id, logo } of entries) {
 
 const shipped = readdirSync(assetDir).filter((name) => !name.startsWith("."));
 const wired = new Set(entries.map(({ logo }) => logo.replace("/platforms/", "")));
+// The project's own mark is part of the collection, but it is deliberately NOT
+// a streaming platform: it must never appear in PLATFORMS, or the rail, the
+// platform filter and /category/platform-* would advertise a fake provider.
+wired.add(CINEMAX_ASSET);
 const orphans = shipped.filter((name) => !wired.has(name));
 check(orphans.length === 0, "no unregistered artwork in public/platforms", orphans.join(", ") || "none");
 check(payload <= PAYLOAD_BUDGET, "the whole collection stays inside the payload budget", `${(payload / 1024).toFixed(1)} KB`);
@@ -230,7 +237,7 @@ check(payload <= PAYLOAD_BUDGET, "the whole collection stays inside the payload 
 /* ------------------------------------------------------- 19th mark: CINEMAX */
 
 // The project's own identity is reused, never re-downloaded or redrawn: the
-// primary lockup is the vector component, backed by two standalone files.
+// primary lockup is the vector component, backed by standalone files.
 for (const [path, label] of [
   ["src/components/Logo.tsx", "primary lockup (emblem + wordmark, vector)"],
   ["public/brand/cinemax-symbol.svg", "emblem, standalone vector"],
@@ -245,6 +252,32 @@ for (const [path, label] of [
   check(ok, `CINEMAX: ${label} is present`, path);
 }
 
+// The collection copy must exist, be a valid standalone SVG, and be the very
+// same artwork as the file the app loads for the favicon and the dock — one
+// brand mark, two paths, no drift.
+const cinemaxAssetPath = join(assetDir, CINEMAX_ASSET);
+let cinemaxAsset = null;
+try {
+  cinemaxAsset = readFileSync(cinemaxAssetPath, "utf8");
+} catch {
+  /* reported below */
+}
+check(Boolean(cinemaxAsset), `CINEMAX: the mark is part of the collection (${CINEMAX_ASSET})`);
+check(!entries.some(({ id }) => id === "cinemax"), "CINEMAX is a brand mark, not a fake streaming platform");
+if (cinemaxAsset) {
+  check(/^\s*<svg[\s>]/i.test(cinemaxAsset) && /viewBox\s*=/.test(cinemaxAsset), "CINEMAX: is one SVG with a viewBox");
+  check(!/(?:xlink:)?href\s*=/.test(cinemaxAsset), "CINEMAX: references nothing external");
+  check(cinemaxAsset === readFileSync(join(root, "public", "brand", "cinemax-symbol.svg"), "utf8"),
+    "CINEMAX: collection copy is identical to the brand symbol (no drift)");
+  // The component is the renderer; its emblem path must match the asset, so a
+  // future edit to one cannot silently fork the logo.
+  const component = readFileSync(join(root, "src", "components", "Logo.tsx"), "utf8");
+  const emblemPath = (cinemaxAsset.match(/<path d="(M42\.2[^"]+)"/) || [])[1];
+  check(Boolean(emblemPath) && component.includes(emblemPath), "CINEMAX: component and asset share the same emblem geometry");
+  check(cinemaxAsset.includes("#70e0ff") && cinemaxAsset.includes("#be65f7") && cinemaxAsset.includes("#ff65ae"),
+    "CINEMAX: the original ribbon/fold gradient colours are intact");
+}
+
 /* --------------------------------------------------------------------- print */
 
 console.log("");
@@ -257,7 +290,11 @@ for (const row of rows) {
       .padStart(5)}KB  ${row.dims.padEnd(9)}  ${row.pin.padEnd(6)}  ${PROVENANCE[row.name] ?? "—"}`
   );
 }
-console.log(`  ${"cinemax".padEnd(18)}  ${"Logo.tsx + brand/*.svg".padEnd(24)}  svg     ${"—".padStart(6)}  ${"64x64".padEnd(9)}  reuse   in-repo brand identity (not re-downloaded)`);
+console.log(
+  `  ${"cinemax".padEnd(18)}  ${CINEMAX_ASSET.padEnd(24)}  svg     ${(cinemaxAsset ? Buffer.byteLength(cinemaxAsset) / 1024 : 0)
+    .toFixed(1)
+    .padStart(5)}KB  ${"64x64".padEnd(9)}  reuse   in-repo brand identity (identical to /brand/cinemax-symbol.svg)`
+);
 
 console.log("");
 console.log(`platforms: ${entries.length}  + 1 project mark  =  ${entries.length + 1} logos`);

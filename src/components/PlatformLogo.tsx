@@ -19,6 +19,12 @@ function PlatformLogo({
   const platform = PLATFORM_BY_ID.get(id);
   if (!platform) return null;
   return (
+    // `next/image` refuses SVG sources unless `dangerouslyAllowSVG` is enabled,
+    // and 16 of the 19 brand marks are SVG (the two raster ones are already
+    // WebP). Sending a 1-2 KB local asset through the optimizer would add a
+    // request and a re-encode for no byte saving, so the plain element is kept -
+    // with async decode, explicit lazy/eager intent and a box the CSS fixes so
+    // the rail cannot shift while artwork decodes.
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={platform.logo}

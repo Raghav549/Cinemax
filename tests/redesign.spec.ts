@@ -5,7 +5,6 @@ import { createMovieWithTrailer, deleteMovie, expectNoOverflow, preparePage, rea
 test.beforeEach(async ({ page }, info) => { await preparePage(page, info.title.startsWith("intro:")); });
 
 test("home uses the real library, essential hero actions and continuous button light", async ({ page, request }) => {
-  const catalogue = await readCatalogue(request);
   const slides = await readSlides(request);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const hero = page.locator(".hero-card");

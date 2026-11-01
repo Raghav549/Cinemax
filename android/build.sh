@@ -8,10 +8,17 @@
 # PostgreSQL database, the studio/admin panel and authentication are unchanged
 # and are not part of this build.
 #
-#   bash android/build.sh              # build + sign + verify
+#   bash android/build.sh              # release build + sign + verify
+#   bash android/build.sh --debug      # debuggable build + sign + verify
 #   bash android/build.sh --no-verify  # skip the post-build verification
 #
-# Output: android/dist/Cinemax-<version>.apk
+# Output: android/dist/Cinemax-<version>.apk               (release)
+#         android/dist/Cinemax-<version>-debug.apk         (--debug)
+#
+# Both variants keep the same application id, version, permissions, launcher
+# activity and deep-link host. --debug differs in exactly two ways: the manifest
+# is linked with aapt2's --debug-mode (android:debuggable="true") and the APK is
+# signed with a separate local debug key.
 #
 # Tool overrides (optional):
 #   CINEMAX_JAVA CINEMAX_KEYTOOL CINEMAX_AAPT2 CINEMAX_ANDROID_JAR
@@ -38,12 +45,23 @@ MIN_SDK="24"
 TARGET_SDK="34"
 
 VERIFY=1
+DEBUG=0
 for argument in "$@"; do
   case "$argument" in
     --no-verify) VERIFY=0 ;;
+    --debug) DEBUG=1 ;;
     *) printf 'unknown argument: %s\n' "$argument" >&2; exit 2 ;;
   esac
 done
+
+if [ "$DEBUG" = "1" ]; then
+  # A debug build must not be mistaken for the release artifact, so it signs with
+  # its own key and says so in its file name.
+  KEYSTORE="${CINEMAX_DEBUG_KEYSTORE:-$KEYSTORE_DIR/cinemax-debug.keystore}"
+  KEY_ALIAS="cinemax-debug"
+  KEY_PASS="cinemax-debug"
+  STORE_PASS="cinemax-debug"
+fi
 
 step() { printf '\n\033[1;36m==> %s\033[0m\n' "$1"; }
 info() { printf '    %s\n' "$1"; }
@@ -82,6 +100,9 @@ mkdir -p "$BUILD/classes" "$BUILD/dex" "$BUILD/gen" "$BUILD/assets" "$BUILD/res"
 
 # ---------------------------------------------------- resources (aapt2)
 step "Compiling resources and linking the Android manifest"
+# aapt2's --debug-mode is what sets android:debuggable="true" in the linked manifest.
+AAPT2_DEBUG_ARGS=()
+[ "$DEBUG" = "1" ] && AAPT2_DEBUG_ARGS+=("--debug-mode")
 "$AAPT2" compile --dir "$MAIN/res" -o "$BUILD/res/compiled.zip" >"$BUILD/aapt2-compile.log" 2>&1 \
   || { cat "$BUILD/aapt2-compile.log"; fail "aapt2 compile failed"; }
 
@@ -92,6 +113,7 @@ step "Compiling resources and linking the Android manifest"
   --java "$BUILD/gen" \
   --min-sdk-version "$MIN_SDK" \
   --target-sdk-version "$TARGET_SDK" \
+  ${AAPT2_DEBUG_ARGS[@]+"${AAPT2_DEBUG_ARGS[@]}"} \
   --auto-add-overlay \
   "$BUILD/res/compiled.zip" >"$BUILD/aapt2-link.log" 2>&1 \
   || { cat "$BUILD/aapt2-link.log"; fail "aapt2 link failed"; }
@@ -158,7 +180,11 @@ else
   info "using existing keystore $KEYSTORE"
 fi
 
-APK_OUT="$DIST/$APP_NAME-$VERSION_NAME.apk"
+if [ "$DEBUG" = "1" ]; then
+  APK_OUT="$DIST/$APP_NAME-$VERSION_NAME-debug.apk"
+else
+  APK_OUT="$DIST/$APP_NAME-$VERSION_NAME.apk"
+fi
 rm -f "$APK_OUT"
 "$JAVA" -jar "$APKSIGNER_JAR" sign \
   --ks "$KEYSTORE" \
@@ -173,7 +199,12 @@ rm -f "$APK_OUT"
   "$BUILD/app-aligned.apk" 2>"$BUILD/apksigner.log" \
   || { tail -n 30 "$BUILD/apksigner.log"; fail "apksigner failed"; }
 
-cp "$APK_OUT" "$DIST/$APP_NAME-latest.apk"
+if [ "$DEBUG" = "1" ]; then
+  LATEST="$DIST/$APP_NAME-latest-debug.apk"
+else
+  LATEST="$DIST/$APP_NAME-latest.apk"
+fi
+cp "$APK_OUT" "$LATEST"
 
 # ------------------------------------------------------------- verification
 if [ "$VERIFY" = "1" ]; then
@@ -185,7 +216,8 @@ if [ "$VERIFY" = "1" ]; then
   python3 "$PROJECT/tools/align_apk.py" --check "$APK_OUT" | sed 's/^/  /'
 
   "$AAPT2" dump badging "$APK_OUT" >"$BUILD/badging.txt" 2>/dev/null || true
-  grep -E "^package|^application-label|^launchable-activity|^sdkVersion|^targetSdkVersion" "$BUILD/badging.txt" | sed 's/^/  /' || true
+  grep -E "^package|^application-label|^launchable-activity|^sdkVersion|^targetSdkVersion|^application-debuggable" "$BUILD/badging.txt" | sed 's/^/  /' || true
+  if [ "$DEBUG" = "1" ]; then info "variant: debug (debuggable, debug key)"; else info "variant: release"; fi
 
   python3 - "$APK_OUT" <<'PY' | sed 's/^/  /'
 import sys, zipfile
@@ -203,5 +235,5 @@ step "Done"
 info "APK    : $APK_OUT"
 info "size   : $(wc -c <"$APK_OUT") bytes"
 info "sha256 : $(sha256sum "$APK_OUT" | awk '{print $1}')"
-info "copy   : $DIST/$APP_NAME-latest.apk"
+info "copy   : $LATEST"
 info "install: adb install -r \"$APK_OUT\""

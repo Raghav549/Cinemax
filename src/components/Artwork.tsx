@@ -17,7 +17,15 @@ function ArtworkImage({ src, alt, className, kind, priority, sizes }: { src: str
   const [failed, setFailed] = useState(false);
   if (failed) return <div className={`artwork-placeholder ${kind === "backdrop" ? "artwork-backdrop-placeholder" : ""} ${className}`} role={alt ? "img" : undefined} aria-label={alt || undefined}>{kind === "poster" && <CinemaxEmblem />}</div>;
   const sources = artworkSources(src, kind);
-  // Admins may use any licensed image host. Responsive TMDB sources avoid an image-proxy allowlist and full-original downloads.
+  // `next/image` is deliberately not used: admins may point a title at any
+  // licensed image host, and the optimizer only accepts hosts that are listed in
+  // `images.remotePatterns` at build time - an allowlist that would silently
+  // break every poster an admin adds later. The opt-in below is what
+  // next/image would have generated anyway: `srcSet` with real widths (w500
+  // default, 185-780 for posters), `sizes` matching the rail layout, declared
+  // intrinsic dimensions on the card box, lazy/eager + fetchPriority split and
+  // async decode. The Android shell serves these URLs directly from the CDN, so
+  // there is no /_next/image hop to pay for either.
   // eslint-disable-next-line @next/next/no-img-element
   return <img {...sources} alt={alt} className={className} width={kind === "poster" ? 500 : 1280} height={kind === "poster" ? 750 : 720} sizes={sizes} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "low"} decoding="async" draggable={false} onError={() => setFailed(true)} />;
 }
