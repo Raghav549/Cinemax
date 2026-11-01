@@ -181,6 +181,9 @@ jobs:
       - name: Verify the brand artwork collection
         run: npm run verify:logos
 
+      - name: Verify the platform registry and its save/read path
+        run: npm run verify:platforms
+
       - name: Production build
         run: npm run build
         env:

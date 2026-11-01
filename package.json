@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "verify:api": "node scripts/verify-admin.mjs",
     "verify:logos": "node scripts/verify-platform-logos.mjs",
+    "verify:platforms": "node scripts/verify-platform-registry.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "test:ui": "playwright test",

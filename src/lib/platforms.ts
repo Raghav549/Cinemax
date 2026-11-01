@@ -17,6 +17,12 @@
  *
  * Brand logos live in /public/platforms and are the original brand artwork
  * sizes/proportions (see docs/platform-assets.md for sources and licences).
+ *
+ * CINEMAX is a streaming platform here like any other: it has its own entry, a
+ * checkbox in the studio's platform picker, a disc in the home rail and its own
+ * `platform-cinemax` token, and it uses the CINEMAX network's brand artwork —
+ * deliberately NOT the app's own emblem (`/brand/cinemax-symbol.svg`), which
+ * stays the application logo.
  */
 
 export type PlatformId =
@@ -37,7 +43,8 @@ export type PlatformId =
   | "mubi"
   | "discovery-plus"
   | "youtube"
-  | "aha";
+  | "aha"
+  | "cinemax";
 
 export interface StreamingPlatform {
   /** Stable slug; also the suffix of the persisted `platform-*` token. */
@@ -159,6 +166,13 @@ export const PLATFORMS: readonly StreamingPlatform[] = [
     name: "aha",
     logo: "/platforms/aha.webp",
     matches: ["aha.video", "aha.com", "aha"],
+  },
+  // Appended last so every existing platform keeps its position in the rail.
+  {
+    id: "cinemax",
+    name: "CINEMAX",
+    logo: "/platforms/cinemax.webp",
+    matches: ["cinemax.com", "cinemax"],
   },
 ];
 

@@ -2,8 +2,8 @@
 /**
  * Platform-logo integrity check — run with `npm run verify:logos`.
  *
- * Nineteen brand marks ship with CINEMAX: the eighteen streaming platforms in
- * `public/platforms/` plus the project's own CINEMAX lockup. All of them are
+ * Nineteen official brand marks ship with CINEMAX: the streaming platforms in
+ * `public/platforms/`, CINEMAX itself included. All of them are
  * rendered through `<img src>` from `PLATFORMS[n].logo`, so nothing at runtime
  * can tell a renamed file, a stale path, a recoloured export or a boxed JPEG
  * apart from a correct asset — it just looks wrong on a device. This script is
@@ -60,6 +60,7 @@ const PINS = {
   "tubi.svg": { geometry: "5da1c9bc6d4b", palette: "7b4bf354734e" },
   "youtube.svg": { geometry: "e9193ec1877d", palette: "70b355a602fa" },
   "zee5.svg": { geometry: "c5e01ba00d31", palette: "318576946133" },
+  "cinemax.webp": { bytes: "5a605b48623d1e2a" },
 };
 
 /**
@@ -85,6 +86,7 @@ const PROVENANCE = {
   "discovery-plus.webp": "tv-logo/tv-logos@main:misc/media/discovery-plus.png (trimmed, WebP q92)",
   "youtube.svg": "selfhst/icons@main:svg/youtube.svg",
   "aha.webp": "tv-logo/tv-logos@main:misc/media/aha.png (trimmed, WebP q92)",
+  "cinemax.webp": "tv-logo/tv-logos@main:countries/united-states/cinemax-us.png (resized 524px wide, WebP q92)",
 };
 
 const sha1 = (value) => createHash("sha1").update(value).digest("hex").slice(0, 12);
@@ -92,9 +94,6 @@ const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex").sli
 
 let checks = 0;
 let failures = 0;
-
-/** The nineteenth logo: this project's own mark, in the shared collection. */
-const CINEMAX_ASSET = "cinemax.svg";
 
 function check(ok, label, detail = "") {
   checks += 1;
@@ -114,7 +113,7 @@ const entries = [...registry.matchAll(/id:\s*"([^"]+)",[\s\S]*?logo:\s*"([^"]+)"
   logo,
 }));
 
-check(entries.length === 18, "the registry declares all eighteen streaming platforms", `${entries.length} declared`);
+check(entries.length === 19, "the registry declares all nineteen streaming platforms", `${entries.length} declared`);
 
 const paths = new Set();
 for (const { id, logo } of entries) {
@@ -212,6 +211,13 @@ for (const { id, logo } of entries) {
       const chunk = raw.subarray(12, 16).toString("ascii");
       const alpha = chunk === "VP8X" ? Boolean(raw[20] & 0x10) : chunk === "VP8L" || chunk === "VP8 ";
       check(alpha, `${id}: keeps transparency`, chunk);
+      if (chunk === "VP8X") {
+        // Canvas size lives in the extended header: 24-bit little-endian, minus one.
+        const width = 1 + (raw[24] | (raw[25] << 8) | (raw[26] << 16));
+        const height = 1 + (raw[27] | (raw[28] << 8) | (raw[29] << 16));
+        row.dims = `${width}x${height}`;
+        check(Math.max(width, height) >= MIN_RASTER_EDGE, `${id}: enough pixels for a 3x screen`, row.dims);
+      }
     }
 
     const pinned = pin?.bytes ? sha256(raw) === pin.bytes : false;
@@ -226,22 +232,26 @@ for (const { id, logo } of entries) {
 
 const shipped = readdirSync(assetDir).filter((name) => !name.startsWith("."));
 const wired = new Set(entries.map(({ logo }) => logo.replace("/platforms/", "")));
-// The project's own mark is part of the collection, but it is deliberately NOT
-// a streaming platform: it must never appear in PLATFORMS, or the rail, the
-// platform filter and /category/platform-* would advertise a fake provider.
-wired.add(CINEMAX_ASSET);
 const orphans = shipped.filter((name) => !wired.has(name));
 check(orphans.length === 0, "no unregistered artwork in public/platforms", orphans.join(", ") || "none");
 check(payload <= PAYLOAD_BUDGET, "the whole collection stays inside the payload budget", `${(payload / 1024).toFixed(1)} KB`);
 
-/* ------------------------------------------------------- 19th mark: CINEMAX */
+/* ------------------------------------------- CINEMAX is a real platform */
 
-// The project's own identity is reused, never re-downloaded or redrawn: the
-// primary lockup is the vector component, backed by standalone files.
+// CINEMAX ships as a streaming platform exactly like Netflix: a registry entry,
+// artwork in the shared collection, a disc in the home rail, a checkbox in the
+// studio picker and its own `platform-cinemax` token. Its artwork is the CINEMAX
+// network's own brand mark from upstream - deliberately NOT this application's
+// logo, which must stay untouched where it is.
+const cinemaxEntry = entries.find(({ id }) => id === "cinemax");
+check(Boolean(cinemaxEntry), "CINEMAX: is declared as a streaming platform");
+check(cinemaxEntry?.logo === "/platforms/cinemax.webp", "CINEMAX: platform artwork is in the shared collection", cinemaxEntry?.logo ?? "-");
+
 for (const [path, label] of [
-  ["src/components/Logo.tsx", "primary lockup (emblem + wordmark, vector)"],
-  ["public/brand/cinemax-symbol.svg", "emblem, standalone vector"],
-  ["public/brand/cinemax-app-icon.svg", "app icon, vector"],
+  ["src/components/Logo.tsx", "application lockup (emblem + wordmark, vector)"],
+  ["public/brand/cinemax-symbol.svg", "application emblem, standalone vector"],
+  ["public/brand/cinemax-app-icon.svg", "application icon, vector"],
+  ["android/app/src/main/res/drawable/cinemax_emblem.xml", "native splash emblem"],
 ]) {
   let ok = true;
   try {
@@ -249,34 +259,29 @@ for (const [path, label] of [
   } catch {
     ok = false;
   }
-  check(ok, `CINEMAX: ${label} is present`, path);
+  check(ok, `application logo untouched: ${label}`, path);
 }
 
-// The collection copy must exist, be a valid standalone SVG, and be the very
-// same artwork as the file the app loads for the favicon and the dock — one
-// brand mark, two paths, no drift.
-const cinemaxAssetPath = join(assetDir, CINEMAX_ASSET);
-let cinemaxAsset = null;
-try {
-  cinemaxAsset = readFileSync(cinemaxAssetPath, "utf8");
-} catch {
-  /* reported below */
+// Nothing else in this project would notice if the application emblem were
+// quietly copied in as "the platform logo", which is exactly what must not
+// happen: the platform mark is the network's artwork, not the app's.
+check(!entries.some(({ logo }) => /cinemax\.svg$/i.test(logo)),
+  "CINEMAX: the platform logo is not the application's emblem file");
+if (cinemaxEntry) {
+  const platformArt = readFileSync(join(assetDir, "cinemax.webp"));
+  check(!platformArt.equals(readFileSync(join(root, "public", "brand", "cinemax-symbol.svg"))),
+    "CINEMAX: platform logo is not a copy of the application logo");
+  check(/cinemax\.webp$/.test(cinemaxEntry.logo), "CINEMAX: platform logo is the network brand artwork");
 }
-check(Boolean(cinemaxAsset), `CINEMAX: the mark is part of the collection (${CINEMAX_ASSET})`);
-check(!entries.some(({ id }) => id === "cinemax"), "CINEMAX is a brand mark, not a fake streaming platform");
-if (cinemaxAsset) {
-  check(/^\s*<svg[\s>]/i.test(cinemaxAsset) && /viewBox\s*=/.test(cinemaxAsset), "CINEMAX: is one SVG with a viewBox");
-  check(!/(?:xlink:)?href\s*=/.test(cinemaxAsset), "CINEMAX: references nothing external");
-  check(cinemaxAsset === readFileSync(join(root, "public", "brand", "cinemax-symbol.svg"), "utf8"),
-    "CINEMAX: collection copy is identical to the brand symbol (no drift)");
-  // The component is the renderer; its emblem path must match the asset, so a
-  // future edit to one cannot silently fork the logo.
-  const component = readFileSync(join(root, "src", "components", "Logo.tsx"), "utf8");
-  const emblemPath = (cinemaxAsset.match(/<path d="(M42\.2[^"]+)"/) || [])[1];
-  check(Boolean(emblemPath) && component.includes(emblemPath), "CINEMAX: component and asset share the same emblem geometry");
-  check(cinemaxAsset.includes("#70e0ff") && cinemaxAsset.includes("#be65f7") && cinemaxAsset.includes("#ff65ae"),
-    "CINEMAX: the original ribbon/fold gradient colours are intact");
-}
+
+// The rail and the studio picker are registry-driven, so one entry is enough to
+// make CINEMAX selectable and visible everywhere the other platforms are.
+const railSource = readFileSync(join(root, "src", "components", "PlatformRail.tsx"), "utf8");
+const pickerSource = readFileSync(join(root, "src", "components", "PlatformPicker.tsx"), "utf8");
+check(/PLATFORMS\.map/.test(railSource), "CINEMAX: the home rail renders every registered platform");
+check(/PLATFORMS\.map/.test(pickerSource), "CINEMAX: the studio picker offers every registered platform");
+check(/platformTag/.test(registry) && /PLATFORM_TAG_PREFIX = "platform-"/.test(registry),
+  "CINEMAX: selections are saved through the shared platform-token system");
 
 /* --------------------------------------------------------------------- print */
 
@@ -290,14 +295,8 @@ for (const row of rows) {
       .padStart(5)}KB  ${row.dims.padEnd(9)}  ${row.pin.padEnd(6)}  ${PROVENANCE[row.name] ?? "—"}`
   );
 }
-console.log(
-  `  ${"cinemax".padEnd(18)}  ${CINEMAX_ASSET.padEnd(24)}  svg     ${(cinemaxAsset ? Buffer.byteLength(cinemaxAsset) / 1024 : 0)
-    .toFixed(1)
-    .padStart(5)}KB  ${"64x64".padEnd(9)}  reuse   in-repo brand identity (identical to /brand/cinemax-symbol.svg)`
-);
-
 console.log("");
-console.log(`platforms: ${entries.length}  + 1 project mark  =  ${entries.length + 1} logos`);
+console.log(`platforms: ${entries.length} logos, CINEMAX included`);
 console.log(`files: ${shipped.length}  payload: ${(payload / 1024).toFixed(1)} KB`);
 console.log(`checks: ${checks}, failures: ${failures}`);
 process.exit(failures === 0 ? 0 : 1);
