@@ -6,12 +6,14 @@ import CatalogueProvider from "./CatalogueProvider";
 import WatchlistProvider from "./WatchlistProvider";
 import Header from "./Header";
 import BottomNav from "./BottomNav";
+import ScrollActivity from "./ScrollActivity";
 
 /** Keep navigation and library state mounted while App Router changes pages. */
 export default function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   if (pathname.startsWith("/gate-keeper")) return <div id="cinemax-app">{children}</div>;
   return <div id="cinemax-app"><CatalogueProvider><WatchlistProvider>
+    <ScrollActivity />
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Header />
     {children}
