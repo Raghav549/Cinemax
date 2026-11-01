@@ -14,11 +14,12 @@
  * device:
  *
  *   1. trailer classification (a real video file vs a page that must stay a link),
- *   2. the payload a share carries (title, text, link, card image, video),
+ *   2. the payload a share carries: one link, one card, the description as text,
+ *      and nothing that would render a second card in the receiving app,
  *   3. the native bridge taking precedence over the browser API,
- *   4. the Web Share call, including the generated card as a real file,
+ *   4. the Web Share call (link + text, no pre-share download),
  *   5. cancellation and the clipboard fallback,
- *   6. no invented links or placeholder artwork anywhere in the payload.
+ *   6. the official domain everywhere, and no deployment hostname in any field.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,7 +53,7 @@ function section(name) {
   console.log(`\n== ${name}`);
 }
 
-const ORIGIN = "https://cinemax-orpin.vercel.app";
+const ORIGIN = "https://cinemaxtv.space";
 
 const movie = {
   id: 42,
@@ -165,34 +166,44 @@ section("What a share carries");
   check(payload.title === "Dune: Part Two on CINEMAX", "the subject names the title and CINEMAX", payload.title);
   check(payload.url === `${ORIGIN}/share/42`, "the link opens the share landing page", payload.url);
   check(payload.imageUrl === `${ORIGIN}/api/share/card/42`, "the preview image is the generated card", payload.imageUrl);
-  check(payload.text.includes("Dune: Part Two"), "the text names the title", payload.text);
-  check(payload.text.includes("2024") && payload.text.includes("Science Fiction"), "the text carries year and genre");
-  check(payload.text.includes(payload.url), "the text contains the clickable link");
   check(
-    payload.text.includes("https://www.youtube.com/watch?v=8g18jFHCLXk"),
-    "the text links the trailer when one exists"
+    payload.text === movie.description,
+    "the message is the title's own description",
+    payload.text.slice(0, 60)
   );
-  check(payload.videoUrl === "", "a YouTube trailer is never claimed to be an attached video");
+  check(!payload.text.includes("http"), "the message contains no raw URL (the link travels as the link)");
+  check(!payload.text.includes("Trailer:"), "the message carries no trailer line");
+  check(!payload.text.includes(movie.title), "the message does not repeat the title the card already shows");
+  check(!payload.text.includes("vercel"), "the message carries no deployment hostname");
+  check(payload.videoUrl === "", "no second media item is attached next to the card");
 
   const withVideo = api.buildSharePayload(
     { ...movie, trailerUrl: "https://cdn.example.com/trailers/dune.mp4" },
     ORIGIN
   );
   check(
-    withVideo.videoUrl === "https://cdn.example.com/trailers/dune.mp4",
-    "a real video file is offered for attachment",
+    withVideo.videoUrl === "",
+    "even a real trailer file is not attached: one share is one card",
     withVideo.videoUrl
   );
 
   check(!/example\.com\/poster/.test(payload.imageUrl), "the payload never falls back to raw artwork as the preview");
 
   const sparse = api.buildSharePayload({ id: 7, title: "Untitled record" }, ORIGIN);
-  check(sparse.text.startsWith("Untitled record — watch it on CINEMAX"), "a sparse record still reads as a sentence");
+  check(sparse.text === "Watch Untitled record on CINEMAX.", "a record without a description still reads as a sentence", sparse.text);
   check(!sparse.text.includes("()"), "missing year and genre leave no empty brackets");
+
+  const long = api.buildSharePayload({ ...movie, description: "x".repeat(400) }, ORIGIN);
+  check(long.text.length <= 160, "a long description is clipped for the message", `${long.text.length}`);
+  check(long.text.endsWith("…"), "a clipped description ends in an ellipsis");
 
   const described = api.shareDescription(movie);
   check(described.length <= 220, "the description used for social cards is clipped", `${described.length}`);
   check(described.startsWith("Dune: Part Two"), "the description starts with the title");
+
+  // One link, one card: the receiving app must not find a second URL to unfurl.
+  const linkCount = [payload.text, payload.url, payload.imageUrl].join(" ").match(/https?:\/\//g)?.length ?? 0;
+  check(linkCount === 2, "the payload names exactly one destination and one card image", `${linkCount}`);
 }
 
 /* --------------------------------------------------- 3. the native bridge */
@@ -206,10 +217,11 @@ section("Android shell — native share sheet");
   check(calls.bridge.length === 1, "the bridge is called exactly once");
   const [title, text, url, imageUrl, videoUrl] = calls.bridge[0] ?? [];
   check(title === "Dune: Part Two on CINEMAX", "the bridge receives the subject", title);
-  check(text?.includes(`${ORIGIN}/share/42`), "the bridge receives the text with the link");
+  check(text === movie.description, "the bridge receives the description as the text", (text ?? "").slice(0, 40));
+  check(!text?.includes("http"), "the bridge text carries no raw URL");
   check(url === `${ORIGIN}/share/42`, "the bridge receives the landing URL", url);
   check(imageUrl === `${ORIGIN}/api/share/card/42`, "the bridge receives the card image", imageUrl);
-  check(videoUrl === "", "the bridge receives no video for a YouTube trailer");
+  check(videoUrl === "", "the bridge receives no second media item at all");
   check(calls.share.length === 0, "the browser share API is not used inside the app");
   check(calls.clipboard.length === 0, "nothing is copied to the clipboard inside the app");
 }
@@ -228,7 +240,7 @@ section("Browser — Web Share API");
   };
   const { api, calls } = load({
     share: async () => {},
-    canShare: (data) => Array.isArray(data.files) && data.files.length > 0,
+    canShare: () => true,
     clipboard: async () => {},
     fetchImpl,
   });
@@ -239,9 +251,9 @@ section("Browser — Web Share API");
   const data = calls.share[0] ?? {};
   check(data.title === "Dune: Part Two on CINEMAX", "the browser receives the subject");
   check(data.url === `${ORIGIN}/share/42`, "the browser receives the landing URL");
-  check(fetched.some((url) => url.endsWith("/api/share/card/42")), "the card image is fetched for attachment");
-  check(Array.isArray(data.files) && data.files.length === 1, "the card is attached as a real file", `${data.files?.length}`);
-  check(data.files?.[0] instanceof File, "the attachment is a File the share sheet can hand over");
+  check(data.text === movie.description, "the browser receives the description as the text");
+  check(data.files === undefined, "nothing is downloaded before sharing, so the sheet opens at once");
+  check(fetched.length === 0, "sharing performs no network request of its own", `${fetched.length}`);
   check(calls.clipboard.length === 0, "no clipboard fallback when sharing succeeded");
 }
 
@@ -284,5 +296,33 @@ section("Cancellation and fallbacks");
 }
 
 console.log("");
+/* ------------------------------------------- 6. the official domain, always */
+
+section("Official domain");
+{
+  const { api } = load();
+  check(api.SHARE_SITE_URL === "https://cinemaxtv.space", "the canonical origin is the official domain", api.SHARE_SITE_URL);
+  // Even when the page itself is served from a deployment hostname, the link a
+  // share carries is the official one.
+  const preview = load();
+  preview.windowObject.location.origin = "https://cinemax-orpin.vercel.app";
+  const previewPayload = preview.api.buildSharePayload(movie);
+  check(
+    previewPayload.url === "https://cinemaxtv.space/share/42",
+    "a share made from a deployment hostname still points at the official domain",
+    previewPayload.url
+  );
+
+  for (const [label, value] of [
+    ["landing page", api.sharePageUrl(movie.id, api.SHARE_SITE_URL)],
+    ["title page", api.titleUrl(movie.id, api.SHARE_SITE_URL)],
+    ["card image", api.shareCardUrl(movie.id, api.SHARE_SITE_URL)],
+    ["payload", JSON.stringify(api.buildSharePayload(movie, api.SHARE_SITE_URL))],
+  ]) {
+    check(!/vercel\.app/i.test(value), `the ${label} names no deployment host`, value.slice(0, 48));
+    check(value.includes("cinemaxtv.space"), `the ${label} points at the official domain`);
+  }
+}
+
 console.log(`checks: ${checks}, failures: ${failures}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -34,12 +34,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep links into the production deployment open in the app. -->
+            <!-- Deep links on the official domain open in the app. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="cinemax-orpin.vercel.app" />
+                <data android:scheme="https" android:host="cinemaxtv.space" />
+                <data android:scheme="https" android:host="www.cinemaxtv.space" />
             </intent-filter>
         </activity>
 

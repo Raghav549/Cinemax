@@ -11,8 +11,16 @@ package com.cinemax.app;
  */
 public final class NavigationPolicy {
 
-    /** Production deployment host - never localhost, never a dev/preview server. */
-    public static final String PRODUCTION_HOST = "cinemax-orpin.vercel.app";
+    /**
+     * The official production host - never localhost, never a dev/preview server.
+     *
+     * The app is a WebView around this one site, so this is also the host every
+     * share link points at and the host declared for Android App Links.
+     */
+    public static final String PRODUCTION_HOST = "cinemaxtv.space";
+
+    /** The deployment hostname used by earlier builds; still handled in-app. */
+    private static final String LEGACY_HOST = "cinemax-orpin.vercel.app";
 
     /** Vercel preview aliases of the same deployment. */
     private static final String VERCEL_SUFFIX = ".vercel.app";
@@ -65,13 +73,20 @@ public final class NavigationPolicy {
         return Decision.OPEN_EXTERNALLY;
     }
 
-    /** True for the production host and its Vercel aliases. */
+    /**
+     * True for the official host, its www form, the deployment hostname earlier
+     * versions were built against, and Vercel preview aliases of the deployment.
+     * Everything else is handed to the system.
+     */
     public static boolean isCinemaxHost(String host) {
         String normalizedHost = normalize(host);
         if (normalizedHost.isEmpty()) {
             return false;
         }
-        return PRODUCTION_HOST.equals(normalizedHost) || normalizedHost.endsWith(VERCEL_SUFFIX);
+        return PRODUCTION_HOST.equals(normalizedHost)
+                || ("www." + PRODUCTION_HOST).equals(normalizedHost)
+                || LEGACY_HOST.equals(normalizedHost)
+                || normalizedHost.endsWith(VERCEL_SUFFIX);
     }
 
     /**
@@ -122,10 +137,11 @@ public final class NavigationPolicy {
         return false;
     }
 
-    /** True for one of the canonical production entry points. */
+    /** True for one of the canonical production entry points (the App Link hosts). */
     public static boolean isProductionUrl(String scheme, String host) {
+        String normalizedHost = normalize(host);
         return ("https".equals(normalize(scheme)) || "http".equals(normalize(scheme)))
-                && PRODUCTION_HOST.equals(normalize(host));
+                && (PRODUCTION_HOST.equals(normalizedHost) || ("www." + PRODUCTION_HOST).equals(normalizedHost));
     }
 
     private static String normalize(String value) {

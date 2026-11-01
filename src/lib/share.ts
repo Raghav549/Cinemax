@@ -1,17 +1,24 @@
 /**
  * Sharing a title — the rules both platforms follow.
  *
- * The share always carries the same four things: a professional line of text, a
- * link to the title's own page, a generated preview image built from that
- * title's artwork, and (where it exists) a reference to its trailer. Nothing
- * here fabricates a poster, a title or a trailer, and nothing claims a platform
- * relationship.
+ * What a share contains, and what it deliberately does not:
+ *
+ *   · one destination link — the title's own page on the official domain;
+ *   · that page's description, as the message text;
+ *   · one preview card, which the receiving app builds from that page's own
+ *     Open Graph metadata (or from the attached CINEMAX card image).
+ *
+ * It does not contain a second copy of the title as a separate message, a raw
+ * deployment hostname, a trailer URL, or a second link: every one of those
+ * produces a duplicate card in the receiving app. Nothing here fabricates a
+ * poster, a title or a trailer, and nothing claims a platform relationship.
  *
  * This module is isomorphic: the website uses it to prepare Web Share data, and
  * the Android shell receives exactly these fields through the native bridge.
  */
 
-export const SHARE_SITE_URL = "https://cinemax-orpin.vercel.app";
+/** The official origin. Never a deployment preview hostname. */
+export const SHARE_SITE_URL = "https://cinemaxtv.space";
 
 export interface ShareableTitle {
   id: number;
@@ -34,10 +41,25 @@ export interface TrailerTarget {
   thumbnail: string | null;
 }
 
-/** Origin of the current page, falling back to the canonical deployment. */
+/**
+ * The origin a share points at.
+ *
+ * Inside the site this is the page's own origin, except on a deployment
+ * hostname (`*.vercel.app`) or a local server: a link shared from there must
+ * still open the official site, so the official origin is substituted. This is
+ * the rule that keeps a preview hostname out of every message, card and
+ * canonical URL.
+ */
 export function currentOrigin(): string {
-  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
-  return SHARE_SITE_URL;
+  const origin = typeof window !== "undefined" ? window.location?.origin : "";
+  if (!origin) return SHARE_SITE_URL;
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    if (host === "localhost" || host.endsWith(".vercel.app") || host === "127.0.0.1") return SHARE_SITE_URL;
+    return origin.replace(/\/$/, "");
+  } catch {
+    return SHARE_SITE_URL;
+  }
 }
 
 /** The page a share points at: a title page that renders the rich card itself. */
@@ -117,13 +139,24 @@ export function shareSubtitle(movie: ShareableTitle): string {
   return parts.join(" · ");
 }
 
-/** The one-line message that accompanies the link. */
-export function shareMessage(movie: ShareableTitle, origin: string = currentOrigin()): string {
-  const subtitle = shareSubtitle(movie);
-  const lead = subtitle ? `${movie.title} (${subtitle})` : movie.title;
-  const trailer = trailerTarget(movie.trailerUrl);
-  const trailerLine = trailer ? `\nTrailer: ${trailer.url}` : "";
-  return `${lead} — watch it on CINEMAX\n${sharePageUrl(movie.id, origin)}${trailerLine}`;
+/**
+ * The message that travels with the link.
+ *
+ * It is the title's own description and nothing else. The title, year, genre and
+ * poster belong to the preview card the receiving app renders from the link, so
+ * repeating them here is what used to produce a text bubble plus a card. The
+ * destination URL is not in the text either: both share paths pass it as the
+ * link (`navigator.share`'s `url`, Android's `EXTRA_TEXT` composition), which is
+ * what makes the card clickable without printing a raw address twice.
+ */
+export function shareMessage(movie: ShareableTitle): string {
+  const summary = (movie.description ?? "").trim().replace(/\s+/g, " ");
+  if (!summary) {
+    // A record with no description still needs one readable sentence.
+    return `Watch ${movie.title} on CINEMAX.`;
+  }
+  const clipped = summary.length > 160 ? `${summary.slice(0, 157).trimEnd()}…` : summary;
+  return clipped;
 }
 
 export function shareSubject(movie: ShareableTitle): string {
@@ -161,16 +194,15 @@ export interface SharePayload {
 }
 
 export function buildSharePayload(movie: ShareableTitle, origin: string = currentOrigin()): SharePayload {
-  const trailer = trailerTarget(movie.trailerUrl);
   return {
     title: shareSubject(movie),
-    text: shareMessage(movie, origin),
+    text: shareMessage(movie),
     url: sharePageUrl(movie.id, origin),
     imageUrl: shareCardUrl(movie.id, origin),
-    // Only a real, attachable video file is offered as a video. A YouTube or
-    // Vimeo trailer stays a link (see trailerTarget), so the shell never claims
-    // to be sending a video that it cannot send.
-    videoUrl: trailer?.kind === "video" ? trailer.url : "",
+    // No attached trailer. A second media item next to the card image is a
+    // second card in the receiving app, and the trailer already has its own
+    // place on the page the link opens.
+    videoUrl: "",
   };
 }
 
@@ -191,7 +223,8 @@ export async function shareTitle(movie: ShareableTitle, origin: string = current
       bridge.share(payload.title, payload.text, payload.url, payload.imageUrl, payload.videoUrl);
       return "shared";
     } catch {
-      return "failed";
+      // A bridge that refuses must not become a dead button: fall through to the
+      // browser's own share sheet, and to the clipboard only after that.
     }
   }
 
@@ -199,14 +232,12 @@ export async function shareTitle(movie: ShareableTitle, origin: string = current
     return copyShareText(payload);
   }
 
+  // One link, one description. Nothing is downloaded first: the receiving app
+  // renders the CINEMAX card from the page's own Open Graph image, so the sheet
+  // opens on the first tap instead of after a multi-hundred-kilobyte fetch.
   const data: ShareData = { title: payload.title, text: payload.text, url: payload.url };
   try {
-    const files = await shareFiles(payload);
-    if (files.length && typeof navigator.canShare === "function" && navigator.canShare({ files })) {
-      await navigator.share({ ...data, files });
-    } else {
-      await navigator.share(data);
-    }
+    await navigator.share(data);
     return "shared";
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") return "cancelled";
@@ -215,39 +246,14 @@ export async function shareTitle(movie: ShareableTitle, origin: string = current
   }
 }
 
-/** The generated preview card, plus the trailer file when it can be attached. */
-async function shareFiles(payload: SharePayload): Promise<File[]> {
-  const files: File[] = [];
-  const card = await fetchAsFile(payload.imageUrl, `cinemax-${payload.url.split("/").pop()}.jpg`, 4 * 1024 * 1024);
-  if (card) files.push(card);
-
-  if (payload.videoUrl) {
-    // 24 MB is roughly a minute of 1080p trailer and keeps the share quick; a
-    // larger file would stall the share sheet and often fail outright.
-    const video = await fetchAsFile(payload.videoUrl, `cinemax-trailer.mp4`, 24 * 1024 * 1024);
-    if (video) files.push(video);
-  }
-  return files;
-}
-
-async function fetchAsFile(url: string, name: string, limitBytes: number): Promise<File | null> {
-  try {
-    const response = await fetch(url, { mode: "cors", credentials: "omit" });
-    if (!response.ok) return null;
-    const length = Number(response.headers.get("content-length") ?? "0");
-    if (length > limitBytes) return null;
-    const blob = await response.blob();
-    if (!blob.size || blob.size > limitBytes) return null;
-    const type = blob.type || (name.endsWith(".mp4") ? "video/mp4" : "image/jpeg");
-    return new File([blob], name, { type });
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * The last resort when a browser has neither a native sheet nor Web Share. The
+ * copied text carries the link explicitly, because a description on its own is
+ * not something the recipient can open.
+ */
 async function copyShareText(payload: SharePayload): Promise<ShareOutcome> {
   try {
-    await navigator.clipboard.writeText(`${payload.text}`);
+    await navigator.clipboard.writeText(`${payload.text}\n${payload.url}`);
     return "copied";
   } catch {
     return "unavailable";

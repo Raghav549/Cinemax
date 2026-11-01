@@ -12,6 +12,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
+ * A delivered plan is stable for a short while (the resolver itself keeps it for
+ * minutes), so the browser may reuse it instead of asking again on every play.
+ * `private` keeps a personalised plan out of any shared cache, and failures are
+ * never cached.
+ */
+const PLAN_CACHE = "private, max-age=30, stale-while-revalidate=60";
+
+/**
  * Playback plan for a catalogue title's stored source (read-only).
  *
  * The movie's own sanitised `videoUrl` is used - the client never supplies a
@@ -38,14 +46,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!resolution.ok) {
         return NextResponse.json({ error: resolution.message }, { status: 422, headers: { "Cache-Control": "no-store" } });
       }
-      return NextResponse.json({ resolution }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ resolution }, { headers: { "Cache-Control": PLAN_CACHE } });
     }
 
     const web = await resolveWebPlayback(movie.videoUrl, { embedderOrigin: req.nextUrl.origin });
     if (!web.ok) {
       return NextResponse.json({ error: web.message }, { status: web.status, headers: { "Cache-Control": "no-store" } });
     }
-    return NextResponse.json({ resolution: web.resolution }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ resolution: web.resolution }, { headers: { "Cache-Control": PLAN_CACHE } });
   } catch (e) {
     console.error("[api/movies/:id/playback] failed:", e);
     return NextResponse.json({ error: describeDbError(e).message }, { status: 500, headers: { "Cache-Control": "no-store" } });

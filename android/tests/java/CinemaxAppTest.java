@@ -64,7 +64,9 @@ public final class CinemaxAppTest {
         section("NavigationPolicy");
 
         decide("https", HOST, STAY, "production https stays in the app");
-        decide("HTTPS", "CINEMAX-ORPIN.VERCEL.APP", STAY, "host and scheme matching is case-insensitive");
+        decide("HTTPS", "CINEMAXTV.SPACE", STAY, "host and scheme matching is case-insensitive");
+        decide("https", "www.cinemaxtv.space", STAY, "the www form of the official host stays in the app");
+        decide("https", "cinemax-orpin.vercel.app", STAY, "the deployment host earlier builds used stays in the app");
         decide("https", "cinemax-orpin-git-main-raghav549.vercel.app", STAY, "Vercel preview alias stays in the app");
         decide(null, null, STAY, "relative same-origin navigation stays in the app");
         decide("about", null, STAY, "about:blank stays in the app");

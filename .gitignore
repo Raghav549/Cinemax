@@ -25,6 +25,11 @@ android/keystore/cinemax-debug.keystore
 
 # Generated output of the render-cost harness (.perf/run.mjs)
 .perf/.bundle.cjs
+.perf/.playback.bundle.mjs
+.perf/.playback-measure.cjs
+.perf/.playback.bundle.cjs
+.perf/.app-promo-check.cjs
+.perf/playback-measure.json
 .perf/last-run.json
 .perf/last-run.dev.json
 

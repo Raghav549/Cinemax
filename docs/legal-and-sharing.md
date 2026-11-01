@@ -94,13 +94,14 @@ to those routes.
 
 | Concern | Behaviour |
 | ------- | --------- |
-| Link | `/share/<id>` — a page that actually shows what was shared |
-| Image | `/api/share/card/<id>` — the generated 1200×630 card, attached as a real file |
-| Text | `Title (movie · 2024 · Science-Fiction) — watch it on CINEMAX` + the link |
-| Video | attached **only** when the record points at a real video file |
-| YouTube / Vimeo | kept as a link (plus the host's own still as a still) — never claimed as a video |
+| Origin | `https://cinemaxtv.space` — the official domain. A share made from a deployment hostname (`*.vercel.app`) or a local server is rewritten to it |
+| Link | `/share/<id>` — a page that actually shows what was shared; this is the **only** URL a share carries |
+| Card | the receiving app builds one preview card from that page's own `og:`/`twitter:` tags (title, year · genre, synopsis, poster, the generated 1200×630 image) |
+| Text | the title's **description only** — no repeated title, no raw address, no trailer line, so nothing renders a second card |
+| Attachments | at most one file: the generated card image, exposed as a `content://` URI. A trailer is never attached, and the two share paths never send two media items |
+| YouTube / Vimeo | kept as a link for the page's own trailer section — never claimed as a shared video |
 | HLS / DASH | a link; adaptive streams cannot be attached to a share |
-| No Web Share | the link is copied to the clipboard and the visitor is told |
+| No Web Share | description **and** link are copied to the clipboard, and the visitor is told |
 
 `src/lib/share-card.tsx` draws the card (poster, backdrop, CINEMAX emblem and
 wordmark, title, type · year · genre, synopsis, "Watch on CINEMAX"), and
@@ -123,10 +124,21 @@ the bridge when it exists:
 ```
 page  →  window.CinemaxNative.share(title, text, url, imageUrl, videoUrl)
       →  MainActivity.shareTitle → ShareLauncher.share
-      →  download card (+ trailer) into cache/share on a background thread
-      →  ShareFileProvider content:// URIs with a read grant
-      →  Intent.ACTION_SEND / ACTION_SEND_MULTIPLE + Intent.createChooser
+      →  card from cache/share if it is already there (instant),
+         otherwise a download with a 1.5 s budget that keeps running in the
+         background for the next share of the same title
+      →  ShareFileProvider content:// URI with a read grant
+      →  Intent.ACTION_SEND + Intent.createChooser
 ```
+
+The chooser no longer waits for the network. Before, a share of a title that had
+never been shared on that device waited for the card (and sometimes a trailer)
+before the sheet appeared — several seconds on a phone network, which reads as a
+share button that does nothing. Now the sheet opens at once: with the card
+attached when it is cached, and otherwise with the text and the link, which the
+receiving app unfurls into the same CINEMAX card from the page's Open Graph
+metadata. `EXTRA_TEXT` is the description followed by the destination link, so
+the receiving app has one URL to unfurl and the visitor has something to tap.
 
 `ShareFileProvider` is a small platform `ContentProvider` (this build links
 against the platform SDK only, so AndroidX's FileProvider is not available). It
@@ -149,7 +161,7 @@ npm run build          → ok; /license, /copyright, /attributions, /disclaimer,
                          /privacy prerendered static; /share/[id] and
                          /api/share/card/[id] dynamic
 npm run verify:legal   → checks: 140, failures: 0
-npm run verify:share   → checks: 49, failures: 0
+npm run verify:share   → checks: 64, failures: 0
 npm run verify:logos   → checks: 317, failures: 0
 npm run verify:platforms → checks: 42, failures: 0
 node .perf/run.mjs     → 0 re-renders on a no-op refetch, 200 cards, 19 platform
@@ -163,7 +175,7 @@ contents anchor resolves, all nineteen platform names and their image files, the
 sibling cross-links, the "no affiliation" sentence, and the real storage keys on
 the privacy page.
 
-`verify:share` compiles `src/lib/share.ts` with the project's own TypeScript and
+`verify:share` (64 checks) compiles `src/lib/share.ts` with the project's own TypeScript and
 runs it in a sandbox with a fake window/navigator/fetch: trailer classification,
 the payload, the native bridge taking precedence, Web Share with the card attached
 as a `File`, cancellation, and the clipboard fallback.

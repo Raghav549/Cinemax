@@ -1,3 +1,26 @@
+# Performance harnesses
+
+This repository has three, each aimed at a different layer. All of them compile
+the real source and print numbers; none of them asserts a threshold.
+
+| Harness | Command | Measures |
+| ------- | ------- | -------- |
+| Render cost | `node .perf/run.mjs` | re-renders, image hints, console issues for 200 cards |
+| Playback resolver | `npm run measure:playback` | wall-clock time, request count and connections for the server-side provider inspection |
+| Press-to-player | `npm run measure:player` | time from "play" to the player element existing, cold vs. warmed on intent |
+
+The last two exist because opening a title inside CINEMAX was slower than opening
+the same provider page on its own. `scripts/measure-playback.mjs` runs the real
+`web-resolver.ts` against a local fixture provider (iframe player, three refusing
+frames then one open frame, six slow media candidates, five dead candidates then
+a live one, six candidates that never answer) and reports the before/after
+figures in `docs/round7-report.md` §3. `.perf/playback-run.mjs` renders the real
+`PlaybackOverlay` in jsdom with a fixed plan-API latency and records when the
+`<iframe>`/`<video>` element appears — that interval is exactly what
+`plan-cache.ts` and the intent-prefetch remove.
+
+---
+
 # Render-cost harness (`/.perf`)
 
 This repository has no headless browser, emulator or device in the environment it

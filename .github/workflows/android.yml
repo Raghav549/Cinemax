@@ -191,6 +191,12 @@ jobs:
       - name: Verify the sharing rules
         run: npm run verify:share
 
+      # The APK the download button hands out is the one this workflow builds;
+      # this checks the artifact that is committed for the website, so a broken
+      # or stale file cannot be shipped by a green web build.
+      - name: Verify the advertised app package
+        run: npm run verify:promo
+
       - name: Production build
         run: npm run build
         env:
