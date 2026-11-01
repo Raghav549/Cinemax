@@ -4,6 +4,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import Artwork from "@/components/Artwork";
+import PlatformPicker from "@/components/PlatformPicker";
+import PlatformLogo from "@/components/PlatformLogo";
+import {
+  catalogueTokens,
+  platformsForMovie,
+  platformsFromTags,
+  withPlatformTags,
+  type PlatformId,
+} from "@/lib/platforms";
 
 interface Movie { id: number; title: string; description: string | null; year: number | null; rating: string | null; duration: string | null; genre: string | null; language: string | null; type: string | null; director: string | null; cast: string | null; posterUrl: string | null; backdropUrl: string | null; videoUrl: string | null; subtitleUrl: string | null; subtitleLanguage: string | null; rightsConfirmed: boolean | null; catalogStatus?: string | null; sourceType?: string | null; licenseInfo?: string | null; sourceAttribution?: string | null; releaseDate?: string | null; trailerUrl?: string | null; lastVerifiedAt?: string | null; category: string | null; featured: boolean | null; }
 interface Slide { id: number; title: string; subtitle: string | null; imageUrl: string | null; movieId: number | null; sortOrder: number | null; active: boolean | null; }
@@ -33,7 +42,7 @@ export default function AdminDashboard() {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mSubtitle, setMSubtitle] = useState(""); const [mSubtitleLanguage, setMSubtitleLanguage] = useState("en"); const [mRightsConfirmed, setMRightsConfirmed] = useState(false); const [mCatalogStatus, setMCatalogStatus] = useState("verified_playable"); const [mSourceType, setMSourceType] = useState("public_domain"); const [mLicenseInfo, setMLicenseInfo] = useState(""); const [mSourceAttribution, setMSourceAttribution] = useState(""); const [mReleaseDate, setMReleaseDate] = useState(""); const [mTrailerUrl, setMTrailerUrl] = useState(""); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false);
+  const [mTitle, setMTitle] = useState(""); const [mDesc, setMDesc] = useState(""); const [mYear, setMYear] = useState(2024); const [mRating, setMRating] = useState("8.0"); const [mDuration, setMDuration] = useState("2h 0m"); const [mGenre, setMGenre] = useState(""); const [mLang, setMLang] = useState("English"); const [mType, setMType] = useState("Movie"); const [mDirector, setMDirector] = useState(""); const [mCast, setMCast] = useState(""); const [mPoster, setMPoster] = useState(""); const [mBackdrop, setMBackdrop] = useState(""); const [mVideo, setMVideo] = useState(""); const [mSubtitle, setMSubtitle] = useState(""); const [mSubtitleLanguage, setMSubtitleLanguage] = useState("en"); const [mRightsConfirmed, setMRightsConfirmed] = useState(false); const [mCatalogStatus, setMCatalogStatus] = useState("verified_playable"); const [mSourceType, setMSourceType] = useState("public_domain"); const [mLicenseInfo, setMLicenseInfo] = useState(""); const [mSourceAttribution, setMSourceAttribution] = useState(""); const [mReleaseDate, setMReleaseDate] = useState(""); const [mTrailerUrl, setMTrailerUrl] = useState(""); const [mCategory, setMCategory] = useState("trending"); const [mFeatured, setMFeatured] = useState(false); const [mPlatforms, setMPlatforms] = useState<PlatformId[]>([]);
 
   const [sTitle, setSTitle] = useState(""); const [sSubtitle, setSSubtitle] = useState(""); const [sImage, setSImage] = useState(""); const [sMovieId, setSMovieId] = useState<number | null>(null); const [sOrder, setSOrder] = useState(0); const [sActive, setSActive] = useState(true);
 
@@ -120,18 +129,18 @@ export default function AdminDashboard() {
     }
   };
 
-  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMSubtitle(""); setMSubtitleLanguage("en"); setMRightsConfirmed(false); setMCatalogStatus("verified_playable"); setMSourceType("public_domain"); setMLicenseInfo(""); setMSourceAttribution(""); setMReleaseDate(""); setMTrailerUrl(""); setMCategory("trending"); setMFeatured(false); setEditingMovie(null); };
+  const resetMovie = () => { setMTitle(""); setMDesc(""); setMYear(2024); setMRating("8.0"); setMDuration("2h 0m"); setMGenre(""); setMLang("English"); setMType("Movie"); setMDirector(""); setMCast(""); setMPoster(""); setMBackdrop(""); setMVideo(""); setMSubtitle(""); setMSubtitleLanguage("en"); setMRightsConfirmed(false); setMCatalogStatus("verified_playable"); setMSourceType("public_domain"); setMLicenseInfo(""); setMSourceAttribution(""); setMReleaseDate(""); setMTrailerUrl(""); setMCategory("trending"); setMFeatured(false); setMPlatforms([]); setEditingMovie(null); };
   const resetSlide = () => { setSTitle(""); setSSubtitle(""); setSImage(""); setSMovieId(null); setSOrder(0); setSActive(true); setEditingSlide(null); };
   const resetCat = () => { setCName(""); setCSlug(""); setEditingCat(null); };
 
-  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMSubtitle(m.subtitleUrl||""); setMSubtitleLanguage(m.subtitleLanguage||"en"); setMRightsConfirmed(m.rightsConfirmed||false); setMCatalogStatus(m.catalogStatus||"verified_playable"); setMSourceType(m.sourceType||"public_domain"); setMLicenseInfo(m.licenseInfo||""); setMSourceAttribution(m.sourceAttribution||""); setMReleaseDate(m.releaseDate||""); setMTrailerUrl(m.trailerUrl||""); setMCategory(m.category||"trending"); setMFeatured(m.featured||false); setShowMovieForm(true); };
+  const editMovie = (m: Movie) => { setEditingMovie(m); setMTitle(m.title); setMDesc(m.description||""); setMYear(m.year||2024); setMRating(m.rating||"8.0"); setMDuration(m.duration||""); setMGenre(m.genre||""); setMLang(m.language||""); setMType(m.type||"Movie"); setMDirector(m.director||""); setMCast(m.cast||""); setMPoster(m.posterUrl||""); setMBackdrop(m.backdropUrl||""); setMVideo(m.videoUrl||""); setMSubtitle(m.subtitleUrl||""); setMSubtitleLanguage(m.subtitleLanguage||"en"); setMRightsConfirmed(m.rightsConfirmed||false); setMCatalogStatus(m.catalogStatus||"verified_playable"); setMSourceType(m.sourceType||"public_domain"); setMLicenseInfo(m.licenseInfo||""); setMSourceAttribution(m.sourceAttribution||""); setMReleaseDate(m.releaseDate||""); setMTrailerUrl(m.trailerUrl||""); setMCategory(catalogueTokens(m.category)[0] || "trending"); setMPlatforms(platformsFromTags(m.category)); setMFeatured(m.featured||false); setShowMovieForm(true); };
   const editSlide = (s: Slide) => { setEditingSlide(s); setSTitle(s.title); setSSubtitle(s.subtitle||""); setSImage(s.imageUrl||""); setSMovieId(s.movieId); setSOrder(s.sortOrder||0); setSActive(s.active!==false); setShowSlideForm(true); };
   const editCat = (c: Category) => { setEditingCat(c); setCName(c.name); setCSlug(c.slug); setShowCatForm(true); };
 
   const saveMovie = async () => {
     if (!mTitle.trim()) { flash("Title is required", "error"); return; }
     if (mVideo.trim().toLowerCase().startsWith("magnet:") && !mRightsConfirmed) { flash("Confirm public distribution rights before saving a magnet stream", "error"); return; }
-    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,subtitleUrl:mSubtitle,subtitleLanguage:mSubtitleLanguage,rightsConfirmed:mRightsConfirmed,catalogStatus:mCatalogStatus,sourceType:mSourceType,licenseInfo:mLicenseInfo,sourceAttribution:mSourceAttribution,releaseDate:mReleaseDate,trailerUrl:mTrailerUrl,category:mCategory,featured:mFeatured };
+    const body = { title:mTitle,description:mDesc,year:mYear,rating:mRating,duration:mDuration,genre:mGenre,language:mLang,type:mType,director:mDirector,cast:mCast,posterUrl:mPoster,backdropUrl:mBackdrop,videoUrl:mVideo,subtitleUrl:mSubtitle,subtitleLanguage:mSubtitleLanguage,rightsConfirmed:mRightsConfirmed,catalogStatus:mCatalogStatus,sourceType:mSourceType,licenseInfo:mLicenseInfo,sourceAttribution:mSourceAttribution,releaseDate:mReleaseDate,trailerUrl:mTrailerUrl,category:withPlatformTags(mCategory, mPlatforms),featured:mFeatured };
     const url = editingMovie ? `/api/movies/${editingMovie.id}` : "/api/movies";
     setBusy(true);
     const result = await mutate(url, editingMovie ? "PUT" : "POST", body);
@@ -223,7 +232,7 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <nav style={{ display: "flex", gap: 8, padding: "16px 20px", overflowX: "auto" }} className="hide-scrollbar">
         {(["overview","movies","slides","categories","lists"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 12, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", border: "none", cursor: "pointer", flexShrink: 0, background: tab===t ? "linear-gradient(115deg, #457afa, #9554de)" : "var(--surface)", color: tab===t ? "#fff" : "var(--text-soft)" }}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 20px", borderRadius: 12, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", border: "none", cursor: "pointer", flexShrink: 0, background: tab===t ? "var(--gloss-fill-strong)" : "var(--surface)", boxShadow: tab===t ? "var(--gloss-shadow)" : "none", color: tab===t ? "#fff" : "var(--text-soft)" }}>{t}</button>
         ))}
       </nav>
 
@@ -257,11 +266,11 @@ export default function AdminDashboard() {
                     loadData();
                   }}
                   disabled={busy}
-                  style={{ padding: "10px 16px", borderRadius: 12, background: "rgba(56, 189, 248, 0.14)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#7dd3fc", fontWeight: 800, fontSize: 11, cursor: "pointer" }}
+                  style={{ padding: "10px 16px", borderRadius: 12, background: "var(--gloss-fill-strong)", border: "1px solid var(--gloss-border)", boxShadow: "var(--gloss-shadow-tight)", color: "#ecebf1", fontWeight: 800, fontSize: 11, cursor: "pointer" }}
                 >
                   Verify Sources
                 </button>
-                <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+                <button onClick={() => { resetMovie(); setShowMovieForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
               </div>
             </div>
 
@@ -273,6 +282,7 @@ export default function AdminDashboard() {
                     <div><label style={labelStyle}>Title</label><input className="glass-input" value={mTitle} onChange={e=>setMTitle(e.target.value)} /></div>
                     <div><label style={labelStyle}>Category</label><select className="glass-input" value={mCategory} onChange={e=>setMCategory(e.target.value)}><option value="trending">Trending</option>{categories.map(c=><option key={c.id} value={c.slug}>{c.name}</option>)}</select></div>
                   </div>
+                  <PlatformPicker value={mPlatforms} onChange={setMPlatforms} disabled={busy} />
                   <div><label style={labelStyle}>Synopsis</label><textarea className="glass-input" rows={3} value={mDesc} onChange={e=>setMDesc(e.target.value)} style={{ resize: "vertical", minHeight: 80 }} /></div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
                     <div><label style={labelStyle}>Year</label><input type="number" className="glass-input" value={mYear} onChange={e=>setMYear(parseInt(e.target.value)||2024)} /></div>
@@ -334,7 +344,7 @@ export default function AdminDashboard() {
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={mFeatured} onChange={e=>setMFeatured(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Featured</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveMovie} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowMovieForm(false); resetMovie(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -347,7 +357,18 @@ export default function AdminDashboard() {
                   <div style={{ width: 44, height: 60, borderRadius: 8, overflow: "hidden", flexShrink: 0, background: "#111" }}><Artwork src={m.posterUrl} sizes="48px" /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</p>
-                    <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2, fontWeight: 600 }}>{m.year} • {m.type} • {m.rating}★</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>{m.year} • {m.type} • {m.rating}★</p>
+                      {platformsForMovie(m).length > 0 && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 7px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                          {platformsForMovie(m).slice(0, 4).map((id) => (
+                            <span key={id} style={{ display: "inline-flex", height: 11, alignItems: "center" }}>
+                              <PlatformLogo id={id} />
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => editMovie(m)} style={{ width: 34, height: 34, borderRadius: 8, background: "rgba(255,255,255,0.05)", border: "none", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✏️</button>
@@ -364,7 +385,7 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Hero Slides ({slides.length})</h2>
-              <button onClick={() => { resetSlide(); setShowSlideForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetSlide(); setShowSlideForm(true); }} style={{ padding: "10px 20px", borderRadius: 12, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showSlideForm && (
@@ -380,7 +401,7 @@ export default function AdminDashboard() {
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><input type="checkbox" checked={sActive} onChange={e=>setSActive(e.target.checked)} style={{ width: 18, height: 18 }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Active</span></label>
                   <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                    <button onClick={saveSlide} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveSlide} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowSlideForm(false); resetSlide(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>
@@ -410,7 +431,7 @@ export default function AdminDashboard() {
           <div style={{ marginTop: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 800 }}>Categories ({categories.length})</h2>
-              <button onClick={() => { resetCat(); setShowCatForm(!showCatForm); }} style={{ padding: "10px 20px", borderRadius: 12, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
+              <button onClick={() => { resetCat(); setShowCatForm(!showCatForm); }} style={{ padding: "10px 20px", borderRadius: 12, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 800, fontSize: 11, border: "none", cursor: "pointer" }}>+ Add</button>
             </div>
 
             {showCatForm && (
@@ -420,7 +441,7 @@ export default function AdminDashboard() {
                   <div><label style={labelStyle}>Name</label><input className="glass-input" value={cName} onChange={e=>setCName(e.target.value)} /></div>
                   <div><label style={labelStyle}>Slug (optional)</label><input className="glass-input" value={cSlug} onChange={e=>setCSlug(e.target.value)} placeholder="auto-generated" /></div>
                   <div style={{ display: "flex", gap: 12 }}>
-                    <button onClick={saveCat} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "linear-gradient(115deg, #457afa, #9554de)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
+                    <button onClick={saveCat} disabled={busy} style={{ flex: 1, padding: "14px 0", borderRadius: 14, background: "var(--gloss-fill-strong)", boxShadow: "var(--gloss-shadow)", color: "#fff", fontWeight: 900, fontSize: 12, border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>Save</button>
                     <button onClick={() => { setShowCatForm(false); resetCat(); }} style={{ padding: "14px 24px", borderRadius: 14, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Cancel</button>
                   </div>
                 </div>

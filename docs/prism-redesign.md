@@ -1,5 +1,12 @@
 # Cinemax / Prism redesign
 
+> **Update — November 2026.** The blue/blue-violet accent layer described below
+> has been replaced by a neutral *deep glossy 3D black* surface system, and the
+> home content chips are now official streaming-platform artwork. The protected
+> brand pieces (emblem gradient, Play and Explore buttons, pink accent) are
+> unchanged. See [`docs/platform-assets.md`](./platform-assets.md) for the new
+> tokens, the platform registry and the logo sources.
+
 Implemented 12 October 2026. The app is still Next.js 16, React 19, PostgreSQL,
 Drizzle, and the existing authenticated studio/API. No backend route, database
 mapping, authorization rule, or seed movie record was replaced.

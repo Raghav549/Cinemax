@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import Icon from "./Icon";
 import MoreIcon from "./MoreIcon";
 import { useCatalogue } from "./CatalogueProvider";
+import CollectionTile from "./CollectionTile";
 import { matchesCollection } from "@/lib/catalogue";
 import { BOTTOM_NAV_ITEMS, CATEGORY_BROWSER_SECTIONS, activeBottomNavIndex } from "@/lib/navigation";
 
@@ -50,20 +51,20 @@ function NavGlowArc() {
       focusable="false"
     >
       <defs>
-        {/* Emerald → cyan → blue → violet → magenta → pink. The opacity ramp is
-            the light's own intensity: it rises out of the dark, holds strongest
-            through the violet/magenta section and dissolves again into the dark
-            before the streak reaches either edge of the screen. */}
+        {/* Obsidian arc: the light rises out of the dark as cool white, holds
+            at full brightness through the centre and dissolves into the brand
+            pink at the tail. The opacity ramp is the light's own intensity, so
+            the streak never touches either edge of the screen. */}
         <linearGradient id={bandId} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#0f5c46" stopOpacity="0" />
-          <stop offset="3%" stopColor="#22d69a" stopOpacity="0.08" />
-          <stop offset="9%" stopColor="#2fd8b4" stopOpacity="0.24" />
-          <stop offset="17%" stopColor="#33d4ea" stopOpacity="0.42" />
-          <stop offset="27%" stopColor="#3fb2f5" stopOpacity="0.6" />
-          <stop offset="39%" stopColor="#527ffe" stopOpacity="0.78" />
-          <stop offset="51%" stopColor="#8a63ff" stopOpacity="0.9" />
-          <stop offset="63%" stopColor="#c65cf5" stopOpacity="0.98" />
-          <stop offset="73%" stopColor="#f45ec4" stopOpacity="0.9" />
+          <stop offset="0%" stopColor="#4a4a54" stopOpacity="0" />
+          <stop offset="3%" stopColor="#7d7c88" stopOpacity="0.1" />
+          <stop offset="9%" stopColor="#a3a2ae" stopOpacity="0.26" />
+          <stop offset="17%" stopColor="#c2c1cb" stopOpacity="0.44" />
+          <stop offset="27%" stopColor="#dcdbe3" stopOpacity="0.6" />
+          <stop offset="39%" stopColor="#efedf4" stopOpacity="0.78" />
+          <stop offset="51%" stopColor="#ffffff" stopOpacity="0.9" />
+          <stop offset="63%" stopColor="#f6eef4" stopOpacity="0.98" />
+          <stop offset="73%" stopColor="#ffd9ea" stopOpacity="0.9" />
           <stop offset="81%" stopColor="#ff6fae" stopOpacity="0.66" />
           <stop offset="87%" stopColor="#ff85bd" stopOpacity="0.38" />
           <stop offset="92%" stopColor="#ff97c8" stopOpacity="0.16" />
@@ -72,15 +73,15 @@ function NavGlowArc() {
         </linearGradient>
         {/* The polished core: the same journey, but tinted highlights rather
             than saturated colour, and never brighter than the band it rides so
-            the emerald/green opening and the pink tail keep their hue. */}
+            the pink tail keeps its hue. */}
         <linearGradient id={coreId} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#eafff9" stopOpacity="0" />
-          <stop offset="3%" stopColor="#d8fff1" stopOpacity="0.12" />
-          <stop offset="9%" stopColor="#d2fff6" stopOpacity="0.26" />
-          <stop offset="17%" stopColor="#d6fbff" stopOpacity="0.4" />
-          <stop offset="27%" stopColor="#dceeff" stopOpacity="0.5" />
-          <stop offset="39%" stopColor="#e4e6ff" stopOpacity="0.62" />
-          <stop offset="51%" stopColor="#f0e0ff" stopOpacity="0.74" />
+          <stop offset="0%" stopColor="#f4f4f7" stopOpacity="0" />
+          <stop offset="3%" stopColor="#f5f5f8" stopOpacity="0.12" />
+          <stop offset="9%" stopColor="#f7f6f9" stopOpacity="0.26" />
+          <stop offset="17%" stopColor="#faf9fb" stopOpacity="0.4" />
+          <stop offset="27%" stopColor="#fdfcfd" stopOpacity="0.5" />
+          <stop offset="39%" stopColor="#ffffff" stopOpacity="0.62" />
+          <stop offset="51%" stopColor="#fdf7fb" stopOpacity="0.74" />
           <stop offset="63%" stopColor="#ffe2fb" stopOpacity="0.86" />
           <stop offset="73%" stopColor="#fff0f8" stopOpacity="0.9" />
           <stop offset="81%" stopColor="#ffe4f1" stopOpacity="0.64" />
@@ -91,7 +92,7 @@ function NavGlowArc() {
         </linearGradient>
         {/* The travelling reflection: white, and only ever visible inside the
             illuminated section, so the glint emerges from the dark, drifts
-            across the coloured light and dissolves again — a moving highlight
+            across the light and dissolves again — a moving highlight
             rather than a blinking line. */}
         <linearGradient id={reflectionId} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
@@ -207,16 +208,31 @@ export default function BottomNav() {
     };
   }, [browserOpen, closeBrowser]);
 
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+  // One pass per collection: how many titles it holds, and the first piece of
+  // real artwork among them (used by the image-backed discovery tiles).
+  const collectionMeta = useMemo(() => {
+    const meta = new Map<string, { count: number; image: string | null }>();
     const slugs = new Set<string>();
     for (const section of CATEGORY_BROWSER_SECTIONS) for (const item of section.items) slugs.add(item.slug);
     for (const category of categories) slugs.add(category.slug);
     for (const slug of slugs) {
-      counts.set(slug, movies.filter((m) => matchesCollection(m, slug)).length);
+      let count = 0;
+      let image: string | null = null;
+      for (const movie of movies) {
+        if (!matchesCollection(movie, slug)) continue;
+        count += 1;
+        if (!image) image = movie.backdropUrl || movie.posterUrl || null;
+      }
+      meta.set(slug, { count, image });
     }
-    return counts;
+    return meta;
   }, [movies, categories]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [slug, value] of collectionMeta) counts.set(slug, value.count);
+    return counts;
+  }, [collectionMeta]);
 
   // What the More panel may offer: a destination is shown only when the
   // database actually backs it — an admin-managed category exists, or at
@@ -311,33 +327,35 @@ export default function BottomNav() {
                   Nothing to browse yet. Titles and categories added in the studio will appear here.
                 </p>
               )}
-              {browserSections.map((section) => {
-                const visibleItems = section.items;
-                return (
-                  <section key={section.id} className="category-browser-section" aria-label={section.title}>
+              {browserSections.map((section) => (
+                <section key={section.id} className="category-browser-section" aria-label={section.title}>
+                  <div className="category-browser-section-head">
                     <h3 className="category-browser-section-title">{section.title}</h3>
-                    <div className="category-browser-chips">
-                      {visibleItems.map((item) => {
-                        const isActive = pathname === item.href;
-                        const count = categoryCounts.get(item.slug);
-                        return (
-                          <Link
-                            key={`${section.id}-${item.slug}`}
-                            href={item.href}
-                            className={`category-browser-chip ${isActive ? "active" : ""} ${item.slug === "coming-soon" ? "coming-soon-chip" : ""}`}
-                            onClick={() => closeBrowser({ navigating: true })}
-                          >
-                            <span className="category-browser-chip-label">{item.label}</span>
-                            {typeof count === "number" && count > 0 && (
-                              <span className="category-browser-chip-count">{count}</span>
-                            )}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
+                    <span className="category-browser-section-count">{section.items.length}</span>
+                  </div>
+                  <div className="collection-tile-track hide-scrollbar">
+                    {section.items.map((item) => {
+                      const meta = collectionMeta.get(item.slug);
+                      return (
+                        <CollectionTile
+                          key={`${section.id}-${item.slug}`}
+                          active={pathname === item.href}
+                          eager={section.id === "browse"}
+                          onNavigate={() => closeBrowser({ navigating: true })}
+                          item={{
+                            slug: item.slug,
+                            label: item.label,
+                            href: item.href,
+                            count: meta?.count ?? 0,
+                            image: meta?.image ?? null,
+                            badge: item.badge,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           </div>
         </div>

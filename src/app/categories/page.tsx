@@ -1,23 +1,16 @@
 "use client";
 
-import { useMemo, type CSSProperties } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useCatalogue } from "@/components/CatalogueProvider";
 import { COLLECTION_SPECS, matchesCollection, tokens } from "@/lib/catalogue";
+import { catalogueTokens } from "@/lib/platforms";
+import CollectionTile from "@/components/CollectionTile";
 import { CATEGORY_BROWSER_SECTIONS } from "@/lib/navigation";
 import Artwork from "@/components/Artwork";
 import Icon, { collectionIcon } from "@/components/Icon";
 import EmptyState from "@/components/EmptyState";
 import CinematicButton from "@/components/CinematicButton";
-
-const COLOURS = [
-  "100, 82, 255",
-  "224, 74, 156",
-  "56, 120, 252",
-  "142, 75, 238",
-  "230, 107, 74",
-  "50, 150, 210",
-];
 
 export default function CategoriesPage() {
   const { movies, categories, loading, error, refresh } = useCatalogue();
@@ -25,19 +18,27 @@ export default function CategoriesPage() {
   const collectionsBySlug = useMemo(() => {
     const map = new Map<
       string,
-      { id: string; slug: string; name: string; titles: typeof movies; image?: string | null; colour: string }
+      { id: string; slug: string; name: string; titles: typeof movies; image?: string | null }
     >();
 
     const allSpecs = [
       ...COLLECTION_SPECS.map((s) => ({ slug: s.slug, name: s.name })),
       ...categories.map((c) => ({ slug: c.slug, name: c.name })),
-      ...[...new Set(movies.flatMap((movie) => [...tokens(movie.category), ...tokens(movie.genre)]))].map((slug) => ({
+      // Platform tokens live in the same catalogue field, but they are not
+      // content categories — they are surfaced by the home platform rail.
+      ...[
+        ...new Set(
+          movies.flatMap((movie) => [
+            ...catalogueTokens(movie.category).map((token) => token.toLowerCase().replace(/\s+/g, "-")),
+            ...tokens(movie.genre),
+          ])
+        ),
+      ].map((slug) => ({
         slug,
         name: slug.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
       })),
     ];
 
-    let colourIndex = 0;
     for (const item of allSpecs) {
       const slug = item.slug.toLowerCase();
       if (map.has(slug)) continue;
@@ -50,7 +51,6 @@ export default function CategoriesPage() {
         name: item.name,
         titles,
         image: artwork?.backdropUrl || artwork?.posterUrl,
-        colour: COLOURS[colourIndex++ % COLOURS.length],
       });
     }
     return map;
@@ -115,7 +115,6 @@ export default function CategoriesPage() {
                     key={item.id}
                     href={`/category/${encodeURIComponent(item.slug)}`}
                     className="collection-spotlight"
-                    style={{ "--collection-colour": item.colour } as CSSProperties}
                   >
                     <Artwork
                       src={item.image}
@@ -146,34 +145,16 @@ export default function CategoriesPage() {
                 </div>
                 <div className="category-grid">
                   {section.items.map((item) => (
-                    <Link
+                    <CollectionTile
                       key={`${section.id}-${item.slug}`}
-                      href={`/category/${encodeURIComponent(item.slug)}`}
-                      className="collection-card"
-                      style={{ "--collection-colour": item.colour } as CSSProperties}
-                    >
-                      {item.image && (
-                        <Artwork
-                          src={item.image}
-                          kind="backdrop"
-                          className="collection-artwork"
-                          sizes="(max-width: 640px) 50vw, 33vw"
-                        />
-                      )}
-                      <span className="collection-shade" />
-                      <div className="collection-copy">
-                        <span className="collection-icon">
-                          <Icon name={collectionIcon(item.slug)} />
-                        </span>
-                        <h2>{item.name}</h2>
-                        <span className="collection-count">
-                          {item.titles.length} {item.titles.length === 1 ? "title" : "titles"}
-                        </span>
-                      </div>
-                      <span className="collection-arrow">
-                        <Icon name="arrow-right" />
-                      </span>
-                    </Link>
+                      item={{
+                        slug: item.slug,
+                        label: item.name,
+                        href: `/category/${encodeURIComponent(item.slug)}`,
+                        count: item.titles.length,
+                        image: item.image,
+                      }}
+                    />
                   ))}
                 </div>
               </section>

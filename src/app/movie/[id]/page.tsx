@@ -15,6 +15,8 @@ import Icon from "@/components/Icon";
 import { DetailSkeleton, RelatedSkeleton } from "@/components/Skeletons";
 import { isOfficialExternal, isUpcomingMovie, matchesCollection, tokens, type CatalogueMovie } from "@/lib/catalogue";
 import { hasNativeShell } from "@/lib/open-external";
+import { catalogueTokens, platformsForMovie } from "@/lib/platforms";
+import PlatformLogo from "@/components/PlatformLogo";
 import { isPortraitMobileViewport, requestBrowserImmersive } from "@/lib/playback/immersive";
 
 function subscribeResumeChanges(callback: () => void) {
@@ -157,7 +159,9 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
   }, [autoplay, id, movie, upcoming, video]);
 
   useEffect(() => {
-    const collection = tokens(movie?.category)[0];
+    // The first *content* collection token: platform tags are availability
+    // metadata, not a related-content collection.
+    const collection = catalogueTokens(movie?.category).map((token) => token.toLowerCase().replace(/\s+/g, "-"))[0];
     if (!movie || !collection) return;
     const controller = new AbortController();
     fetch(`/api/movies?category=${encodeURIComponent(collection)}&limit=12`, { signal: controller.signal })
@@ -186,14 +190,16 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
 
   const related = useMemo(() => {
     if (!movie) return [];
-    const collection = tokens(movie.category)[0] || tokens(movie.genre)[0];
+    const collection =
+      catalogueTokens(movie.category).map((token) => token.toLowerCase().replace(/\s+/g, "-"))[0] || tokens(movie.genre)[0];
     const indexed = catalogue.filter((item) => item.id !== movie.id && matchesCollection(item, collection));
     return [...indexed, ...(relatedRead.id === id ? relatedRead.movies.filter((item) => item.id !== movie.id) : [])]
       .filter((item, index, all) => all.findIndex((m) => m.id === item.id) === index)
       .slice(0, 10);
   }, [catalogue, movie, relatedRead, id]);
 
-  const relatedLoading = !!movie && !!tokens(movie.category)[0] && relatedRead.id !== id && related.length === 0;
+  const relatedLoading =
+    !!movie && catalogueTokens(movie.category).length > 0 && relatedRead.id !== id && related.length === 0;
 
   const shareMovie = async () => {
     if (!movie) return;
@@ -236,6 +242,8 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+  const availability = platformsForMovie(movie);
 
   const information = [
     movie.year && { label: "Year", value: String(movie.year) },
@@ -383,6 +391,18 @@ function MovieDetails({ params }: { params: Promise<{ id: string }> }) {
               </div>
             ))}
           </dl>
+        )}
+        {availability.length > 0 && (
+          <div className="detail-availability" aria-label="Available on">
+            <span className="detail-availability-label">Available on</span>
+            <div className="detail-availability-logos">
+              {availability.map((id) => (
+                <span className="detail-availability-item" key={id}>
+                  <PlatformLogo id={id} />
+                </span>
+              ))}
+            </div>
+          </div>
         )}
         <div className="detail-about">
           <div>

@@ -3,13 +3,15 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useCatalogue } from "@/components/CatalogueProvider";
-import { COLLECTION_SPECS, matchesCollection, type CatalogueMovie } from "@/lib/catalogue";
+import { COLLECTION_SPECS, matchesCollection, isUpcomingMovie, type CatalogueMovie } from "@/lib/catalogue";
 import MovieCard from "@/components/MovieCard";
 import Artwork from "@/components/Artwork";
 import Icon, { collectionIcon } from "@/components/Icon";
 import EmptyState from "@/components/EmptyState";
 import { PosterGridSkeleton } from "@/components/Skeletons";
 import CinematicButton from "@/components/CinematicButton";
+import PlatformLogo from "@/components/PlatformLogo";
+import { PLATFORM_BY_ID, movieIsOnPlatform, platformIdFromSlug, type PlatformId } from "@/lib/platforms";
 
 export default function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug: rawSlug } = use(params);
@@ -43,15 +45,29 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
   const [sort, setSort] = useState("default");
 
   const spec = COLLECTION_SPECS.find((item) => item.slug === slug);
+  // "/category/platform-netflix" is the same, already-filtered route used by
+  // every other collection — only the heading needs to read as a brand.
+  const platformId = platformIdFromSlug(slug);
+  const platform = platformId ? PLATFORM_BY_ID.get(platformId) : undefined;
   const name =
+    platform?.name ??
     spec?.name ??
     categories.find((item) => item.slug === slug)?.name ??
     slug.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 
+  // A platform page lists exactly what the home rail counts: titles the library
+  // marks (or infers) as available on that platform and that are released now.
+  // Every other collection keeps its existing matcher untouched.
+  const listedInCollection = useMemo(
+    () => (movie: CatalogueMovie, id: PlatformId | null) =>
+      id ? movieIsOnPlatform(movie, id) && !isUpcomingMovie(movie) : matchesCollection(movie, slug),
+    [slug]
+  );
+
   const titles = useMemo(() => {
-    const indexed = movies.filter((movie) => matchesCollection(movie, slug));
+    const indexed = movies.filter((movie) => listedInCollection(movie, platformId));
     const apiMatches = (collection.slug === slug ? collection.movies : []).filter((movie) =>
-      matchesCollection(movie, slug)
+      listedInCollection(movie, platformId)
     );
     const selected = [...indexed, ...apiMatches].filter(
       (movie, index, all) => all.findIndex((item) => item.id === movie.id) === index
@@ -59,7 +75,7 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
     if (sort === "rating") selected.sort((a, b) => Number(b.rating ?? 0) - Number(a.rating ?? 0));
     if (sort === "title") selected.sort((a, b) => a.title.localeCompare(b.title));
     return selected;
-  }, [movies, collection, slug, sort]);
+  }, [movies, collection, slug, sort, listedInCollection, platformId]);
 
   const cover = titles.find((movie) => movie.backdropUrl)?.backdropUrl || titles[0]?.posterUrl;
 
@@ -72,12 +88,16 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
         </Link>
         <div className="collection-page-heading">
           {cover && <Artwork src={cover} kind="backdrop" className="collection-page-art" />}
-          <span className="collection-page-icon">
-            <Icon name={collectionIcon(slug)} />
+          <span className={`collection-page-icon ${platform ? "is-platform" : ""}`}>
+            {platform ? <PlatformLogo id={platform.id} /> : <Icon name={collectionIcon(slug)} />}
           </span>
           <div>
             <h1>{name}</h1>
-            {spec?.description && <p className="collection-page-sub">{spec.description}</p>}
+            {(platform ? `Titles available on ${platform.name}.` : spec?.description) && (
+              <p className="collection-page-sub">
+                {platform ? `Titles available on ${platform.name}.` : spec?.description}
+              </p>
+            )}
           </div>
         </div>
         <div className="collection-toolbar">
