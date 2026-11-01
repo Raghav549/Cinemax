@@ -291,6 +291,29 @@ provenance note rewritten to describe the uploaded file), so
 reaches "Upload the installable APK" again, which is how the fixed build reaches
 users.
 
+That is not a prediction: the workflow ran on this branch and both jobs passed.
+
+```
+run 41339805323 (push)          Android CI                     success  58 s
+  Build and verify the signed APK      → success
+    Build and sign the debuggable variant → success
+    Build, sign and verify the release APK → success
+    Run the Android test suite             → success
+    Verify the test evidence              → success   (previously the failure)
+    Upload the installable APK            → success   (previously skipped)
+    artifact: cinemax-android-apk
+  Lint, typecheck and production web build → success
+    Verify the brand artwork collection   → success   (previously the failure)
+    Verify the sharing rules              → success
+    Verify the advertised app package     → success   (new)
+    Production build / Verify the legal documents → success
+run 41339817915 (pull request)  Android CI                     success  82 s
+```
+
+The APK job that used to stop before the upload now publishes
+`cinemax-android-apk`, so an installed app can finally be updated to the build
+that has the native share sheet.
+
 ---
 
 ## 10. Logo preservation
