@@ -8,6 +8,7 @@ import CinematicButton, { CinematicLink } from "./CinematicButton";
 import Logo from "./Logo";
 import useReducedMotion from "@/hooks/useReducedMotion";
 import { isOfficialExternal, isUpcomingMovie, type CatalogueMovie } from "@/lib/catalogue";
+import { orderSlidesLatestFirst } from "@/lib/slide-order";
 
 /**
  * Autoplay cadence. The dissolve itself lives in globals.css (a 1.5 s opacity
@@ -50,7 +51,10 @@ export default function HeroSlider() {
   // movies: that is how a slide the admin deleted used to reappear in the hero.
   const features = useMemo<Feature[]>(() => {
     if (slides.length) {
-      return slides.map((slide) => {
+      // The API delivers slides latest-first; ordering (and de-duplicating)
+      // here as well guarantees the newest slide leads even if a payload was
+      // cached, merged or produced by an older server.
+      return orderSlidesLatestFirst(slides).map((slide) => {
         const movie =
           (slide.movieId === null ? undefined : moviesById.get(slide.movieId)) ??
           moviesByTitle.get((slide.title || "").toLowerCase());

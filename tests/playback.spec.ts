@@ -170,7 +170,9 @@ test("unavailable media shows recoverable errors and Escape returns to details",
   await page.route("**/__e2e__/prism-test.webm", (route) => route.fulfill({ status: 404, body: "" }));
   try {
     await page.goto(`/movie/${movie.id}?play=1`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "This stream needs another moment" })).toBeVisible();
+    // A 404 from the source is reported as the source refusing the request -
+    // never as an application/network failure.
+    await expect(page.getByRole("heading", { name: /This video can’t be played here|This stream needs another moment/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeVisible();
     await dismissPlayer(page);
     await expect(page.locator(".video-player-shell")).toHaveCount(0);

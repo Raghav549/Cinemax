@@ -222,6 +222,8 @@ async function ensureIndexes() {
     `CREATE INDEX IF NOT EXISTS "idx_movies_language" ON "movies" ("language")`,
     `CREATE INDEX IF NOT EXISTS "idx_watchlist_session_movie" ON "watchlist" ("session_id", "movie_id")`,
     `CREATE INDEX IF NOT EXISTS "idx_slides_active_sort" ON "slides" ("active", "sort_order")`,
+    // Latest-first hero ordering (db/slide-order.ts).
+    `CREATE INDEX IF NOT EXISTS "idx_slides_created_latest" ON "slides" ("created_at" DESC NULLS LAST, "sort_order", "id" DESC)`,
   ];
   for (const stmt of statements) {
     try {
