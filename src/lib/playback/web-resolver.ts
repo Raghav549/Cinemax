@@ -485,7 +485,18 @@ async function resolveUncached(rawUrl: string, embedderOrigin: string | undefine
   if (engine) {
     const finalUrl = response.url;
     const provider = localDirect ? directMediaAdapter.info : providerFor(new URL(finalUrl), "web-media", MEDIA_PROVIDER_TAGLINE);
-    return makeResolution(rawUrl, finalUrl, provider, engine === "video" ? "file" : "stream", { strategy: "direct", src: finalUrl, engine });
+    // The viewer's browser is handed the admin's URL, not the address the
+    // *server's* redirect chain ended on. Providers route media per request -
+    // nearest edge, IP/region-bound tokens, fail-over hosts - so a location the
+    // server was sent to may be slow, throttled or rejected for the viewer.
+    // The browser (and hls.js/dash.js, which resolve relative segment URIs
+    // against the response URL) follows the provider's own redirects from the
+    // viewer's network instead. The server-resolved address is kept only when
+    // the original could not be used from a secure page (http -> https hop).
+    const playbackSrc = original.protocol === "https:" || original.protocol === new URL(finalUrl).protocol
+      ? original.toString()
+      : finalUrl;
+    return makeResolution(rawUrl, finalUrl, provider, engine === "video" ? "file" : "stream", { strategy: "direct", src: playbackSrc, engine });
   }
 
   if (isHtml(contentType, response.body)) {

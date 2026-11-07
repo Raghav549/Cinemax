@@ -28,6 +28,15 @@ public class CinemaxWebViewClient extends WebViewClient {
             return false;
         }
         Uri uri = request.getUrl();
+        if (!request.isForMainFrame()) {
+            // An embedded provider player navigating its own frame (redirects
+            // between the provider's hosts, CDN/consent hops, gesture reloads).
+            // The frame keeps talking to the provider directly; only dangerous
+            // or app-launching schemes are cancelled, and nothing is ever
+            // handed to the system from inside a third-party frame.
+            return NavigationPolicy.decideForSubFrame(uri.getScheme())
+                    != NavigationPolicy.Decision.STAY_IN_APP;
+        }
         NavigationPolicy.Decision decision =
                 NavigationPolicy.decide(uri.getScheme(), uri.getHost());
         if (decision == NavigationPolicy.Decision.BLOCK) {

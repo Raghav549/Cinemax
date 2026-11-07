@@ -39,14 +39,24 @@ public class CinemaxChromeClient extends WebChromeClient {
             return;
         }
         // Player surfaces (audio/video/protected content) are granted to the
-        // Cinemax origin only; every other origin is left to the default policy.
+        // Cinemax origin. An embedded provider player (a secure third-party
+        // frame) may only obtain the protected-media identifier its own DRM
+        // module asks for - the same default a browser applies - so a provider
+        // whose player requires it does not fail with a misleading "cannot
+        // play" error inside Cinemax. Camera, microphone and anything else stay
+        // denied for every origin but Cinemax.
         activity.runOnUi(new Runnable() {
             @Override
             public void run() {
                 try {
                     String origin = request.getOrigin() == null ? "" : request.getOrigin().toString();
-                    if (origin.contains(MainActivity.PRODUCTION_HOST)) {
+                    if (isCinemaxOrigin(origin)) {
                         request.grant(request.getResources());
+                        return;
+                    }
+                    String[] granted = protectedMediaOnly(request.getResources(), origin);
+                    if (granted.length > 0) {
+                        request.grant(granted);
                     } else {
                         request.deny();
                     }
@@ -55,5 +65,30 @@ public class CinemaxChromeClient extends WebChromeClient {
                 }
             }
         });
+    }
+
+    private static boolean isCinemaxOrigin(String origin) {
+        try {
+            android.net.Uri parsed = android.net.Uri.parse(origin);
+            return NavigationPolicy.isCinemaxHost(parsed.getHost());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * The subset of a third-party frame's request that is granted: only the
+     * protected-media identifier, and only for a secure (https) origin.
+     */
+    static String[] protectedMediaOnly(String[] requested, String origin) {
+        if (requested == null || origin == null || !origin.toLowerCase().startsWith("https://")) {
+            return new String[0];
+        }
+        for (String resource : requested) {
+            if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) {
+                return new String[] {PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID};
+            }
+        }
+        return new String[0];
     }
 }

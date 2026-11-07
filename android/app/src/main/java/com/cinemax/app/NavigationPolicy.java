@@ -74,6 +74,42 @@ public final class NavigationPolicy {
     }
 
     /**
+     * Decision for a navigation that happens inside a sub-frame: an embedded
+     * provider player (iframe) that Cinemax shows with the provider's own
+     * controls.
+     *
+     * The main-frame policy must not be applied here. A provider's player
+     * routinely navigates its own frame - server-side redirects between its
+     * hosts (`/e/{id}` to `/v/{id}`, CDN or consent hops), region fail-over,
+     * gesture-driven reloads - and each of those lands in
+     * {@code shouldOverrideUrlLoading} with {@code isForMainFrame() == false}.
+     * Treating them as "third-party, open externally" cancels the frame's own
+     * navigation (the player then looks like a dead or buffering server inside
+     * Cinemax while the same page works in a browser) and throws the user into
+     * the system browser on top of it.
+     *
+     * So, inside a frame:
+     *   - http(s) navigation to any host stays in the frame (the provider's
+     *     infrastructure handles it, exactly as a browser would);
+     *   - dangerous schemes are still cancelled outright;
+     *   - every other scheme (intent:, market:, custom app schemes - typically
+     *     ad or redirect scripts inside a third-party frame) is cancelled
+     *     without being handed to another app. A frame must never be able to
+     *     launch arbitrary apps or leave Cinemax on the viewer's behalf.
+     */
+    public static Decision decideForSubFrame(String scheme) {
+        String normalizedScheme = normalize(scheme);
+        if (normalizedScheme.isEmpty()
+                || "http".equals(normalizedScheme)
+                || "https".equals(normalizedScheme)
+                || "about".equals(normalizedScheme)
+                || "blob".equals(normalizedScheme)) {
+            return Decision.STAY_IN_APP;
+        }
+        return Decision.BLOCK;
+    }
+
+    /**
      * True for the official host, its www form, the deployment hostname earlier
      * versions were built against, and Vercel preview aliases of the deployment.
      * Everything else is handed to the system.

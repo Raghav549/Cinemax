@@ -23,6 +23,44 @@ interface VideoPlayerProps {
 
 /** Controls fade away ~1s after the last interaction while playing. */
 const CONTROLS_HIDE_DELAY_MS = 1000;
+/**
+ * How long the source may go without delivering *any* bytes before the player
+ * stops waiting and shows the actionable error. The clock restarts on every
+ * network progress event, so a slow server or connection that is still sending
+ * data is never cut off - only a source that has gone silent is reported.
+ */
+const SOURCE_SILENCE_MS = 15000;
+/** Upper bound for automatic, back-off reconnects after a network failure. */
+const MAX_AUTO_RECONNECTS = 6;
+
+/**
+ * Why playback stopped - so the message names the real cause instead of
+ * blaming the app's network for everything.
+ */
+type PlaybackErrorKind = "offline" | "source" | "format" | "generic";
+
+const ERROR_COPY: Record<PlaybackErrorKind, { title: string; copy: string }> = {
+  offline: {
+    title: "You’re offline",
+    copy: "Your device has no internet connection right now. Playback resumes automatically when the connection returns, or try again once you’re back online.",
+  },
+  source: {
+    title: "The video server isn’t responding",
+    copy: "Cinemax connected directly to the source, but it stopped sending data. The hosting server may be down or overloaded. Try again, or return to the title page.",
+  },
+  format: {
+    title: "This video can’t be played here",
+    copy: "The source refused the request or returned a format this device can’t decode. Try again, or return to the title page.",
+  },
+  generic: {
+    title: "This stream needs another moment",
+    copy: "The source may be temporarily unavailable or the connection may have dropped. Try again, or return to the title page.",
+  },
+};
+
+function isOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
 
 type FitMode = "contain" | "cover" | "fill";
 type PlaybackSpeed = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2;
@@ -73,7 +111,6 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bufferingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prepareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressWriteRef = useRef(0);
   const playbackFrameRef = useRef<number | null>(null);
   const pendingPlaybackRef = useRef({ currentTime: 0, bufferedEnd: 0 });
@@ -102,7 +139,16 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const [locked, setLocked] = useState(false);
   const [pipActive, setPipActive] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [errorKind, setErrorKind] = useState<PlaybackErrorKind>("generic");
   const [retryCount, setRetryCount] = useState(0);
+  /** Brief status shown over the spinner while an automatic reconnect is pending. */
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const erroredRef = useRef(false);
+  /** Position to continue from after a reconnect or a retry (survives re-attach). */
+  const recoverTimeRef = useRef<number | null>(null);
   const [buffering, setBuffering] = useState(false);
   // True from the moment a source is attached until the first frame is actually
   // ready - so the indicator shows during genuine preparation, not on a timer.
@@ -178,7 +224,6 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     if (!video) return;
     let isCancelled = false;
     let hls: Hls | null = null;
-    let networkRecoveries = 0;
     let mediaRecoveries = 0;
     // Warm the connection to the media host before the first segment request -
     // one of the few things under Cinemax's control that shortens time-to-first-frame.
@@ -193,18 +238,136 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     const resumeKey = `cinemax:playback:${movieId}`;
 
     resumeAppliedRef.current = false;
+    erroredRef.current = false;
     setErrored(false);
     setBuffering(false);
     setPreparing(true);
-    if (prepareTimeoutRef.current) clearTimeout(prepareTimeoutRef.current);
-    // A stream that neither errors nor becomes playable within this window must
-    // not leave the viewport on a permanent spinner: surface the actionable
-    // retry state instead.
-    prepareTimeoutRef.current = setTimeout(() => {
+    setReconnecting(false);
+
+    // ------------------------------------------------------------ recovery
+    // Every automatic recovery below is bounded (back-off, a hard cap) and
+    // position-preserving. Nothing here reloads the page or the overlay: the
+    // media element and the engine are re-pointed at the same provider URL.
+    let autoReconnects = 0;
+    let resumeAfterReconnect = false;
+
+    const clearSilenceWatch = () => {
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    };
+    const clearReconnect = () => {
+      if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    };
+    const clearOfflineWait = () => {
+      if (offlineTimerRef.current) { clearTimeout(offlineTimerRef.current); offlineTimerRef.current = null; }
+    };
+    const fail = (kind: PlaybackErrorKind) => {
+      if (isCancelled) return;
+      clearSilenceWatch();
+      clearReconnect();
+      clearOfflineWait();
+      // "Try again" (or the connection returning) continues from here.
+      if (video.currentTime > 0) recoverTimeRef.current = video.currentTime;
+      erroredRef.current = true;
+      setReconnecting(false);
       setPreparing(false);
       setBuffering(false);
+      setErrorKind(isOffline() ? "offline" : kind);
       setErrored(true);
-    }, 12000);
+    };
+
+    /**
+     * Source-silence watchdog. It is (re)armed whenever the element is waiting
+     * for data and reset by every network progress event, so a slow source that
+     * is still delivering bytes is never cut off; only a source that has gone
+     * completely silent for SOURCE_SILENCE_MS is reported - as a source problem,
+     * or as "offline" when the device itself has no connection.
+     */
+    let receivedAnything = false;
+    const armSilenceWatch = () => {
+      clearSilenceWatch();
+      silenceTimerRef.current = setTimeout(() => {
+        silenceTimerRef.current = null;
+        if (isCancelled) return;
+        if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+        if (video.paused && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return;
+        if (isOffline()) { awaitConnection(); return; }
+        // A source that never answered at all is down: say so now. One that
+        // was streaming and went silent mid-way gets the bounded reconnects.
+        if (!receivedAnything && autoReconnects === 0) { fail("source"); return; }
+        scheduleReconnect("source");
+      }, autoReconnects > 0 ? SOURCE_SILENCE_MS / 2 : SOURCE_SILENCE_MS);
+    };
+
+    let reattach: (() => void) | null = null;
+    /** Back-off reconnect to the same provider URL; the position is kept. */
+    const scheduleReconnect = (kind: PlaybackErrorKind, limit = MAX_AUTO_RECONNECTS) => {
+      if (isCancelled || reconnectTimerRef.current) return;
+      if (isOffline()) { awaitConnection(); return; }
+      if (autoReconnects >= limit) { fail(kind); return; }
+      const delay = Math.min(8000, 1000 * 2 ** autoReconnects);
+      autoReconnects += 1;
+      setReconnecting(true);
+      setBuffering(true);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (isCancelled) return;
+        if (isOffline()) { awaitConnection(); return; }
+        reattach?.();
+      }, delay);
+    };
+
+    /**
+     * Offline: do not burn the retry budget against a dead link. Wait for the
+     * browser's own `online` signal and reconnect once, immediately.
+     */
+    let waitingForConnection = false;
+    const awaitConnection = () => {
+      if (isCancelled || waitingForConnection) return;
+      waitingForConnection = true;
+      clearSilenceWatch();
+      clearReconnect();
+      setReconnecting(true);
+      setBuffering(true);
+      setErrorKind("offline");
+      // Still offline after a while: say so plainly instead of spinning. The
+      // `online` listener below stays armed and resumes playback by itself.
+      offlineTimerRef.current = setTimeout(() => {
+        offlineTimerRef.current = null;
+        if (!isCancelled && waitingForConnection) { waitingForConnection = false; fail("offline"); }
+      }, SOURCE_SILENCE_MS);
+    };
+    const onOnline = () => {
+      if (isCancelled) return;
+      if (erroredRef.current) {
+        // The error surface is up (offline or a dropped source): one automatic
+        // retry now that the device is connected again.
+        erroredRef.current = false;
+        setErrored(false);
+        setErrorKind("generic");
+        setRetryCount((count) => count + 1);
+        return;
+      }
+      if (!waitingForConnection) return;
+      waitingForConnection = false;
+      clearOfflineWait();
+      autoReconnects = Math.min(autoReconnects, 1);
+      reattach?.();
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || isCancelled) return;
+      // Coming back to the foreground (Android pauses the WebView's media and
+      // network while the app is hidden): fire a pending reconnect now instead
+      // of after the remaining back-off.
+      if (reconnectTimerRef.current) {
+        clearReconnect();
+        if (isOffline()) awaitConnection();
+        else reattach?.();
+      }
+    };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+
+    armSilenceWatch();
     setQuality(-1);
     setQualityOptions([]);
     setSourceQuality("");
@@ -230,7 +393,19 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       })));
     };
 
+    const reattachPlainSource = () => {
+      if (isCancelled) return;
+      const at = video.currentTime;
+      recoverTimeRef.current = at > 0 ? at : recoverTimeRef.current;
+      resumeAfterReconnect = !video.paused || video.readyState === HTMLMediaElement.HAVE_NOTHING;
+      setReconnecting(true);
+      video.src = src;
+      video.load();
+      armSilenceWatch();
+    };
+
     const attachSource = async () => {
+      if (!isDashSource && !isHlsSource) reattach = reattachPlainSource;
       if (isDashSource) {
         // MPEG-DASH through dash.js, loaded lazily so it never weighs on
         // startup for the MP4/HLS majority.
@@ -244,20 +419,18 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           try { mediaPlayer.updateSettings({ streaming: { buffer: { fastSwitchEnabled: true } } }); } catch { /* defaults are fine */ }
           mediaPlayer.on("error", () => {
             if (isCancelled) return;
-            setErrored(true);
-            setBuffering(false);
-            setPreparing(false);
+            fail(isOffline() ? "offline" : "source");
           });
           mediaPlayer.initialize(video, src, true);
         } catch {
-          if (!isCancelled) {
-            setErrored(true);
-            setPreparing(false);
-          }
+          fail("generic");
         }
         return;
       }
       if (!isHlsSource) {
+        // The browser fetches the file straight from the provider: no proxy,
+        // no custom loader, no interception - the same request a browser tab
+        // would make for this URL.
         video.src = src;
         video.load();
         return;
@@ -268,6 +441,9 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
         if (isCancelled) return;
         const HlsPlayer = hlsLibrary.default;
         if (HlsPlayer.isSupported()) {
+          // Manifest and segment requests are issued by hls.js's default XHR
+          // loader directly against the provider's URLs (credentials off, no
+          // extra headers, no rewriting): the provider's own CDN serves them.
           hls = new HlsPlayer({
             enableWorker: true,
             lowLatencyMode: false,
@@ -281,6 +457,17 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           });
           hlsRef.current = hls;
           hls.on(HlsPlayer.Events.MEDIA_ATTACHED, () => hls?.loadSource(src));
+          // Any manifest/segment arriving means the source is alive: the
+          // silence watchdog restarts and the reconnect budget is restored.
+          hls.on(HlsPlayer.Events.MANIFEST_LOADED, () => { if (!isCancelled && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) armSilenceWatch(); });
+          hls.on(HlsPlayer.Events.LEVEL_LOADED, () => { if (!isCancelled && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) armSilenceWatch(); });
+          hls.on(HlsPlayer.Events.FRAG_LOADED, () => {
+            if (isCancelled) return;
+            receivedAnything = true;
+            autoReconnects = 0;
+            setReconnecting(false);
+            if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) armSilenceWatch();
+          });
           hls.on(HlsPlayer.Events.MANIFEST_PARSED, () => {
             if (!hls) return;
             updateQualityOptions(hls);
@@ -292,39 +479,56 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           hls.on(HlsPlayer.Events.LEVELS_UPDATED, () => { if (hls) updateQualityOptions(hls); });
           hls.on(HlsPlayer.Events.SUBTITLE_TRACKS_UPDATED, () => { if (hls) updateSubtitleOptions(hls); });
           hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
-            if (!data.fatal || !hls) return;
-            if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR && networkRecoveries < 3) {
-              networkRecoveries += 1;
-              window.setTimeout(() => hls?.startLoad(), networkRecoveries * 450);
+            // Non-fatal errors are retried by hls.js itself (per-request retry
+            // budgets above); only a fatal one reaches the recovery below.
+            if (!data.fatal || !hls || isCancelled) return;
+            if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
+              const status = (data.response as { code?: number } | undefined)?.code ?? 0;
+              // The provider answered and refused (expired/signed URL, geo or
+              // referrer policy, removed title): that is not a connectivity
+              // problem and no amount of reconnecting changes it.
+              if ([401, 403, 404, 410, 451].includes(status)) { fail("format"); return; }
+              scheduleReconnect("source");
             } else if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
               mediaRecoveries += 1;
               hls.recoverMediaError();
             } else {
-              setErrored(true);
-              setBuffering(false);
-              setPreparing(false);
+              fail(data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR ? "format" : "generic");
             }
           });
+          reattach = () => {
+            if (isCancelled || !hls) return;
+            setReconnecting(true);
+            // Same manifest, same provider, resumed from the current position;
+            // hls.js re-requests only what is missing.
+            hls.startLoad(video.currentTime > 0 ? video.currentTime : -1);
+            armSilenceWatch();
+          };
           hls.attachMedia(video);
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           // Safari/iOS uses native HLS and its own adaptive rendition selector.
           video.src = src;
           video.load();
         } else {
-          setErrored(true);
-          setPreparing(false);
+          fail("format");
         }
       } catch {
-        if (!isCancelled) {
-          setErrored(true);
-          setPreparing(false);
-        }
+        fail("generic");
       }
     };
 
     const onMetadata = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
       if (!isHlsSource && video.videoHeight > 0) setSourceQuality(`${video.videoHeight}p`);
+      if (recoverTimeRef.current !== null) {
+        // A reconnect or retry after a network failure continues where
+        // playback stopped.
+        const at = recoverTimeRef.current;
+        recoverTimeRef.current = null;
+        resumeAppliedRef.current = true;
+        if (Number.isFinite(video.duration) && at < video.duration) video.currentTime = at;
+        return;
+      }
       if (resumeAppliedRef.current || !Number.isFinite(video.duration) || video.duration <= 0) return;
       resumeAppliedRef.current = true;
       try {
@@ -361,13 +565,12 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
         saveProgress();
       }
     };
-    const clearPrepareTimeout = () => {
-      if (prepareTimeoutRef.current) {
-        clearTimeout(prepareTimeoutRef.current);
-        prepareTimeoutRef.current = null;
-      }
-    };
     const onPlay = () => { setPlaying(true); setBuffering(false); setPreparing(false); showControls(); };
+    // Bytes are arriving from the source: it is slow at worst, not dead.
+    const onProgress = () => {
+      if (video.buffered.length > 0) receivedAnything = true;
+      if (silenceTimerRef.current && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) armSilenceWatch();
+    };
     const onPause = () => {
       setPlaying(false);
       setBuffering(false);
@@ -379,20 +582,50 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     const onWaiting = () => {
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
       bufferingTimerRef.current = setTimeout(() => setBuffering(true), 220);
+      // A mid-playback stall is watched the same way as start-up: a source
+      // that stops sending for good is reported; one that is merely slow is not.
+      if (!video.paused && !silenceTimerRef.current && !reconnectTimerRef.current && !waitingForConnection) armSilenceWatch();
     };
     const onCanPlay = () => {
+      receivedAnything = true;
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
-      clearPrepareTimeout();
+      clearSilenceWatch();
       setBuffering(false);
       setPreparing(false);
+      if (reconnectTimerRef.current === null && !waitingForConnection) {
+        setReconnecting(false);
+        if (!isHlsSource && !isDashSource) autoReconnects = 0;
+      }
+      if (resumeAfterReconnect) {
+        resumeAfterReconnect = false;
+        void video.play().catch(() => undefined);
+      }
     };
     const onSeeking = () => { if (!seekingRef.current) setBuffering(true); };
     const onSeeked = () => { if (!seekingRef.current) setBuffering(false); };
     const onError = () => {
-      clearPrepareTimeout();
-      setPreparing(false);
-      // HLS and DASH surface their own recoverable error paths.
-      if (!isHlsSource && !isDashSource) setErrored(true);
+      // HLS and DASH surface their own recoverable error paths above.
+      if (isHlsSource || isDashSource || isCancelled) return;
+      clearSilenceWatch();
+      const code = video.error?.code ?? 0;
+      if (code === MediaError.MEDIA_ERR_ABORTED) return; // a load we cancelled ourselves
+      if (code === MediaError.MEDIA_ERR_NETWORK) {
+        // The connection to the provider dropped mid-stream: reconnect with
+        // back-off from the same position rather than giving up at once.
+        scheduleReconnect("source");
+        return;
+      }
+      if (isOffline()) { awaitConnection(); return; }
+      if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED && receivedAnything) {
+        // Browsers report a connection lost *before* the metadata was parsed
+        // under this code too. Bytes had been arriving, so give the provider a
+        // couple of bounded reconnects before calling the source unplayable.
+        scheduleReconnect("format", 2);
+        return;
+      }
+      // MEDIA_ERR_DECODE / MEDIA_ERR_SRC_NOT_SUPPORTED: the provider refused the
+      // request or the bytes cannot be decoded - reconnecting changes nothing.
+      fail("format");
     };
     const onEnded = () => {
       setPlaying(false);
@@ -406,6 +639,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
 
     video.addEventListener("loadedmetadata", onMetadata);
     video.addEventListener("timeupdate", onTime);
+    video.addEventListener("progress", onProgress);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     video.addEventListener("waiting", onWaiting);
@@ -423,8 +657,12 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
     void attachSource();
     return () => {
       isCancelled = true;
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
       if (bufferingTimerRef.current) clearTimeout(bufferingTimerRef.current);
-      if (prepareTimeoutRef.current) clearTimeout(prepareTimeoutRef.current);
+      clearSilenceWatch();
+      clearReconnect();
+      clearOfflineWait();
       if (playbackFrameRef.current !== null) {
         window.cancelAnimationFrame(playbackFrameRef.current);
         playbackFrameRef.current = null;
@@ -436,6 +674,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
       saveProgress();
       video.removeEventListener("loadedmetadata", onMetadata);
       video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("progress", onProgress);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("waiting", onWaiting);
@@ -705,7 +944,9 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
   const qualityChoices = hasAdaptiveQualities ? [{ index: -1, label: "Auto", height: 0, bitrate: 0 }, ...qualityOptions] : [];
 
   const retry = () => {
+    erroredRef.current = false;
     setErrored(false);
+    setErrorKind("generic");
     setRetryCount((count) => count + 1);
   };
 
@@ -716,8 +957,8 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
           <span className="player-error-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 8v4m0 4h.01" /></svg>
           </span>
-          <h2 className="player-error-title">This stream needs another moment</h2>
-          <p className="player-error-copy">The source may be temporarily unavailable or the connection may have dropped. Try again, or return to the title page.</p>
+          <h2 className="player-error-title">{ERROR_COPY[errorKind].title}</h2>
+          <p className="player-error-copy">{ERROR_COPY[errorKind].copy}</p>
           <div className="player-error-actions">
             <button className="primary" type="button" onClick={retry}>Try again</button>
             <button type="button" onClick={onClose}>Back to title</button>
@@ -763,7 +1004,7 @@ export default function VideoPlayer({ src, title, poster, movieId, subtitleUrl, 
         </video>
 
         {(preparing || buffering) && (
-          <div className="player-buffering" role="status" aria-label={playing ? "Buffering" : "Preparing playback"}>
+          <div className="player-buffering" role="status" aria-label={reconnecting ? (errorKind === "offline" ? "Waiting for the connection to return" : "Reconnecting to the video source") : playing ? "Buffering" : "Preparing playback"}>
             <svg className="player-buffering-ring" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
               <defs>
                 <linearGradient id="cinemax-buffer-grad" x1="0" y1="0" x2="1" y2="1">

@@ -43,6 +43,10 @@ export interface FeaturedSlide {
   subtitle: string | null;
   imageUrl: string | null;
   movieId: number | null;
+  /** Studio ordering field (tiebreaker only; see lib/slide-order.ts). */
+  sortOrder?: number | null;
+  /** ISO creation time - the latest-first ordering key. Absent on legacy rows. */
+  createdAt?: string | null;
 }
 
 export const FILTERS = [

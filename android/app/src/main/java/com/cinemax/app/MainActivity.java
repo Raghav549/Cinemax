@@ -608,7 +608,20 @@ public class MainActivity extends Activity {
         runOnUi(new Runnable() {
             @Override
             public void run() {
+                // Return to the page the viewer was on (a movie page, a
+                // category) rather than always restarting from home.
+                String resumeUrl = HOME_URL;
                 if (web != null) {
+                    String current = web.getUrl();
+                    if (current != null) {
+                        Uri parsed = Uri.parse(current);
+                        if (NavigationPolicy.decide(parsed.getScheme(), parsed.getHost())
+                                == NavigationPolicy.Decision.STAY_IN_APP
+                                && current.startsWith("http")
+                                && !NavigationPolicy.isWebsiteOnlyPath(parsed.getPath())) {
+                            resumeUrl = current;
+                        }
+                    }
                     webContainer.removeView(web);
                     web.setWebChromeClient(null);
                     web.setWebViewClient(null);
@@ -625,7 +638,7 @@ public class MainActivity extends Activity {
                 createWebView();
                 showReloadingVeil();
                 showError(getString(R.string.error_reload_body));
-                web.loadUrl(HOME_URL);
+                web.loadUrl(resumeUrl);
                 if (crashed) {
                     Toast.makeText(MainActivity.this, R.string.error_reload_hint, Toast.LENGTH_SHORT).show();
                 }

@@ -90,6 +90,19 @@ public final class CinemaxAppTest {
         decide("http", "127.0.0.1", LEAVE, "127.0.0.1 is never served inside the app");
         decide("http", "10.0.2.2", LEAVE, "the Android emulator host is never served inside the app");
 
+        // Embedded provider players navigate their own frame; the main-frame
+        // "third-party leaves the app" rule must never cancel those loads.
+        subFrame("https", STAY, "a provider frame may navigate to any https host");
+        subFrame("http", STAY, "a provider frame may follow a plain http hop");
+        subFrame("about", STAY, "about:blank inside a frame stays");
+        subFrame("blob", STAY, "blob media documents inside a frame stay");
+        subFrame(null, STAY, "relative navigation inside a frame stays");
+        subFrame("intent", BLOCK, "intent: from inside a frame is cancelled, never handed to another app");
+        subFrame("market", BLOCK, "market: from inside a frame is cancelled");
+        subFrame("javascript", BLOCK, "javascript: inside a frame is cancelled");
+        subFrame("data", BLOCK, "data: inside a frame is cancelled");
+        subFrame("whatsapp", BLOCK, "custom app schemes from inside a frame are cancelled");
+
         check(NavigationPolicy.isProductionUrl("https", HOST), "the production URL is recognised for deep links");
         check(!NavigationPolicy.isProductionUrl("https", "cinemax-orpin.vercel.app.attacker.com"),
                 "deep links are limited to the production host");
@@ -806,6 +819,11 @@ public final class CinemaxAppTest {
 
     private static void decide(String scheme, String host, Decision expected, String label) {
         Decision actual = NavigationPolicy.decide(scheme, host);
+        check(actual == expected, label + " (expected " + expected + ", got " + actual + ")");
+    }
+
+    private static void subFrame(String scheme, Decision expected, String label) {
+        Decision actual = NavigationPolicy.decideForSubFrame(scheme);
         check(actual == expected, label + " (expected " + expected + ", got " + actual + ")");
     }
 

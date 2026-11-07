@@ -122,6 +122,24 @@ function EmbedShell({ resolution, title }: { resolution: LinkResolution; title: 
     };
   }, []);
 
+  const embedSrc = plan.strategy === "embed" ? plan.src : "";
+  // Warm the TLS connection to the provider while React commits the frame: one
+  // of the few start-up costs under Cinemax's control. The frame's own
+  // requests (player, manifests, segments, cookies) still go straight to the
+  // provider; nothing is proxied, rewritten or intercepted.
+  useEffect(() => {
+    if (!embedSrc) return;
+    let origin = "";
+    try { origin = new URL(embedSrc, window.location.href).origin; } catch { return; }
+    if (!origin || origin === window.location.origin) return;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    link.setAttribute("data-cinemax-player", "preconnect");
+    document.head.appendChild(link);
+    return () => { link.remove(); };
+  }, [embedSrc]);
+
   if (plan.strategy !== "embed") return null;
   // Twitch-style embeds need `parent` = the embedding hostname; substitute it
   // at mount time so the adapter itself stays pure.
